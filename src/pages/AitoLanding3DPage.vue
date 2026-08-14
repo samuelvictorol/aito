@@ -94,10 +94,6 @@
                 <span>{{ section.secondaryCta.label }}</span>
                 <q-icon name="mdi-lightbulb-on-outline" aria-hidden="true" />
               </button>
-              <button class="landing-3d__cta landing-3d__cta--surprise" type="button" @click="router.push(section.surpriseCta.to)">
-                <span>{{ section.surpriseCta.label }}</span>
-                <q-icon name="mdi-auto-fix" aria-hidden="true" />
-              </button>
             </div>
 
             <div v-if="section.id === 'inicio'" class="landing-3d__proof-row">
@@ -238,6 +234,10 @@
 
     <button class="landing-3d__ai-float" type="button" aria-label="Abrir IA da Aito" @click="iaChat = true">
       <img src="/ia.gif" alt="" />
+    </button>
+    <button class="landing-3d__surprise-float" type="button" aria-label="Abrir Surpreenda-me" @click="router.push('/surpresa')">
+      <q-icon name="mdi-gift-outline" aria-hidden="true" />
+      <q-tooltip>Surpreenda-me</q-tooltip>
     </button>
 
     <q-dialog v-model="brandDialogOpen">
@@ -561,6 +561,7 @@ onBeforeUnmount(() => {
 .landing-3d__progress,
 .landing-3d__counter,
 .landing-3d__ai-float,
+.landing-3d__surprise-float,
 .landing-3d__instagram-link {
   transition: opacity 850ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 850ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 850ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -570,6 +571,7 @@ onBeforeUnmount(() => {
 .landing-3d--intro-loading .landing-3d__progress,
 .landing-3d--intro-loading .landing-3d__counter,
 .landing-3d--intro-loading .landing-3d__ai-float,
+.landing-3d--intro-loading .landing-3d__surprise-float,
 .landing-3d--intro-loading .landing-3d__instagram-link {
   opacity: 0;
   filter: blur(10px);
@@ -582,6 +584,7 @@ onBeforeUnmount(() => {
 .landing-3d--intro-object-only .landing-3d__progress,
 .landing-3d--intro-object-only .landing-3d__counter,
 .landing-3d--intro-object-only .landing-3d__ai-float,
+.landing-3d--intro-object-only .landing-3d__surprise-float,
 .landing-3d--intro-object-only .landing-3d__instagram-link {
   opacity: 0;
   filter: blur(10px);
@@ -795,6 +798,8 @@ onBeforeUnmount(() => {
 .landing-3d__counter i { width: 1.45rem; height: 1px; background: rgba(220, 250, 244, 0.22); }
 .landing-3d__ai-float { position: fixed; right: 1.3rem; bottom: 4.5rem; z-index: 8; display: grid; width: 4.15rem; height: 4.15rem; padding: 0; border: 1px solid rgba(19, 188, 157, 0.55); border-radius: 1.15rem; place-items: center; background: linear-gradient(135deg, var(--aito-teal), var(--aito-teal-dark)); box-shadow: 0 15px 40px rgba(19, 188, 157, 0.34); cursor: pointer; }
 .landing-3d__ai-float img { width: 3rem; height: 3rem; object-fit: contain; }
+.landing-3d__surprise-float { position: fixed; right: 1.85rem; bottom: 9.35rem; z-index: 8; display: grid; width: 3rem; height: 3rem; padding: 0; border: 1px solid rgba(143,255,238,.62); border-radius: 50%; place-items: center; color: #03120f; background: linear-gradient(135deg, var(--aito-aqua), var(--aito-teal)); box-shadow: 0 14px 36px rgba(19,188,157,.3); cursor: pointer; transition: transform 200ms ease, filter 200ms ease, box-shadow 200ms ease; }
+.landing-3d__surprise-float:hover, .landing-3d__surprise-float:focus-visible { outline: none; filter: saturate(1.14) brightness(1.06); box-shadow: 0 16px 42px rgba(19,188,157,.38); transform: translateY(-2px); }
 .landing-3d__instagram-link { display: grid; width: 2.55rem; height: 2.55rem; border: 1px solid rgba(143, 255, 238, 0.46); border-radius: 50%; place-items: center; color: #03120f; background: linear-gradient(135deg, var(--aito-aqua), var(--aito-teal)); box-shadow: 0 14px 36px rgba(19, 188, 157, 0.28); font-size: 1.3rem; text-decoration: none; pointer-events: auto; transition: transform 200ms ease, filter 200ms ease, box-shadow 200ms ease; }
 .landing-3d__instagram-link:hover, .landing-3d__instagram-link:focus-visible { outline: none; filter: saturate(1.14) brightness(1.06); box-shadow: 0 16px 42px rgba(19, 188, 157, 0.36); transform: translateY(-2px); }
 
@@ -874,6 +879,7 @@ onBeforeUnmount(() => {
   .landing-3d__counter { right: 0.9rem; bottom: 1.25rem; }
   .landing-3d__ai-float { right: 0.75rem; bottom: 4.4rem; width: 3.75rem; height: 3.75rem; }
   .landing-3d__ai-float img { width: 2.75rem; height: 2.75rem; }
+  .landing-3d__surprise-float { right: 1.15rem; bottom: 8.75rem; width: 2.8rem; height: 2.8rem; }
   .landing-3d__instagram-link { width: 2.35rem; height: 2.35rem; font-size: 1.18rem; }
 }
 

@@ -264,6 +264,7 @@ const filteredCatalogCourses = computed(() => {
 const freeCourses = computed(() => filteredCatalogCourses.value.filter((course) => currentPrice(course) <= 0).slice(0, 20))
 const tagCarousels = computed(() => {
   const groups = new Map()
+  const courseUsage = new Map(freeCourses.value.map((course) => [course._id, 1]))
   filteredCatalogCourses.value.forEach((course) => {
     ;(course.tags || []).forEach((tag) => {
       const label = String(tag || '').trim()
@@ -274,10 +275,14 @@ const tagCarousels = computed(() => {
       if (!group.courses.some((item) => item._id === course._id)) group.courses.push(course)
     })
   })
-  return [...groups.values()]
-    .sort((a, b) => b.courses.length - a.courses.length || a.label.localeCompare(b.label))
-    .slice(0, freeCourses.value.length ? 3 : 4)
-    .map((group) => ({ ...group, courses: group.courses.slice(0, 20) }))
+  const rows = []
+  for (const group of [...groups.values()].sort((a, b) => b.courses.length - a.courses.length || a.label.localeCompare(b.label))) {
+    const courses = group.courses.filter((course) => (courseUsage.get(course._id) || 0) < 2).slice(0, 20)
+    courses.forEach((course) => courseUsage.set(course._id, (courseUsage.get(course._id) || 0) + 1))
+    if (courses.length) rows.push({ ...group, courses })
+    if (rows.length >= (freeCourses.value.length ? 3 : 4)) break
+  }
+  return rows
 })
 
 function handleSceneReady() {
@@ -385,15 +390,15 @@ onBeforeUnmount(() => window.clearTimeout(loaderWatchdog))
 .learn-launch__course-tabs { min-width: 0; min-height: 172px; margin-top: .65rem; overflow: hidden; border-bottom: 1px solid rgba(19,188,157,.14); }
 .learn-launch__course-tabs :deep(.q-tabs__content) { justify-content: flex-start; gap: .65rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .learn-launch__course-tabs :deep(.q-tab) { flex: 0 0 auto; min-width: 240px; min-height: 165px; padding: 0; align-items: stretch; text-transform: none; }
-.learn-launch__course-card { display: grid; width: 240px; height: 160px; grid-template-rows: 88px 1fr; overflow: hidden; border: 1px solid rgba(143,255,238,.26); border-radius: .7rem; text-align: left; background: rgba(3,25,26,.76); box-shadow: 0 14px 34px rgba(0,0,0,.2); transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease; }
-.learn-launch__course-carousel .learn-launch__course-card { flex: 0 0 240px; padding: 0; color: inherit; font: inherit; cursor: pointer; appearance: none; }
+.learn-launch__course-card { display: grid; width: 260px; min-height: 174px; height: auto; grid-template-rows: 92px auto; overflow: hidden; border: 1px solid rgba(143,255,238,.26); border-radius: .7rem; text-align: left; background: rgba(3,25,26,.76); box-shadow: 0 14px 34px rgba(0,0,0,.2); transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease; }
+.learn-launch__course-carousel .learn-launch__course-card { flex: 0 0 260px; padding: 0; color: inherit; font: inherit; cursor: pointer; appearance: none; }
 .learn-launch__course-card:hover { border-color: rgba(143,255,238,.72); box-shadow: 0 18px 44px rgba(19,188,157,.16); transform: translateY(-3px); }
 .learn-launch__course-image { position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(19,188,157,.22), rgba(3,16,18,.9)); }
 .learn-launch__course-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .learn-launch__course-image > div { display: grid; height: 100%; place-items: center; color: var(--aqua); }
 .learn-launch__course-image > span { position: absolute; top: .4rem; right: .4rem; padding: .2rem .4rem; border: 1px solid rgba(143,255,238,.55); border-radius: 999px; color: #03110f; background: #8fffee; font-size: .58rem; font-weight: 900; }
-.learn-launch__course-card > div:last-child { display: grid; align-content: center; gap: .25rem; padding: .55rem .65rem; }
-.learn-launch__course-card strong { display: -webkit-box; overflow: hidden; color: #effffb; font-size: .75rem; line-height: 1.2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.learn-launch__course-card > div:last-child { display: grid; align-content: start; gap: .3rem; min-height: 82px; padding: .65rem .7rem .7rem; }
+.learn-launch__course-card strong { display: block; color: #effffb; font-size: .78rem; line-height: 1.28; overflow-wrap: anywhere; }
 .learn-launch__course-card small { color: rgba(229,255,250,.56); font-size: .62rem; }
 .learn-launch__course-card b { color: #8fffee; font-size: .75rem; }
 .learn-launch__course-card s { margin-right: .25rem; color: rgba(229,255,250,.46); font-size: .6rem; }
