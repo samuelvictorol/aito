@@ -7,7 +7,7 @@
             <q-img src="/favicon.png" width="58px" height="38px" fit="contain" />
             <div>
               <div class="text-h6 text-weight-bold">Aito Admin</div>
-              <div class="text-caption text-grey-7">Atendimento WhatsApp com IA</div>
+              <div class="text-caption text-grey-7">Gestão e atendimento AitoSoftwares</div>
             </div>
           </div>
 
