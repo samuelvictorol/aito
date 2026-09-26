@@ -43,7 +43,7 @@ export const institutionalBrands = Object.freeze([
   },
   {
     name: 'NotifyFlow',
-    imgUrl: 'https://notify-flow.onrender.com/api/media/6aaaa8e7123e1b55396a0dc7.xqUeoRvIR9v2whdKAQNaCF9vVWm_rrTpTxgxx2GHXZ0',
+    imgUrl: 'notifyflow.png',
     summary: 'Plataforma de disparo de notificações multicanal para WhatsApp Api Oficial, Telegram e Email.',
     href: 'https://notify-flow.onrender.com/'
   },
