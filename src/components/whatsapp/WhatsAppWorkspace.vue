@@ -12,18 +12,28 @@ const tab = ref('chats'), status = ref({ status: 'offline' }), connected = ref(f
 let socket, refreshTimer
 const connectionLabel = computed(() => ({ online: 'WhatsApp conectado', ready: 'WhatsApp conectado', authenticated: 'Iniciando WhatsApp', authenticating: 'Autenticando WhatsApp', connecting: 'Conectando WhatsApp', auth_required: 'Reconecte o WhatsApp', initializing: 'Iniciando WhatsApp', reconnecting: 'Reconectando', waiting_qr: 'Leia o QR Code', qr: 'Leia o QR Code', offline: 'WhatsApp desconectado', error: 'Conexão requer atenção', disabled: 'Conexão desabilitada' })[status.value.status] || status.value.status || 'Verificando conexão')
 const online = computed(() => ['online', 'ready'].includes(status.value.status))
-async function refreshStatus(silent = false) { try { status.value = unwrap(await waApi.get('/status')) } catch (error) { if (!silent) $q.notify({ type: 'negative', message: messageOf(error) }) } }
+function applyStatus(value) {
+  const next = value?.data || value
+  if (!next?.status) return
+  if (Date.parse(next.updatedAt || '') < Date.parse(status.value.updatedAt || '')) return
+  status.value = next
+}
+async function refreshStatus(silent = false) { try { applyStatus(unwrap(await waApi.get('/status', { timeout: 10000 }))) } catch (error) { if (!silent) $q.notify({ type: 'negative', message: messageOf(error) }) } }
 onMounted(() => {
   refreshStatus()
   socket = openWhatsAppSocket()
   socket.on('connect', () => { connected.value = true; revision.value++; refreshStatus() })
   socket.on('disconnect', () => { connected.value = false })
   socket.on('connect_error', () => { connected.value = false })
-  socket.on('whatsapp.status', (value) => { status.value = value?.data || value })
+  socket.on('whatsapp.status', applyStatus)
   socket.on('chat.updated', (value) => { chatEvent.value = { ...value, _eventAt: Date.now() } })
   socket.on('chat.deleted', (value) => { chatEvent.value = { ...(value?.data || value), deleted: true, _eventAt: Date.now() } })
   socket.on('message.updated', (value) => { messageEvent.value = { ...value, _eventAt: Date.now() } })
-  refreshTimer = window.setInterval(() => { if (!connected.value && !document.hidden) { revision.value++; refreshStatus(true) } }, 20000)
+  refreshTimer = window.setInterval(() => {
+    if (document.hidden) return
+    if (!connected.value) revision.value++
+    if (!connected.value || tab.value === 'connection' || !online.value) refreshStatus(true)
+  }, 5000)
 })
 onBeforeUnmount(() => { clearInterval(refreshTimer); socket?.disconnect() })
 function openContact(chat) { requestedChat.value = { ...chat, _requestedAt: Date.now() }; tab.value = 'chats' }
@@ -44,7 +54,7 @@ function openContact(chat) { requestedChat.value = { ...chat, _requestedAt: Date
     <WhatsAppChats v-show="tab === 'chats'" :visible="tab === 'chats'" :status="status" :revision="revision" :message-event="messageEvent" :chat-event="chatEvent" :requested-chat="requestedChat" />
     <WhatsAppContacts v-if="tab === 'contacts'" :revision="revision" @open-chat="openContact" />
     <BotFlows v-if="tab === 'flows'" />
-    <WhatsAppTools v-if="!['chats', 'contacts', 'flows'].includes(tab)" :key="tab" :tab="tab" :status="status" @refresh="refreshStatus" />
+    <WhatsAppTools v-if="!['chats', 'contacts', 'flows'].includes(tab)" :key="tab" :tab="tab" :status="status" @refresh="refreshStatus" @status="applyStatus" />
   </section>
 </template>
 

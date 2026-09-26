@@ -3,8 +3,7 @@
     <section v-if="visible" class="aito-loader" :class="{ 'is-ready': ready, 'is-starting': starting }" aria-label="Loading AitoSoftwares">
       <div class="aito-loader__focus" aria-hidden="true"></div>
       <div class="aito-loader__hud" aria-live="polite">
-        <strong>AITO</strong>
-        <span>{{ starting ? 'Entrando na experiencia' : 'Preparando a experiencia' }}</span>
+        <strong>AITOSOFTWARES</strong>
         <i><b :style="{ transform: `scaleX(${progress})` }"></b></i>
       </div>
     </section>

@@ -21,7 +21,7 @@ export const institutionalBrands = Object.freeze([
     name: 'Flávia Kamila App',
     imgUrl: 'fk.png',
     summary: 'Produto digital com formulário inteligentes, CRM, integração com pagamentos.',
-    href: 'https://flaviakamila.com'
+    href: 'https://flaviakamila.com.br'
   },
   {
     name: 'CAIXA',
@@ -34,6 +34,18 @@ export const institutionalBrands = Object.freeze([
     imgUrl: 'en.jfif',
     summary: 'Migração para cloud, catálogo conectado e IA no WhatsApp para atender a operação real.',
     href: 'https://www.eletronogueira.com.br'
+  },
+  {
+    name: 'Lembr.it',
+    imgUrl: 'lembrit.png',
+    summary: 'Plataforma de gestão de lembretes e notificações para diferentes jornadas e perfis.',
+    href: 'https://www.lembr.it'
+  },
+  {
+    name: 'NotifyFlow',
+    imgUrl: 'https://notify-flow.onrender.com/api/media/6aaaa8e7123e1b55396a0dc7.xqUeoRvIR9v2whdKAQNaCF9vVWm_rrTpTxgxx2GHXZ0',
+    summary: 'Plataforma de disparo de notificações multicanal para WhatsApp Api Oficial, Telegram e Email.',
+    href: 'https://notify-flow.onrender.com/'
   },
   {
     name: 'GLOBO',
