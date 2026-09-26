@@ -7,7 +7,8 @@ import { waApi, unwrap, openWhatsAppSocket, messageOf } from 'src/services/whats
 const $q = useQuasar()
 const BotFlows = defineAsyncComponent(() => import('./BotFlows.vue'))
 const WhatsAppTools = defineAsyncComponent(() => import('./WhatsAppTools.vue'))
-const tab = ref('chats'), status = ref({ status: 'offline' }), connected = ref(false), revision = ref(0), messageEvent = ref(null), chatEvent = ref(null)
+const WhatsAppContacts = defineAsyncComponent(() => import('./WhatsAppContacts.vue'))
+const tab = ref('chats'), status = ref({ status: 'offline' }), connected = ref(false), revision = ref(0), messageEvent = ref(null), chatEvent = ref(null), requestedChat = ref(null)
 let socket, refreshTimer
 const connectionLabel = computed(() => ({ online: 'WhatsApp conectado', ready: 'WhatsApp conectado', authenticated: 'Iniciando WhatsApp', authenticating: 'Autenticando WhatsApp', connecting: 'Conectando WhatsApp', auth_required: 'Reconecte o WhatsApp', initializing: 'Iniciando WhatsApp', reconnecting: 'Reconectando', waiting_qr: 'Leia o QR Code', qr: 'Leia o QR Code', offline: 'WhatsApp desconectado', error: 'Conexão requer atenção', disabled: 'Conexão desabilitada' })[status.value.status] || status.value.status || 'Verificando conexão')
 const online = computed(() => ['online', 'ready'].includes(status.value.status))
@@ -20,10 +21,12 @@ onMounted(() => {
   socket.on('connect_error', () => { connected.value = false })
   socket.on('whatsapp.status', (value) => { status.value = value?.data || value })
   socket.on('chat.updated', (value) => { chatEvent.value = { ...value, _eventAt: Date.now() } })
+  socket.on('chat.deleted', (value) => { chatEvent.value = { ...(value?.data || value), deleted: true, _eventAt: Date.now() } })
   socket.on('message.updated', (value) => { messageEvent.value = { ...value, _eventAt: Date.now() } })
   refreshTimer = window.setInterval(() => { if (!connected.value && !document.hidden) { revision.value++; refreshStatus(true) } }, 20000)
 })
 onBeforeUnmount(() => { clearInterval(refreshTimer); socket?.disconnect() })
+function openContact(chat) { requestedChat.value = { ...chat, _requestedAt: Date.now() }; tab.value = 'chats' }
 </script>
 
 <template>
@@ -31,15 +34,17 @@ onBeforeUnmount(() => { clearInterval(refreshTimer); socket?.disconnect() })
     <div class="wa-statusbar"><span><i :class="{ online }" />{{ connectionLabel }}</span><span class="wa-live"><q-icon :name="connected ? 'mdi-access-point' : 'mdi-access-point-off'" />{{ connected ? 'Atualização em tempo real' : 'Reconectando painel…' }}</span><q-btn v-if="!online" dense flat no-caps label="Ver conexão" @click="tab = 'connection'" /></div>
     <q-tabs v-model="tab" dense align="left" outside-arrows mobile-arrows active-color="teal-3" indicator-color="teal-4" class="wa-subtabs">
       <q-tab name="chats" icon="mdi-message-text-outline" label="Conversas" />
+      <q-tab name="contacts" icon="mdi-contacts-outline" label="Contatos" />
       <q-tab name="flows" icon="mdi-sitemap-outline" label="Fluxo BotBuilder" />
       <q-tab name="connection" icon="mdi-qrcode" label="Conexão" />
       <q-tab name="assets" icon="mdi-folder-multiple-image" label="Arquivos" />
       <q-tab name="integrations" icon="mdi-connection" label="Integrações" />
       <q-tab name="monitor" icon="mdi-chart-line" label="Monitoramento" />
     </q-tabs>
-    <WhatsAppChats v-show="tab === 'chats'" :visible="tab === 'chats'" :status="status" :revision="revision" :message-event="messageEvent" :chat-event="chatEvent" />
+    <WhatsAppChats v-show="tab === 'chats'" :visible="tab === 'chats'" :status="status" :revision="revision" :message-event="messageEvent" :chat-event="chatEvent" :requested-chat="requestedChat" />
+    <WhatsAppContacts v-if="tab === 'contacts'" :revision="revision" @open-chat="openContact" />
     <BotFlows v-if="tab === 'flows'" />
-    <WhatsAppTools v-if="!['chats', 'flows'].includes(tab)" :key="tab" :tab="tab" :status="status" @refresh="refreshStatus" />
+    <WhatsAppTools v-if="!['chats', 'contacts', 'flows'].includes(tab)" :key="tab" :tab="tab" :status="status" @refresh="refreshStatus" />
   </section>
 </template>
 

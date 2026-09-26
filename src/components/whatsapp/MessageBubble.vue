@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { waApi, formatDate, messageOf, sizeText, statusText, currentAdmin } from 'src/services/whatsapp'
 import { messageAsset } from 'src/services/whatsapp-message-state'
-const props = defineProps({ message: { type: Object, required: true } })
+const props = defineProps({ message: { type: Object, required: true }, canDeleteSent: Boolean })
 const emit = defineEmits(['reply', 'forward', 'delete', 'retry', 'load-media'])
 const root = ref(null), mediaUrl = ref(''), mediaError = ref(''), mediaLoading = ref(false), zoom = ref(false)
 const adminId = currentAdmin().id
@@ -29,12 +29,13 @@ async function loadMedia() {
 async function download() { await loadMedia(); if (!mediaUrl.value) return; const link = document.createElement('a'); link.href = mediaUrl.value; link.download = asset.value.name || 'arquivo'; link.click() }
 onMounted(() => { observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { clearTimeout(unloadTimer); loadMedia() } else { clearTimeout(unloadTimer); unloadTimer = setTimeout(() => { const player = root.value?.querySelector('audio,video'); if (!player || player.paused) releaseUrl() }, 10000) } }, { rootMargin: '150px' }); if (root.value) observer.observe(root.value) })
 watch(assetId, () => { ++generation; abortController?.abort(); mediaLoading.value = false; releaseUrl(); loadMedia() })
+watch(() => props.message.deleted, (deleted) => { if (deleted) { zoom.value = false; ++generation; abortController?.abort(); releaseUrl() } })
 onBeforeUnmount(() => { ++generation; clearTimeout(unloadTimer); observer?.disconnect(); abortController?.abort(); releaseUrl() })
 </script>
 
 <template>
   <article ref="root" :class="['wa-bubble', { outgoing: message.direction === 'out', deleted: message.deleted }]">
-    <header><strong>{{ message.direction === 'out' ? (message.actor?.name || (message.source === 'bot' ? 'Bot' : 'WhatsApp')) : 'Cliente' }}</strong><q-btn flat round dense size="sm" icon="mdi-dots-vertical" aria-label="Ações da mensagem"><q-menu><q-list dense style="min-width:180px"><q-item v-close-popup clickable :disable="!!message.deleted || !!message.local" @click="emit('reply', message)"><q-item-section>Responder</q-item-section></q-item><q-item v-close-popup clickable :disable="!!message.deleted || !!message.local" @click="emit('forward', message)"><q-item-section>Encaminhar</q-item-section></q-item><q-item v-if="ownsMessage && !message.deleted" v-close-popup clickable :disable="!!message.local || ['processing', 'dispatching', 'uncertain'].includes(message.status)" @click="emit('delete', message)"><q-item-section class="text-negative">Apagar para todos</q-item-section></q-item></q-list></q-menu></q-btn></header>
+    <header><strong>{{ message.direction === 'out' ? (message.actor?.name || (message.source === 'bot' ? 'Bot' : 'WhatsApp')) : 'Cliente' }}</strong><q-btn flat round dense size="sm" icon="mdi-dots-vertical" aria-label="Ações da mensagem"><q-menu><q-list dense style="min-width:180px"><q-item v-close-popup clickable :disable="!!message.deleted || !!message.local" @click="emit('reply', message)"><q-item-section>Responder</q-item-section></q-item><q-item v-close-popup clickable :disable="!!message.deleted || !!message.local" @click="emit('forward', message)"><q-item-section>Encaminhar</q-item-section></q-item><q-item v-if="!message.deleted" v-close-popup clickable :disable="!!message.local || (message.direction === 'out' && (!canDeleteSent || ['processing', 'dispatching', 'uncertain'].includes(message.status)))" @click="emit('delete', message)"><q-item-section class="text-negative">{{ message.direction === 'out' ? message.whatsappId ? 'Apagar para todos' : 'Cancelar envio' : 'Apagar do painel' }}</q-item-section></q-item></q-list></q-menu></q-btn></header>
     <div v-if="message.quoted" class="wa-quote">{{ message.quoted.text || 'Mensagem respondida' }}</div>
     <p v-if="message.deleted" class="wa-deleted">Mensagem apagada</p>
     <template v-else>

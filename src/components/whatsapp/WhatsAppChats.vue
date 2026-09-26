@@ -5,10 +5,12 @@ import MessageBubble from './MessageBubble.vue'
 import { waApi, unwrap, requestId, messageOf, formatDate, modeText, sizeText, currentAdmin } from 'src/services/whatsapp'
 import { mergeMessage, sameMessage } from 'src/services/whatsapp-message-state'
 
-const props = defineProps({ status: Object, revision: Number, messageEvent: Object, chatEvent: Object, visible: { type: Boolean, default: true } })
+const props = defineProps({ status: Object, revision: Number, messageEvent: Object, chatEvent: Object, requestedChat: Object, visible: { type: Boolean, default: true } })
 const $q = useQuasar(), chats = ref([]), total = ref(0), page = ref(1), search = ref(''), mode = ref(''), active = ref(null), messages = ref([]), draft = ref(''), quoted = ref(null), loading = ref(false), listLoading = ref(false), sending = ref(false), hasMore = ref(false), historyLoading = ref(false), scroller = ref(null), fileInput = ref(null)
 const newDialog = ref(false), newContact = ref({ phone: '', name: '' }), forwardDialog = ref(false), forwardMessage = ref(null), forwardIds = ref([]), forwardContacts = ref([]), fileDialog = ref(false), attachment = ref(null), caption = ref(''), uploadBusy = ref(false), contactDialog = ref(false), contact = ref({ name: '', phone: '' }), recording = ref(false), recordingSeconds = ref(0), profileDialog = ref(false)
 const forwardRequestId = ref(''), voiceRecording = ref(false)
+const deletedChats = new Set(), deletingMessages = new Set()
+const deletingChat = ref(false)
 let searchTimer, listEpoch = 0, messageEpoch = 0, recordTimer, recorder, microphone, recordingChunks = [], draftTimer, readTimer
 const admin = currentAdmin()
 const draftPrefix = `aito.whatsapp.draft.${admin._id || admin.id || admin.email || 'admin'}.`
@@ -25,7 +27,8 @@ async function loadChats(append = false) {
   try {
     const result = unwrap(await waApi.get('/chats', { params: { q: search.value || undefined, mode: mode.value || undefined, page: append ? page.value + 1 : 1, limit: 40 } }))
     if (epoch !== listEpoch) return
-    chats.value = append ? [...chats.value, ...(result.items || []).filter((item) => !chats.value.some((existing) => existing._id === item._id))] : result.items || []
+    const items = (result.items || []).filter((item) => !deletedChats.has(item._id))
+    chats.value = append ? [...chats.value, ...items.filter((item) => !chats.value.some((existing) => existing._id === item._id))] : items
     total.value = result.total || chats.value.length; page.value = result.page || 1
     const current = chats.value.find((item) => item._id === active.value?._id); if (current) active.value = current
   } catch (error) { if (epoch === listEpoch) fail(error) } finally { if (epoch === listEpoch) listLoading.value = false }
@@ -34,6 +37,7 @@ watch([search, mode], () => { clearTimeout(searchTimer); searchTimer = window.se
 async function markRead(id) { try { await waApi.post(`/chats/${id}/read`); const item = chats.value.find((chat) => chat._id === id); if (item) item.unread = 0 } catch { /* Reconcile on the next successful refresh. */ } }
 function scrollBottom() { nextTick(() => { if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight }) }
 async function openChat(chat) {
+  if (deletedChats.has(chat._id)) return
   if (recording.value) stopRecording(true)
   persistDraft(); clearTimeout(draftTimer); const epoch = ++messageEpoch
   active.value = chat; quoted.value = null; messages.value = []; hasMore.value = false; loading.value = true
@@ -71,11 +75,14 @@ watch(() => props.messageEvent, (event) => {
 })
 watch(() => props.chatEvent, (event) => {
   const chat = event?.chat || event?.data || event; if (!chat?._id) { loadChats(); return }
+  if (chat.deleted) { removeChat(chat._id); return }
+  if (deletedChats.has(chat._id)) return
   if (active.value?._id === chat._id) active.value = { ...active.value, ...chat }
   const index = chats.value.findIndex((item) => item._id === chat._id)
   if (index >= 0) chats.value.splice(index, 1, { ...chats.value[index], ...chat }); else if (!mode.value || mode.value === chat.mode) chats.value.unshift(chat)
   chats.value = chats.value.filter((item) => !mode.value || mode.value === item.mode).sort((a, b) => new Date(b.lastMessageAt || b.updatedAt) - new Date(a.lastMessageAt || a.updatedAt))
 })
+watch(() => props.requestedChat, (chat) => { if (chat?._id) openChat(chat) })
 watch(() => props.revision, () => { if (!props.visible) return; loadChats(); if (active.value) refreshMessages() })
 watch(() => props.visible, (visible) => { if (visible && active.value) markRead(active.value._id); else if (!visible && recording.value) stopRecording(true) })
 async function refreshMessages() { const id = active.value?._id; if (!id) return; try { const result = unwrap(await waApi.get(`/chats/${id}/messages`, { params: { limit: 60 } })); if (active.value?._id === id) (result.items || []).forEach(upsertMessage) } catch { /* Socket reconnection or polling retries automatically. */ } }
@@ -114,7 +121,38 @@ async function sendFile() {
   finally { uploadBusy.value = false; attachment.value = null }
 }
 async function retryMessage(message) { if (message.local) { if (message.retryPayload) await dispatch(message.retryPayload, message); return }; try { const result = unwrap(await waApi.post(`/messages/${message._id}/retry`)); upsertMessage(result.message || result) } catch (error) { fail(error) } }
-function deleteMessage(message) { $q.dialog({ title: 'Apagar para todos', message: 'Solicitar a exclusão desta mensagem no WhatsApp?', cancel: true }).onOk(async () => { try { const result = unwrap(await waApi.post(`/messages/${message._id}/delete`)); upsertMessage(result.message || { ...message, deleted: true }) } catch (error) { fail(error) } }) }
+function deleteMessage(message) {
+  if (deletingMessages.has(message._id)) return
+  const outgoing = message.direction === 'out', sent = !!message.whatsappId
+  if (outgoing && !ownsChat.value) return fail(new Error('Assuma esta conversa antes de apagar uma mensagem enviada.'))
+  const title = outgoing ? sent ? 'Apagar para todos' : 'Cancelar envio' : 'Apagar do painel'
+  const detail = outgoing ? sent ? 'Apagar esta mensagem também no WhatsApp do destinatário? A exclusão depende do prazo permitido pelo WhatsApp.' : 'Cancelar e apagar esta mensagem que ainda não foi enviada?' : 'Apagar esta mensagem do painel compartilhado de atendimento?'
+  $q.dialog({ title, message: detail, cancel: true, persistent: true }).onOk(async () => {
+    if (deletingMessages.has(message._id)) return
+    deletingMessages.add(message._id)
+    try { const result = unwrap(await waApi.post(`/messages/${message._id}/delete`)); upsertMessage(result.message || result); if (quoted.value?._id === message._id) quoted.value = null }
+    catch (error) { fail(error) }
+    finally { deletingMessages.delete(message._id) }
+  })
+}
+function removeChat(id) {
+  if (deletedChats.has(id)) return
+  deletedChats.add(id)
+  listEpoch++; listLoading.value = false
+  chats.value = chats.value.filter((item) => item._id !== id); total.value = Math.max(0, total.value - 1)
+  if (active.value?._id === id) { backToList(); messages.value = []; draft.value = ''; quoted.value = null; hasMore.value = false; loading.value = false }
+  try { localStorage.removeItem(`${draftPrefix}${id}`) } catch { /* Storage may be disabled. */ }
+}
+function deleteChat() {
+  const chat = active.value; if (!chat || deletingChat.value) return
+  $q.dialog({ title: 'Apagar conversa', message: `Apagar o histórico de ${chat.name || chat.phone} deste painel e cancelar os envios na fila? O contato continuará salvo. As mensagens no WhatsApp dos participantes serão mantidas.`, cancel: true, persistent: true }).onOk(async () => {
+    if (deletingChat.value) return
+    deletingChat.value = true
+    try { await waApi.delete(`/chats/${chat._id}`); removeChat(chat._id); $q.notify({ type: 'positive', message: 'Conversa apagada.' }) }
+    catch (error) { fail(error) }
+    finally { deletingChat.value = false }
+  })
+}
 const ownedContacts = (items) => items.filter((item) => item.mode === 'human' && item.assignedTo?.id === adminId)
 async function openForward(message) { forwardMessage.value = message; forwardIds.value = []; forwardContacts.value = ownedContacts(chats.value); forwardRequestId.value = requestId(); forwardDialog.value = true }
 async function searchForward(value, update) { try { const result = unwrap(await waApi.get('/chats', { params: { q: value, mode: 'human', limit: 50 } })); update(() => { forwardContacts.value = ownedContacts(result.items || []) }) } catch (error) { fail(error); update(() => {}) } }
@@ -164,9 +202,9 @@ onBeforeUnmount(() => { persistDraft(); ++listEpoch; ++messageEpoch; clearTimeou
       </div>
     </aside>
     <section v-if="active" class="wa-conversation">
-      <header class="wa-conversation-heading"><q-btn class="wa-back" flat round dense icon="mdi-arrow-left" aria-label="Voltar às conversas" @click="backToList" /><q-avatar size="40px" color="teal-9" class="cursor-pointer" @click="profileDialog = true"><img v-if="active.avatarUrl" :src="active.avatarUrl" alt="Foto do contato" /><span v-else>{{ (active.name || active.phone || '?').slice(0, 1) }}</span></q-avatar><div class="wa-contact-heading"><strong>{{ active.name || active.phone }}</strong><small>{{ active.phone }} · {{ active.assignedTo?.name ? `Com ${active.assignedTo.name}` : modeText(active.mode) }}</small></div><q-btn v-if="!ownsChat" no-caps unelevated color="teal-6" dense label="Assumir" @click="chatAction('takeover')" /><q-btn v-else no-caps flat dense color="teal-3" icon="mdi-check-circle-outline" label="Finalizar" @click="confirmAction('close')" /><q-btn flat round dense icon="mdi-dots-vertical" aria-label="Ações da conversa"><q-menu><q-list><q-item v-close-popup clickable @click="chatAction('takeover')"><q-item-section>Assumir atendimento</q-item-section></q-item><q-item v-close-popup clickable @click="chatAction('release')"><q-item-section>Devolver ao bot</q-item-section></q-item><q-item v-close-popup clickable @click="confirmAction('reset')"><q-item-section>Reiniciar fluxo</q-item-section></q-item><q-separator /><q-item v-close-popup clickable :disable="!canSend" @click="sendLocation"><q-item-section>Enviar localização atual</q-item-section></q-item><q-item v-close-popup clickable :disable="!canSend" @click="contactDialog = true"><q-item-section>Enviar contato</q-item-section></q-item></q-list></q-menu></q-btn></header>
+      <header class="wa-conversation-heading"><q-btn class="wa-back" flat round dense icon="mdi-arrow-left" aria-label="Voltar às conversas" @click="backToList" /><q-avatar size="40px" color="teal-9" class="cursor-pointer" @click="profileDialog = true"><img v-if="active.avatarUrl" :src="active.avatarUrl" alt="Foto do contato" /><span v-else>{{ (active.name || active.phone || '?').slice(0, 1) }}</span></q-avatar><div class="wa-contact-heading"><strong>{{ active.name || active.phone }}</strong><small>{{ active.phone }} · {{ active.assignedTo?.name ? `Com ${active.assignedTo.name}` : modeText(active.mode) }}</small></div><q-btn v-if="!ownsChat" no-caps unelevated color="teal-6" dense label="Assumir" @click="chatAction('takeover')" /><q-btn v-else no-caps flat dense color="teal-3" icon="mdi-check-circle-outline" label="Finalizar" @click="confirmAction('close')" /><q-btn flat round dense icon="mdi-dots-vertical" aria-label="Ações da conversa"><q-menu><q-list><q-item v-close-popup clickable @click="chatAction('takeover')"><q-item-section>Assumir atendimento</q-item-section></q-item><q-item v-close-popup clickable @click="chatAction('release')"><q-item-section>Devolver ao bot</q-item-section></q-item><q-item v-close-popup clickable @click="confirmAction('reset')"><q-item-section>Reiniciar fluxo</q-item-section></q-item><q-separator /><q-item v-close-popup clickable :disable="!canSend" @click="sendLocation"><q-item-section>Enviar localização atual</q-item-section></q-item><q-item v-close-popup clickable :disable="!canSend" @click="contactDialog = true"><q-item-section>Enviar contato</q-item-section></q-item><q-separator /><q-item v-close-popup clickable @click="deleteChat"><q-item-section class="text-negative">Apagar conversa</q-item-section></q-item></q-list></q-menu></q-btn></header>
       <div v-if="!online" class="wa-connection-notice"><q-icon name="mdi-wifi-off" />WhatsApp desconectado. Os envios aguardam a conexão e podem expirar na fila.</div>
-      <div ref="scroller" class="wa-messages"><q-btn v-if="hasMore" flat dense no-caps label="Mensagens anteriores" :loading="historyLoading" @click="loadHistory" /><div v-if="loading" class="wa-loading"><q-spinner color="teal-3" size="32px" /></div><div v-else-if="!messages.length" class="wa-empty-list">Inicie o atendimento para enviar uma mensagem.</div><MessageBubble v-for="message in messages" :key="message._id" :message="message" @reply="quoted = $event" @forward="openForward" @delete="deleteMessage" @retry="retryMessage" @load-media="loadMessageMedia" /></div>
+      <div ref="scroller" class="wa-messages"><q-btn v-if="hasMore" flat dense no-caps label="Mensagens anteriores" :loading="historyLoading" @click="loadHistory" /><div v-if="loading" class="wa-loading"><q-spinner color="teal-3" size="32px" /></div><div v-else-if="!messages.length" class="wa-empty-list">Inicie o atendimento para enviar uma mensagem.</div><MessageBubble v-for="message in messages" :key="message._id" :message="message" :can-delete-sent="ownsChat" @reply="quoted = $event" @forward="openForward" @delete="deleteMessage" @retry="retryMessage" @load-media="loadMessageMedia" /></div>
       <div v-if="quoted" class="wa-reply"><q-icon name="mdi-reply" /><span>{{ quoted.text || quoted.asset?.name || 'Responder à mensagem' }}</span><q-btn flat round dense icon="mdi-close" aria-label="Cancelar resposta" @click="quoted = null" /></div>
       <footer class="wa-composer"><template v-if="recording"><q-icon name="mdi-record-circle" color="red-4" class="wa-recording-icon" /><span>Gravando {{ Math.floor(recordingSeconds / 60) }}:{{ String(recordingSeconds % 60).padStart(2, '0') }}</span><q-space /><q-btn flat round icon="mdi-delete-outline" aria-label="Descartar gravação" @click="stopRecording(true)" /><q-btn round color="teal-6" icon="mdi-stop" aria-label="Concluir gravação" @click="stopRecording()" /></template><template v-else><q-btn flat round icon="mdi-paperclip" aria-label="Anexar arquivo" :disable="!canSend" @click="fileInput.click()" /><input ref="fileInput" type="file" hidden @change="chooseAttachment" /><q-input v-model="draft" outlined dense autogrow maxlength="10000" :disable="!ownsChat" :placeholder="ownsChat ? 'Escreva uma mensagem…' : 'Assuma a conversa para responder'" class="wa-input" @keydown="composerKey" /><q-btn v-if="!draft.trim()" flat round icon="mdi-microphone-outline" aria-label="Gravar áudio" :disable="!canSend" @click="startRecording" /><q-btn round unelevated color="teal-6" icon="mdi-send" aria-label="Enviar mensagem" :disable="!canSend || !draft.trim()" :loading="sending" @click="sendText" /></template></footer>
       <div class="wa-composer-note">{{ admin.name || 'Admin' }} será identificado nas mensagens enviadas. <span v-if="draft">Rascunho salvo neste dispositivo.</span></div>

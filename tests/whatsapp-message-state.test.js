@@ -39,4 +39,17 @@ test('late content cannot restore a deleted message or its attachment', () => {
   assert.equal(merged.text, '')
   assert.equal(merged.assetId, null)
   assert.equal(merged.asset, null)
+  assert.equal(merged.status, 'deleted')
+})
+
+test('deletion clears the cached asset when the server returns only a null asset reference', () => {
+  const merged = mergeMessage({ status: 'sent', assetId: 'asset', asset: { _id: 'asset' } }, { deleted: true, status: 'deleted', assetId: null })
+  assert.equal(merged.asset, null)
+  assert.equal(merged.status, 'deleted')
+})
+
+test('deletion takes precedence over a later delivery receipt timestamp', () => {
+  const merged = mergeMessage({ status: 'read', updatedAt: '2026-09-26T13:00:02Z', text: 'Removed' }, { deleted: true, updatedAt: '2026-09-26T13:00:01Z' })
+  assert.equal(merged.text, '')
+  assert.equal(merged.status, 'deleted')
 })

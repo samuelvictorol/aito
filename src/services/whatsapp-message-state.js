@@ -15,11 +15,11 @@ export function sameMessage(existing, incoming) {
 // Socket acknowledgments can arrive before the response to the original enqueue request.
 export function mergeMessage(existing, incoming) {
   if (!existing) return incoming
+  if (existing.deleted || incoming.deleted) return { ...existing, ...incoming, local: false, deleted: true, status: 'deleted', text: '', assetId: null, asset: null }
   const currentTime = Date.parse(existing.updatedAt || '')
   const incomingTime = Date.parse(incoming.updatedAt || '')
   if (!existing.local && currentTime > incomingTime) return { ...incoming, ...existing }
   const merged = { ...existing, ...incoming, local: false }
-  if (existing.deleted) return { ...merged, deleted: true, text: '', assetId: null, asset: null }
   if (!(incomingTime > currentTime) && (statusRank[existing.status] ?? -1) > (statusRank[incoming.status] ?? -1) && incoming.status !== 'failed') {
     for (const key of ['status', 'progress', 'error', 'whatsappId', 'dispatchedAt', 'sentAt']) if (existing[key] !== undefined) merged[key] = existing[key]
   }
