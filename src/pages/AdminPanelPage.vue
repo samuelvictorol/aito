@@ -78,6 +78,7 @@
 </template>
 
 <script>
+import { canLeaveBotEditor } from 'src/services/bot-editor-guard'
 import { api } from 'boot/axios'
 import { defineAsyncComponent } from 'vue'
 const WhatsAppWorkspace = defineAsyncComponent(() => import('components/whatsapp/WhatsAppWorkspace.vue'))
@@ -116,7 +117,7 @@ export default {
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
     navigationTab: {
       get () { return ['projects', 'overview', 'detail', 'lgpd', 'whatsapp'].includes(this.tab) ? this.tab : 'detail' },
-      set (value) { this.tab = value }
+      set (value) { if (value !== this.tab && canLeaveBotEditor()) this.tab = value }
     }
   },
   mounted () {
@@ -147,7 +148,7 @@ export default {
     async savePolicy () { this.loading.policy = true; try { const { data } = await api.put(`/admin/policies/${this.policyDraft.type}`, this.policyDraft, this.headers); this.policyDraft = data.data; this.policies = this.policies.map(item => item.type === data.data.type ? data.data : item); this.$q.notify({ type: 'positive', message: 'Documento atualizado.' }) } catch (error) { this.notifyError(error) } finally { this.loading.policy = false } },
     deletePolicy () { this.$q.dialog({ title: 'Excluir documento', message: 'A rota publica usara o texto padrao.', cancel: true, persistent: true }).onOk(async () => { try { await api.delete(`/admin/policies/${this.policyDraft.type}`, this.headers); await this.loadPolicies(); this.$q.notify({ type: 'positive', message: 'Documento excluido.' }) } catch (error) { this.notifyError(error) } }) },
     notifyError (error) { this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel concluir a operacao.' }) },
-    logout () { localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
+    logout () { if (!canLeaveBotEditor()) return; localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
   }
 }
 </script>
@@ -213,4 +214,5 @@ export default {
 @media (max-width: 900px) { .admin-app__hero, .admin-app__section-head { align-items: flex-start; flex-direction: column; } .admin-app__stats { width: 100%; flex-wrap: wrap; } .admin-app__stats span { flex: 1; } .admin-app__filters { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .admin-detail-menu__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .admin-app__overview { grid-template-columns: 1fr; } .admin-app__brand small { display: none; } .admin-app__hero { padding-top: 5vh; } .admin-detail-menu__grid { grid-template-columns: 1fr; } .admin-detail-menu__item { min-height: 112px; } }
+.admin-app__panels:has(.builder-page),.admin-app__panels :deep(.q-panel:has(.builder-page)){overflow:visible}
 </style>

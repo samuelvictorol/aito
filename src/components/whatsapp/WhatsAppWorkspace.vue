@@ -1,6 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
+import { canLeaveBotEditor } from 'src/services/bot-editor-guard'
 import WhatsAppChats from './WhatsAppChats.vue'
 import { waApi, unwrap, openWhatsAppSocket, messageOf } from 'src/services/whatsapp'
 
@@ -9,6 +10,7 @@ const BotFlows = defineAsyncComponent(() => import('./BotFlows.vue'))
 const WhatsAppTools = defineAsyncComponent(() => import('./WhatsAppTools.vue'))
 const WhatsAppContacts = defineAsyncComponent(() => import('./WhatsAppContacts.vue'))
 const tab = ref('chats'), status = ref({ status: 'offline' }), connected = ref(false), revision = ref(0), messageEvent = ref(null), chatEvent = ref(null), requestedChat = ref(null)
+const navigationTab = computed({ get: () => tab.value, set: value => { if (value !== tab.value && canLeaveBotEditor()) tab.value = value } })
 let socket, refreshTimer
 const connectionLabel = computed(() => ({ online: 'WhatsApp conectado', ready: 'WhatsApp conectado', authenticated: 'Iniciando WhatsApp', authenticating: 'Autenticando WhatsApp', connecting: 'Conectando WhatsApp', auth_required: 'Reconecte o WhatsApp', initializing: 'Iniciando WhatsApp', reconnecting: 'Reconectando', waiting_qr: 'Leia o QR Code', qr: 'Leia o QR Code', offline: 'WhatsApp desconectado', error: 'Conexão requer atenção', disabled: 'Conexão desabilitada' })[status.value.status] || status.value.status || 'Verificando conexão')
 const online = computed(() => ['online', 'ready'].includes(status.value.status))
@@ -41,8 +43,8 @@ function openContact(chat) { requestedChat.value = { ...chat, _requestedAt: Date
 
 <template>
   <section class="wa-workspace">
-    <div class="wa-statusbar"><span><i :class="{ online }" />{{ connectionLabel }}</span><span class="wa-live"><q-icon :name="connected ? 'mdi-access-point' : 'mdi-access-point-off'" />{{ connected ? 'Atualização em tempo real' : 'Reconectando painel…' }}</span><q-btn v-if="!online" dense flat no-caps label="Ver conexão" @click="tab = 'connection'" /></div>
-    <q-tabs v-model="tab" dense align="left" outside-arrows mobile-arrows active-color="teal-3" indicator-color="teal-4" class="wa-subtabs">
+    <div class="wa-statusbar"><span><i :class="{ online }" />{{ connectionLabel }}</span><span class="wa-live"><q-icon :name="connected ? 'mdi-access-point' : 'mdi-access-point-off'" />{{ connected ? 'Atualização em tempo real' : 'Reconectando painel…' }}</span><q-btn v-if="!online" dense flat no-caps label="Ver conexão" @click="navigationTab = 'connection'" /></div>
+    <q-tabs v-model="navigationTab" dense align="left" outside-arrows mobile-arrows active-color="teal-3" indicator-color="teal-4" class="wa-subtabs">
       <q-tab name="chats" icon="mdi-message-text-outline" label="Conversas" />
       <q-tab name="contacts" icon="mdi-contacts-outline" label="Contatos" />
       <q-tab name="flows" icon="mdi-sitemap-outline" label="Fluxo BotBuilder" />

@@ -4,6 +4,18 @@ import { useQuasar } from 'quasar'
 import BotFlowEditor from './BotFlowEditor.vue'
 import { botApi, messageOf, requestId, formatDate } from 'src/services/whatsapp'
 const $q = useQuasar(), items = ref([]), page = ref(1), pages = ref(1), search = ref(''), loading = ref(false), selected = ref(''), createDialog = ref(false), name = ref('Novo fluxo')
+const importInput = ref(null), importing = ref(false)
+async function importJson(event) {
+  const file = event.target.files?.[0]; event.target.value = ''; if (!file) return
+  importing.value = true
+  try {
+    if (file.size > 1000000) throw new Error('O arquivo deve ter até 1 MB.')
+    let document; try { document = JSON.parse(await file.text()) } catch { throw new Error('Arquivo JSON inválido.') }
+    const { data } = await botApi.post('/flows/import', document)
+    selected.value = data.flow._id; await load()
+    $q.notify({ type: 'positive', message: 'Fluxo importado como rascunho. Revise antes de ativar.' })
+  } catch (error) { fail(error) } finally { importing.value = false }
+}
 function fail(error) { $q.notify({ type: 'negative', message: messageOf(error) }) }
 async function load() { loading.value = true; try { const { data } = await botApi.get('/flows', { params: { page: page.value, search: search.value, limit: 12 } }); items.value = data.items || []; pages.value = data.pages || 1 } catch (error) { fail(error) } finally { loading.value = false } }
 async function create() {
@@ -26,7 +38,7 @@ onMounted(load)
 <template>
   <BotFlowEditor v-if="selected" :key="selected" :flow-id="selected" @back="selected = ''; load()" @saved="load" />
   <section v-else class="wa-flows">
-    <header><div><span class="wa-eyebrow">AUTOMAÇÃO VISUAL</span><h2>Fluxo BotBuilder</h2><p>Crie a triagem com mensagens, decisões, arquivos e integrações. Apenas um fluxo fica ativo por vez.</p></div><q-btn color="teal-6" no-caps icon="mdi-plus" label="Novo fluxo" @click="createDialog = true" /></header>
+    <input ref="importInput" type="file" accept=".json,application/json" hidden @change="importJson" /><header><div><span class="wa-eyebrow">AUTOMAÇÃO VISUAL</span><h2>Fluxo BotBuilder</h2><p>Crie a triagem com mensagens, decisões, arquivos e integrações. Apenas um fluxo fica ativo por vez.</p></div><q-btn outline no-caps icon="mdi-import" label="Importar JSON" :loading="importing" @click="importInput.click()" /><q-btn color="teal-6" no-caps icon="mdi-plus" label="Novo fluxo" @click="createDialog = true" /></header>
     <q-input v-model="search" outlined dense clearable placeholder="Buscar fluxo" class="q-mb-lg" @keyup.enter="page = 1; load()"><template #append><q-btn flat dense round icon="mdi-magnify" aria-label="Buscar" @click="page = 1; load()" /></template></q-input>
     <q-linear-progress v-if="loading" indeterminate color="teal-3" />
     <div v-if="!loading && !items.length" class="wa-flows-empty"><q-icon name="mdi-sitemap-outline" size="48px" /><h3>Seu primeiro atendimento começa aqui</h3><p>Crie um fluxo e personalize o exemplo de boas-vindas e encaminhamento para a equipe.</p><q-btn color="teal-7" no-caps label="Criar fluxo" @click="createDialog = true" /></div>
