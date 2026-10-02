@@ -5,16 +5,18 @@ import { botApi, waApi, messageOf } from 'src/services/whatsapp'
 import FlowMediaPreview from './FlowMediaPreview.vue'
 const $q = useQuasar(), items = ref([]), models = ref([]), assets = ref([]), editing = ref(null), busy = ref(false), loaded = ref(false), existing = ref(false)
 const modelDetails = ref([])
+const imageModelDetails = ref([])
 const selectedModel = computed(() => modelDetails.value.find(model => model.id === editing.value?.model))
 const modelChoices = computed(() => modelDetails.value.length ? modelDetails.value.map(model => ({ label: model.label, value: model.id })) : models.value.map(id => ({ label: id, value: id })))
+const imageModelChoices = computed(() => imageModelDetails.value.map(model => ({ label: model.label, value: model.id })))
 function changeModel() { if (selectedModel.value?.generateImages === false) editing.value.generateImages = false }
 const fail = error => $q.notify({ type: 'negative', message: messageOf(error) })
 async function load() {
-  try { const [profiles, library] = await Promise.all([botApi.get('/ai-profiles'), waApi.get('/assets')]); items.value = profiles.data.items; models.value = profiles.data.models; modelDetails.value = profiles.data.modelOptions || []; assets.value = library.data.items; loaded.value = true } catch (error) { fail(error) }
+  try { const [profiles, library] = await Promise.all([botApi.get('/ai-profiles'), waApi.get('/assets')]); items.value = profiles.data.items; models.value = profiles.data.models; modelDetails.value = profiles.data.modelOptions || []; imageModelDetails.value = profiles.data.imageModelOptions || []; assets.value = library.data.items; loaded.value = true } catch (error) { fail(error) }
 }
 function edit(profile) {
   existing.value = Boolean(profile)
-  editing.value = profile ? { ...JSON.parse(JSON.stringify(profile)), apiKey: '' } : { key: '', title: '', model: models.value.includes('gpt-4.1') ? 'gpt-4.1' : models.value[0], temperature: 0.7, resetCommand: 'chatgptresetchatcontext', timeoutMinutes: 30, generateImages: true, generateDocuments: true, context: [], apiKey: '' }
+  editing.value = profile ? { ...JSON.parse(JSON.stringify(profile)), visionModel: profile.visionModel || profile.model, imageModel: profile.imageModel || 'gpt-image-2.5-sunburst', apiKey: '' } : { key: '', title: '', model: models.value.includes('gpt-6.1-sol') ? 'gpt-6.1-sol' : models.value[0], visionModel: models.value.includes('gpt-6.1-sol') ? 'gpt-6.1-sol' : models.value[0], imageModel: 'gpt-image-2.5-sunburst', temperature: 0.7, resetCommand: 'chatgptresetchatcontext', timeoutMinutes: 30, generateImages: true, generateDocuments: true, context: [], apiKey: '' }
 }
 async function save() {
   busy.value = true
@@ -35,7 +37,7 @@ onMounted(load)
   <section class="ai-profiles">
     <header><div><h3>Funções com I.A.</h3><p>Assistentes com instruções, arquivos e memória independente para cada conversa.</p></div><q-btn no-caps color="teal-7" label="Nova configuração de IA" :disable="!loaded" @click="edit()" /></header>
     <button v-if="!loaded" @click="load">Tentar carregar configurações</button>
-    <div class="ai-list"><article v-for="profile in items" :key="profile.key"><div><strong>{{ profile.title }}</strong><small>{{ profile.model }} · {{ profile.timeoutMinutes }} min de inatividade</small><small>{{ profile.key }}</small></div><q-btn flat round icon="mdi-pencil" aria-label="Editar configuração de IA" @click="edit(profile)" /><q-btn flat round icon="mdi-delete-outline" aria-label="Excluir configuração de IA" @click="remove(profile)" /></article></div>
+    <div class="ai-list"><article v-for="profile in items" :key="profile.key"><div><strong>{{ profile.title }}</strong><small>{{ profile.model }} · {{ profile.timeoutMinutes }} min de inatividade</small><small>Visão: {{ profile.visionModel || profile.model }} · Imagem: {{ profile.imageModel || 'gpt-image-2.5-sunburst' }}</small><small>{{ profile.key }}</small></div><q-btn flat round icon="mdi-pencil" aria-label="Editar configuração de IA" @click="edit(profile)" /><q-btn flat round icon="mdi-delete-outline" aria-label="Excluir configuração de IA" @click="remove(profile)" /></article></div>
     <q-dialog :model-value="!!editing" persistent @update:model-value="value => { if (!value) editing = null }">
       <q-card v-if="editing" class="ai-dialog">
         <q-card-section class="ai-heading"><h3>Configuração de IA</h3><q-btn flat round icon="mdi-close" aria-label="Fechar configuração" :disable="busy" @click="editing = null" /></q-card-section>
@@ -43,10 +45,10 @@ onMounted(load)
           <q-input v-model="editing.title" outlined label="Título" maxlength="120" />
           <q-input v-model="editing.key" outlined label="Identificador" hint="Letras minúsculas, números e hífens. Usado pelo fluxograma." :disable="existing" />
           <q-input v-model="editing.apiKey" type="password" autocomplete="new-password" outlined label="Chave da API OpenAI" :hint="editing.hasKey ? 'Chave salva. Deixe vazio para manter.' : 'A chave será protegida no servidor.'" />
-          <div class="ai-two"><q-select v-model="editing.model" :options="modelChoices" emit-value map-options outlined label="Modelo OpenAI" @update:model-value="changeModel" /><q-input v-model.number="editing.temperature" outlined type="number" min="0" max="2" step="0.1" label="Temperatura" :disable="selectedModel?.temperature === false" :hint="selectedModel?.temperature === false ? 'Este modelo usa raciocínio; a temperatura não é enviada.' : undefined" /></div>
+          <div class="ai-two"><q-select v-model="editing.model" :options="modelChoices" emit-value map-options outlined label="Modelo de conversa e documentos" @update:model-value="changeModel" /><q-input v-model.number="editing.temperature" outlined type="number" min="0" max="2" step="0.1" label="Temperatura" :disable="selectedModel?.temperature === false" :hint="selectedModel?.temperature === false ? 'Este modelo usa raciocínio; a temperatura não é enviada.' : undefined" /></div>
+          <div class="ai-two"><q-select v-model="editing.visionModel" :options="modelChoices" emit-value map-options outlined label="Modelo para interpretar imagens" hint="Analisa imagens recebidas e orienta a edição." /><q-select v-model="editing.imageModel" :options="imageModelChoices" emit-value map-options outlined label="Modelo para criar e editar imagens" hint="Sunburst prioriza fidelidade; Flare é mais rápido." /></div>
           <div class="ai-two"><q-input v-model="editing.resetCommand" outlined label="Comando para limpar contexto" /><q-input v-model.number="editing.timeoutMinutes" outlined type="number" min="1" max="1440" label="Desligar após inatividade (min)" /></div>
           <div><q-toggle v-model="editing.generateImages" label="Gerar imagens" color="teal" :disable="selectedModel?.generateImages === false" /><q-toggle v-model="editing.generateDocuments" label="Gerar documentos e planilhas" color="teal" /></div>
-          <p v-if="selectedModel?.generateImages === false">Geração de imagens não habilitada neste modelo. Para usar esse recurso, selecione GPT-5.5, GPT-5.4 ou GPT-4.1.</p>
           <p>O acesso ao modelo depende da sua conta OpenAI. O uso do modelo e das ferramentas é cobrado pela OpenAI na conta da chave configurada.</p>
           <h4>Contexto do assistente</h4>
           <article v-for="(item, index) in editing.context" :key="index" class="ai-context">
