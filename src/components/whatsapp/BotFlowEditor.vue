@@ -6,6 +6,7 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import FlowNode from './FlowNode.vue'
+import FlowMediaPreview from './FlowMediaPreview.vue'
 import BotSimulator from './BotSimulator.vue'
 import { registerEditorGuard } from 'src/services/bot-editor-guard'
 import { botApi as api, messageOf, currentAdmin } from 'src/services/whatsapp'
@@ -26,6 +27,8 @@ const conflictDraft = ref(null)
 const draftKey = `aito.bot.flow.${currentAdmin().id || 'admin'}.${props.flowId}`
 const nodes = ref([]), edges = ref([])
 const meta = ref({ name: '', description: '', active: false, channels: ['whatsapp'], settings: {} })
+const aiProfiles = ref([])
+const defaultAI = () => ({ profileKey: '', includeHistory: true, historyLimit: 20 })
 const assets = ref([]), selectedNodeId = ref(''), selectedEdgeId = ref(''), keywordDraft = ref('')
 const loading = ref(true), saving = ref(false), dirty = ref(false), toast = ref(''), analysis = ref({ errors: [], warnings: [], conflicts: [] })
 const previewOpen = ref(false), testingAction = ref(false), actionResult = ref(null), uploading = ref(false)
@@ -57,7 +60,7 @@ function mapFlow(flow) {
   meta.value = { name: flow.name, description: flow.description, active: flow.active, channels: ['whatsapp'], settings: { messageIntervalMs: 1000, ...flow.settings } }
   nodes.value = (flow.nodes || []).map((node) => ({
     id: node.nodeId, type: 'bot', position: node.position,
-    data: { ...node.data, messages: (node.data?.messages || []).map((item) => ({ ...defaultOutput(item.type), ...item, assetId: item.assetId || null })), action: { ...defaultAction(node.data?.action?.type), ...(node.data?.action || {}) }, kind: node.type },
+    data: { ...node.data, ai: { ...defaultAI(), ...node.data?.ai }, messages: (node.data?.messages || []).map((item) => ({ ...defaultOutput(item.type), ...item, assetId: item.assetId || null })), action: { ...defaultAction(node.data?.action?.type), ...(node.data?.action || {}) }, kind: node.type },
   }))
   edges.value = (flow.edges || []).map((edge) => ({ id: edge.edgeId, source: edge.source, target: edge.target, label: edge.label || edge.keywords?.join(' · ') || 'automático', markerEnd: MarkerType.ArrowClosed, data: { keywords: [...(edge.keywords || [])], regex: edge.regex || '', matchMode: edge.matchMode || 'any', priority: edge.priority || 0 }, style: { stroke: '#249e85', strokeWidth: 2 } }))
 }
@@ -65,7 +68,7 @@ function mapFlow(flow) {
 function flowPayload() {
   return {
     ...meta.value, version: version.value, channels: ['whatsapp'], settings: { ...meta.value.settings, messageIntervalMs: 1000 },
-    nodes: nodes.value.map((node) => ({ nodeId: node.id, type: node.data.kind, position: node.position, data: { label: node.data.label, messages: (node.data.messages || []).map((item) => ({ ...item })), action: { ...node.data.action, headers: (node.data.action?.headers || []).map((item) => ({ ...item })) }, addTags: node.data.addTags || [], removeTags: node.data.removeTags || [], resetContext: Boolean(node.data.resetContext) } })),
+    nodes: nodes.value.map((node) => ({ nodeId: node.id, type: node.data.kind, position: node.position, data: { ...(node.data.kind === 'ai' ? { ai: { ...node.data.ai } } : {}), label: node.data.label, messages: (node.data.messages || []).map((item) => ({ ...item })), action: { ...node.data.action, headers: (node.data.action?.headers || []).map((item) => ({ ...item })) }, addTags: node.data.addTags || [], removeTags: node.data.removeTags || [], resetContext: Boolean(node.data.resetContext) } })),
     edges: edges.value.map((edge) => ({ edgeId: edge.id, source: edge.source, target: edge.target, label: edge.label || '', keywords: edge.data?.keywords || [], regex: edge.data?.regex || '', matchMode: edge.data?.matchMode || 'any', priority: Number(edge.data?.priority || 0) })),
   }
 }
@@ -133,7 +136,7 @@ async function loadAssets() { try { assets.value = (await api.get('/assets', { p
 async function load() {
   loading.value = true; suspendTracking = true
   try {
-    const [{ data }] = await Promise.all([api.get(`/flows/${props.flowId}`), loadAssets()])
+    const [{ data }] = await Promise.all([api.get(`/flows/${props.flowId}`), loadAssets(), api.get('/ai-profiles').then(response => { aiProfiles.value = response.data.items }).catch(() => { aiProfiles.value = []; showToast('Configurações de IA indisponíveis. Atualize a página após a atualização do servidor.') })])
     mapFlow(data.flow); analysis.value = data.analysis
     savedSnapshot = serializeEditor(); trackedSnapshot = savedSnapshot; history.value = []; future.value = []; dirty.value = false
     try { const draft = sessionStorage.getItem(draftKey); if (draft && draft !== savedSnapshot) { const parsed = JSON.parse(draft); if (parsed.version === version.value) { mapFlow(parsed); dirty.value = true; trackedSnapshot = serializeEditor(); showToast('Rascunho recuperado. Revise e salve para aplicar.'); } else conflictDraft.value = parsed; } } catch { /* Invalid local drafts are ignored. */ }
@@ -158,10 +161,10 @@ function showToast(value) { toast.value = value; window.setTimeout(() => { if (t
 
 function addNode(kind = 'message', preset) {
   const id = crypto.randomUUID(), count = nodes.value.length
-  const labels = { message: 'Mensagens', choice: 'Decisão', action: 'Ação', end: 'Final' }
-  const messages = kind === 'action' ? [] : [defaultOutput(preset === 'media' ? 'media' : 'text')]
+  const labels = { message: 'Mensagens', choice: 'Decisão', action: 'Ação', ai: 'Funções com I.A.', end: 'Final' }
+  const messages = ['action', 'ai'].includes(kind) ? [] : [defaultOutput(preset === 'media' ? 'media' : 'text')]
   const action = defaultAction(preset === 'wait' ? 'wait' : 'http')
-  nodes.value.push({ id, type: 'bot', position: { x: 180 + (count % 3) * 290, y: 100 + Math.floor(count / 3) * 200 }, data: { kind: preset === 'media' ? 'message' : kind, label: preset === 'media' ? 'Arquivo' : preset === 'wait' ? 'Espera' : labels[kind] || 'Novo card', messages, action, addTags: [], removeTags: [], resetContext: false } })
+  nodes.value.push({ id, type: 'bot', position: { x: 180 + (count % 3) * 290, y: 100 + Math.floor(count / 3) * 200 }, data: { ai: defaultAI(), kind: preset === 'media' ? 'message' : kind, label: preset === 'media' ? 'Arquivo' : preset === 'wait' ? 'Espera' : labels[kind] || 'Novo card', messages, action, addTags: [], removeTags: [], resetContext: false } })
   selectedNodeId.value = id; selectedEdgeId.value = ''; previewOpen.value = false
 }
 function connect(params) {
@@ -186,6 +189,11 @@ function setTags(key, value) { if (selectedNode.value) selectedNode.value.data[k
 const addTagsText = computed({ get: () => selectedNode.value?.data?.addTags?.join(', ') || '', set: (value) => setTags('addTags', value) })
 const removeTagsText = computed({ get: () => selectedNode.value?.data?.removeTags?.join(', ') || '', set: (value) => setTags('removeTags', value) })
 function addOutput(type) { selectedNode.value?.data.messages.push(defaultOutput(type)) }
+function moveOutput(index, offset) {
+  const outputs = selectedNode.value?.data.messages, target = index + offset
+  if (!outputs || target < 0 || target >= outputs.length) return
+  flushHistory(); outputs.splice(target, 0, outputs.splice(index, 1)[0]); flushHistory()
+}
 function removeOutput(index) { selectedNode.value?.data.messages.splice(index, 1) }
 function addHeader() { selectedNode.value?.data.action.headers.push({ name: '', value: '' }) }
 function removeHeader(index) { selectedNode.value?.data.action.headers.splice(index, 1) }
@@ -288,6 +296,7 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
         <button class="tool-button" data-help="Encerra a jornada atual e prepara o próximo contato para recomeçar." @click="addNode('end')">◎ Final</button>
         <button class="tool-button extra" data-help="Cria um card já preparado para escolher imagem, áudio, vídeo ou documento." @click="addNode('message','media')">▧ Arquivo</button>
         <button class="tool-button extra" data-help="Cria uma pausa silenciosa antes do próximo card." @click="addNode('action','wait')">◷ Espera</button>
+        <button class="tool-button" @click="addNode('ai')">✦ Funções com I.A.</button>
         <span class="toolbar-spacer"></span>
         <button class="tool-button" title="Exportar arquivo Aito JSON" @click="exportJson">Exportar JSON</button>
         <button class="icon-button" title="Tela cheia" @click="toggleFullscreen(false)"><q-icon name="mdi-fullscreen" /></button>
@@ -318,9 +327,15 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
         </template>
         <template v-else-if="selectedNode">
           <div class="inspector-title"><div><span class="eyebrow">Configurar card</span><h2>{{ selectedNode.data.label }}</h2></div><button v-if="selectedNode.data.kind !== 'start'" class="icon-button delete-button" title="Remover este card" @click="removeSelected">×</button></div>
-          <div class="field"><label>Tipo</label><select v-model="selectedNode.data.kind" :disabled="selectedNode.data.kind === 'start'"><option value="start">Início</option><option value="message">Mensagem</option><option value="choice">Decisão</option><option value="action">Ação</option><option value="end">Final</option></select></div>
+          <div class="field"><label>Tipo</label><select v-model="selectedNode.data.kind" :disabled="selectedNode.data.kind === 'start'"><option value="start">Início</option><option value="message">Mensagem</option><option value="choice">Decisão</option><option value="action">Ação</option><option value="ai">Funções com I.A.</option><option value="end">Final</option></select></div>
           <div class="field"><label>Título interno</label><input v-model="selectedNode.data.label"></div>
 
+          <section v-if="selectedNode.data.kind === 'ai'">
+            <div class="field"><label>Configuração de IA</label><select v-model="selectedNode.data.ai.profileKey"><option value="">Selecione…</option><option v-for="profile in aiProfiles" :key="profile.key" :value="profile.key">{{ profile.title }} · {{ profile.model }}</option></select><small>Cadastre os assistentes na aba Integrações.</small></div>
+            <label class="toggle"><input v-model="selectedNode.data.ai.includeHistory" type="checkbox"> Enviar contexto desta conversa</label>
+            <div v-if="selectedNode.data.ai.includeHistory" class="field"><label>Últimas mensagens enviadas e recebidas</label><input v-model.number="selectedNode.data.ai.historyLimit" type="number" min="1" max="50"></div>
+            <p class="tip">Ao entrar, envia os balões abaixo e aguarda a próxima pergunta. A IA responde até o cliente usar menu, uma condição de saída ou atingir o tempo de inatividade.</p>
+          </section>
           <div v-if="selectedNode.data.kind === 'action'" class="action-editor">
             <div class="field"><label>O que executar?</label><select v-model="selectedNode.data.action.type"><option value="http">Chamar endpoint HTTP</option><option value="wait">Aguardar</option><option value="set_variable">Definir variável</option><option value="chat">Ação na conversa</option></select></div>
             <template v-if="selectedNode.data.action.type === 'http'">
@@ -341,11 +356,12 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
           <template v-if="selectedNode.data.kind !== 'action'">
             <div class="messages-head"><div><b>Mensagens enviadas</b><small>1 segundo entre cada balão</small></div><div class="add-output"><button title="Adicionar texto" @click="addOutput('text')">＋ Texto</button><button title="Adicionar arquivo" @click="addOutput('media')">▧</button><button title="Adicionar localização" @click="addOutput('location')">⌖</button><button title="Adicionar contato" @click="addOutput('contact')">◉</button></div></div>
             <article v-for="(output,index) in selectedNode.data.messages" :key="output.outputId" class="output-card">
-              <header><span>Balão {{ index + 1 }}</span><select v-model="output.type"><option value="text">Texto</option><option value="media">Arquivo</option><option value="location">Localização</option><option value="contact">Contato</option></select><button title="Remover este balão" @click="removeOutput(index)">×</button></header>
+              <header><span>Balão {{ index + 1 }}</span><select v-model="output.type"><option value="text">Texto</option><option value="media">Arquivo</option><option value="location">Localização</option><option value="contact">Contato</option></select><button title="Mover balão para cima" aria-label="Mover balão para cima" :disabled="index === 0" @click="moveOutput(index, -1)">↑</button><button title="Mover balão para baixo" aria-label="Mover balão para baixo" :disabled="index === selectedNode.data.messages.length - 1" @click="moveOutput(index, 1)">↓</button><button title="Remover este balão" @click="removeOutput(index)">×</button></header>
               <textarea v-if="output.type === 'text'" v-model="output.text" placeholder="Escreva a mensagem…" @keydown.stop></textarea>
               <template v-else-if="output.type === 'media'">
                 <select v-model="output.assetId"><option :value="null">Selecione da biblioteca…</option><option v-for="asset in assets" :key="asset._id" :value="asset._id">{{ asset.name }} · {{ Math.ceil(asset.size/1024) }} KB</option></select>
                 <label class="inline-upload">{{ uploading ? 'Enviando…' : '＋ Fazer upload' }}<input type="file" :disabled="uploading" @change="uploadAsset($event,output)"></label>
+                <FlowMediaPreview v-if="output.assetId" :asset-id="output.assetId" :name="assets.find(asset => asset._id === output.assetId)?.name" />
                 <input v-model="output.caption" placeholder="Legenda opcional">
                 <div class="checks compact"><label><input v-model="output.sendAsVoice" type="checkbox"> Enviar áudio como voz</label><label><input v-model="output.sendAsDocument" type="checkbox"> Enviar como documento</label></div>
               </template>
@@ -371,7 +387,6 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
           <span class="eyebrow">Configurações do fluxo</span><h2>Comportamento geral</h2>
           <div class="field"><label>Descrição</label><textarea v-model="meta.description" @keydown.stop></textarea></div>
           <div class="channel-only"><span>◉</span><div><b>WhatsApp Web</b><small>Triagem por regras, sem inteligência artificial</small></div></div>
-          <div class="field"><label>Aguardar mensagens rápidas (ms)</label><input v-model.number="meta.settings.collectWindowMs" type="number" min="200" max="15000"><small>Agrupa mensagens enviadas em sequência antes de avaliar o fluxo.</small></div>
           <div class="field"><label>Resetar conversa após (minutos)</label><input v-model.number="meta.settings.resetAfterMinutes" type="number" min="1" max="43200"></div>
           <div class="field"><label>Resposta quando não entender</label><textarea v-model="meta.settings.fallbackMessage" @keydown.stop></textarea></div>
           <label class="toggle compact"><input v-model="meta.settings.matchFirstMessage" type="checkbox"> Interpretar a primeira mensagem além de cumprimentar</label>

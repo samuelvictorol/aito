@@ -1,27 +1,38 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
-import { botApi, messageOf } from 'src/services/whatsapp'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { botApi, waApi, messageOf } from 'src/services/whatsapp'
+import FlowMediaPreview from './FlowMediaPreview.vue'
 import { formatWhatsApp } from 'src/services/whatsapp-format'
 const props = defineProps({ flowId: String, flow: Object, assets: Array })
 const emit = defineEmits(['close'])
 const messages = ref([]), input = ref(''), busy = ref(false), state = ref(null), error = ref(''), events = ref([]), list = ref(null), mocks = ref('{}')
+const aiLive = ref(false), aiResponse = ref('Resposta de teste da IA.')
+const hasAI = computed(() => props.flow.nodes.some(node => node.type === 'ai'))
 const httpNodes = computed(() => props.flow.nodes.filter(node => node.type === 'action' && node.data.action.type === 'http'))
-let generation = 0, collectTimer, pending = [], timers = new Map()
+let generation = 0, collectTimer, pending = [], timers = new Map(), lastInputAt = 0, settingsRevision = 0
+const collectWindowMs = ref(3000), settingsReady = ref(false)
+async function loadSettings() {
+  const revision = ++settingsRevision
+  const { data } = await waApi.get('/bot-settings')
+  if (revision === settingsRevision) { collectWindowMs.value = data.collectWindowMs; settingsReady.value = true }
+}
+onMounted(() => loadSettings().catch(cause => { error.value = messageOf(cause) }))
 function scroll() { nextTick(() => { if (list.value) list.value.scrollTop = list.value.scrollHeight }) }
 function reset() { generation++; clearTimeout(collectTimer); for (const [timer, resolve] of timers) { clearTimeout(timer); resolve() }; timers.clear(); pending = []; messages.value = []; state.value = null; events.value = []; error.value = ''; busy.value = false }
 function wait(ms) { return new Promise(resolve => { const timer = setTimeout(() => { timers.delete(timer); resolve() }, ms); timers.set(timer, resolve) }) }
-function send() {
+async function send() {
   const text = input.value.trim(); if (!text) return
+  lastInputAt = Date.now(); const current = generation
   messages.value.push({ from: 'client', text }); pending.push(text); input.value = ''; scroll()
   clearTimeout(collectTimer)
-  collectTimer = setTimeout(run, props.flow.settings.collectWindowMs || 1600)
+  try { await loadSettings(); if (current === generation) { clearTimeout(collectTimer); collectTimer = setTimeout(run, Math.max(0, lastInputAt + collectWindowMs.value - Date.now())) } } catch (cause) { error.value = messageOf(cause) }
 }
 async function run() {
   if (busy.value || !pending.length) return
   const current = generation, text = pending.join('\n'); pending = []; busy.value = true; error.value = ''
   try {
     let httpResponses; try { httpResponses = JSON.parse(mocks.value) } catch { throw new Error('O JSON das respostas de teste é inválido.') }
-    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, text, httpResponses })
+    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, text, httpResponses, aiLive: aiLive.value, aiResponse: aiResponse.value }, { timeout: 240000 })
     if (current !== generation) return
     state.value = data.state; events.value.push(...(data.events || []))
     let elapsed = 0
@@ -32,7 +43,7 @@ async function run() {
     }
     if (!data.outputs?.length && !data.events?.length) events.value.push('O fluxo aguardou a próxima mensagem sem enviar uma resposta.')
   } catch (cause) { if (current === generation) error.value = messageOf(cause) }
-  finally { if (current === generation) { busy.value = false; if (pending.length) { clearTimeout(collectTimer); collectTimer = setTimeout(run, props.flow.settings.collectWindowMs || 1600) } } }
+  finally { if (current === generation) { busy.value = false; if (pending.length) { clearTimeout(collectTimer); collectTimer = setTimeout(run, Math.max(0, lastInputAt + collectWindowMs.value - Date.now())) } } }
 }
 function assetName(id) { return props.assets?.find(asset => asset._id === id)?.name || 'Arquivo da biblioteca' }
 function exampleMocks() { mocks.value = JSON.stringify(Object.fromEntries(httpNodes.value.map(node => [node.nodeId, { status: 200, body: { ok: true } }])), null, 2) }
@@ -41,25 +52,26 @@ onBeforeUnmount(reset)
 <template>
   <div class="sim-overlay" role="dialog" aria-modal="true" aria-label="Simular bot" @keydown.esc.stop="emit('close')" @keydown.stop>
     <section class="sim-panel">
-      <header><div><h2>Simular bot</h2><p>Você é o cliente. As regras, variáveis e pausas seguem o fluxo atual.</p></div><button aria-label="Fechar simulador" @click="emit('close')">✕</button></header>
+      <header><div><h2>Simular bot</h2></div><button aria-label="Fechar simulador" @click="emit('close')">✕</button></header>
       <div class="sim-layout">
         <div class="phone">
           <div class="phone-top"><span>◉</span><div><b>{{ flow.name }}</b><small>{{ busy ? 'Respondendo…' : 'WhatsApp · simulação' }}</small></div></div>
           <div ref="list" class="phone-chat" aria-live="polite">
             <p v-if="!messages.length" class="phone-notice">Envie uma mensagem para começar.</p>
             <article v-for="(message,index) in messages" :key="index" :class="['phone-bubble', message.from]">
-              <div v-if="message.type === 'media'" class="attachment">▧ {{ assetName(message.assetId) }}<small>{{ message.sendAsVoice ? 'Áudio como voz' : message.sendAsDocument ? 'Documento' : 'Mídia' }}</small></div>
+              <FlowMediaPreview v-if="message.type === 'media' && message.assetId" :asset-id="message.assetId" :name="assetName(message.assetId)" />
               <div v-if="message.type === 'location'">📍 {{ message.locationName }}<small>{{ message.locationAddress }} · {{ message.latitude }}, {{ message.longitude }}</small></div>
               <div v-if="message.type === 'contact'">👤 {{ message.contactName }}<small>{{ message.contactPhone }}</small></div>
               <div class="formatted" v-html="formatWhatsApp(message.type === 'media' ? message.caption : message.text)"></div>
               <footer>{{ message.from === 'client' ? 'Você' : 'Bot' }} · {{ index + 1 }} <span v-if="message.from === 'client'">✓✓</span></footer>
             </article>
           </div>
-          <form class="phone-compose" @submit.prevent="send"><input v-model="input" aria-label="Mensagem do cliente" placeholder="Mensagem" maxlength="4096"><button :disabled="!input.trim()" aria-label="Enviar mensagem de teste">➤</button></form>
+          <form class="phone-compose" @submit.prevent="send"><input v-model="input" aria-label="Mensagem do cliente" placeholder="Mensagem" maxlength="4096"><button :disabled="!input.trim() || !settingsReady" aria-label="Enviar mensagem de teste">➤</button></form>
         </div>
-        <aside class="sim-info"><button @click="reset">Reiniciar conversa</button><p>Mensagens rápidas são agrupadas por {{ (flow.settings.collectWindowMs || 1600) / 1000 }} segundos.</p><p>Formatação: <b>*negrito*</b>, <i>_itálico_</i>, <s>~riscado~</s> e <code>`código`</code>.</p><p>Integrações usam dados de teste. Arquivos aparecem com o nome e o tipo de envio.</p>
+        <aside class="sim-info"><button @click="reset">Reiniciar conversa</button>
+          <section v-if="hasAI" class="q-my-md"><label><input v-model="aiLive" type="checkbox" :disabled="busy" @change="reset"> Usar IA real (consome API)</label><label v-if="!aiLive"><small>Resposta de teste</small><textarea v-model="aiResponse" rows="3"></textarea></label></section>
           <details v-if="httpNodes.length"><summary>Respostas das integrações</summary><p>Informe status e body para cada card. <button @click="exampleMocks">Preencher exemplo</button></p><textarea v-model="mocks" aria-label="JSON das respostas de teste" rows="10"></textarea><ul><li v-for="node in httpNodes" :key="node.nodeId">{{ node.data.label }}: <code>{{ node.nodeId }}</code></li></ul></details>
-          <p v-if="error" role="alert" class="sim-error">{{ error }}</p><ul aria-live="polite"><li v-for="(event,index) in events" :key="index">{{ event }}</li></ul>
+          <p v-if="error" role="alert" class="sim-error">{{ error }}</p><button v-if="!settingsReady" @click="loadSettings().catch(cause => error = messageOf(cause))">Tentar carregar configuração</button><ul aria-live="polite"><li v-for="(event,index) in events" :key="index">{{ event }}</li></ul>
         </aside>
       </div>
     </section>
