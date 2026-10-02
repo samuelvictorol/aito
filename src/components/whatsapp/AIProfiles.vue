@@ -1,16 +1,20 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { botApi, waApi, messageOf } from 'src/services/whatsapp'
 import FlowMediaPreview from './FlowMediaPreview.vue'
 const $q = useQuasar(), items = ref([]), models = ref([]), assets = ref([]), editing = ref(null), busy = ref(false), loaded = ref(false), existing = ref(false)
+const modelDetails = ref([])
+const selectedModel = computed(() => modelDetails.value.find(model => model.id === editing.value?.model))
+const modelChoices = computed(() => modelDetails.value.length ? modelDetails.value.map(model => ({ label: model.label, value: model.id })) : models.value.map(id => ({ label: id, value: id })))
+function changeModel() { if (selectedModel.value?.generateImages === false) editing.value.generateImages = false }
 const fail = error => $q.notify({ type: 'negative', message: messageOf(error) })
 async function load() {
-  try { const [profiles, library] = await Promise.all([botApi.get('/ai-profiles'), waApi.get('/assets')]); items.value = profiles.data.items; models.value = profiles.data.models; assets.value = library.data.items; loaded.value = true } catch (error) { fail(error) }
+  try { const [profiles, library] = await Promise.all([botApi.get('/ai-profiles'), waApi.get('/assets')]); items.value = profiles.data.items; models.value = profiles.data.models; modelDetails.value = profiles.data.modelOptions || []; assets.value = library.data.items; loaded.value = true } catch (error) { fail(error) }
 }
 function edit(profile) {
   existing.value = Boolean(profile)
-  editing.value = profile ? { ...JSON.parse(JSON.stringify(profile)), apiKey: '' } : { key: '', title: '', model: models.value[0], temperature: 0.7, resetCommand: 'chatgptresetchatcontext', timeoutMinutes: 30, generateImages: true, generateDocuments: true, context: [], apiKey: '' }
+  editing.value = profile ? { ...JSON.parse(JSON.stringify(profile)), apiKey: '' } : { key: '', title: '', model: models.value.includes('gpt-4.1') ? 'gpt-4.1' : models.value[0], temperature: 0.7, resetCommand: 'chatgptresetchatcontext', timeoutMinutes: 30, generateImages: true, generateDocuments: true, context: [], apiKey: '' }
 }
 async function save() {
   busy.value = true
@@ -39,10 +43,11 @@ onMounted(load)
           <q-input v-model="editing.title" outlined label="Título" maxlength="120" />
           <q-input v-model="editing.key" outlined label="Identificador" hint="Letras minúsculas, números e hífens. Usado pelo fluxograma." :disable="existing" />
           <q-input v-model="editing.apiKey" type="password" autocomplete="new-password" outlined label="Chave da API OpenAI" :hint="editing.hasKey ? 'Chave salva. Deixe vazio para manter.' : 'A chave será protegida no servidor.'" />
-          <div class="ai-two"><q-select v-model="editing.model" :options="models" outlined label="Modelo OpenAI" /><q-input v-model.number="editing.temperature" outlined type="number" min="0" max="2" step="0.1" label="Temperatura" /></div>
+          <div class="ai-two"><q-select v-model="editing.model" :options="modelChoices" emit-value map-options outlined label="Modelo OpenAI" @update:model-value="changeModel" /><q-input v-model.number="editing.temperature" outlined type="number" min="0" max="2" step="0.1" label="Temperatura" :disable="selectedModel?.temperature === false" :hint="selectedModel?.temperature === false ? 'Este modelo usa raciocínio; a temperatura não é enviada.' : undefined" /></div>
           <div class="ai-two"><q-input v-model="editing.resetCommand" outlined label="Comando para limpar contexto" /><q-input v-model.number="editing.timeoutMinutes" outlined type="number" min="1" max="1440" label="Desligar após inatividade (min)" /></div>
-          <div><q-toggle v-model="editing.generateImages" label="Gerar imagens" color="teal" /><q-toggle v-model="editing.generateDocuments" label="Gerar documentos e planilhas" color="teal" /></div>
-          <p>O uso do modelo e das ferramentas é cobrado pela OpenAI na conta da chave configurada.</p>
+          <div><q-toggle v-model="editing.generateImages" label="Gerar imagens" color="teal" :disable="selectedModel?.generateImages === false" /><q-toggle v-model="editing.generateDocuments" label="Gerar documentos e planilhas" color="teal" /></div>
+          <p v-if="selectedModel?.generateImages === false">Geração de imagens não habilitada neste modelo. Para usar esse recurso, selecione GPT-5.5, GPT-5.4 ou GPT-4.1.</p>
+          <p>O acesso ao modelo depende da sua conta OpenAI. O uso do modelo e das ferramentas é cobrado pela OpenAI na conta da chave configurada.</p>
           <h4>Contexto do assistente</h4>
           <article v-for="(item, index) in editing.context" :key="index" class="ai-context">
             <div class="ai-heading"><strong>{{ item.type === 'text' ? 'Instruções / texto' : 'Arquivo de referência' }} {{ index + 1 }}</strong><q-btn flat round icon="mdi-close" aria-label="Remover contexto" @click="editing.context.splice(index, 1)" /></div>
