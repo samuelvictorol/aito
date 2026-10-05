@@ -34,6 +34,7 @@
       </button>
 
       <div class="landing-3d__header-actions">
+        <router-link class="landing-3d__product-link" to="/whatsappbotbuilder">WhatsApp BotBuilder</router-link>
         <button class="landing-3d__account-link" type="button" aria-label="Abrir acesso" @click="openAccessChooser">
           <q-icon name="mdi-account-outline" aria-hidden="true" />
           <span class="landing-3d__account-label">{{ accountLabel }}</span>
@@ -259,7 +260,6 @@
         <q-card-section class="landing-3d__dialog-body landing-3d__access-options">
           <button type="button" @click="openAuth('login', 'user')"><q-icon name="mdi-school-outline" /><span><strong>Área de estudo</strong><small>Entrar na AitoLearn</small></span><q-icon name="mdi-chevron-right" /></button>
           <button type="button" @click="router.push('/customer/login'); accessDialogOpen = false"><q-icon name="mdi-briefcase-outline" /><span><strong>Acompanhar meu projeto</strong><small>Portal privado do cliente</small></span><q-icon name="mdi-chevron-right" /></button>
-          <button type="button" @click="openAuth('login', 'affiliate')"><q-icon name="mdi-account-star-outline" /><span><strong>Área do afiliado</strong><small>Cupons e vendas atribuídas</small></span><q-icon name="mdi-chevron-right" /></button>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -654,6 +654,9 @@ onBeforeUnmount(() => {
 .landing-3d__brand > span > span { color: var(--aito-teal); }
 
 .landing-3d__header-actions { display: flex; align-items: center; gap: 0.65rem; }
+.landing-3d__product-link { color: var(--aito-aqua); font-size: .72rem; font-weight: 700; text-decoration: none; border: 1px solid rgba(143,255,238,.35); border-radius: 999px; padding: .55rem .8rem; white-space: nowrap; pointer-events: auto; }
+.landing-3d__product-link:hover,.landing-3d__product-link:focus-visible { background: rgba(19,188,157,.18); outline: none; }
+@media(max-width:600px){.landing-3d__product-link{font-size:.62rem;padding:.45rem .55rem}}
 
 .landing-3d__account-link {
   display: inline-flex;

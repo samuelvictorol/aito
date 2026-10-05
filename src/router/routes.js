@@ -19,6 +19,7 @@ const routes = [
     name: 'aitolearn-catalog',
     component: () => import('pages/AitoLearnLaunchPage.vue'),
   },
+  { path: '/whatsappbotbuilder', name: 'whatsappbotbuilder-product', component: () => import('pages/WhatsAppBotBuilderProductPage.vue') },
   {
     path: '/cursos/pagamento',
     name: 'course-payment',

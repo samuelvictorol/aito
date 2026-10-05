@@ -91,6 +91,8 @@ onMounted(load)
     <q-dialog :model-value="!!draft" @update:model-value="value => { if (!value) draft = null }"><q-card v-if="draft" class="ip-dialog"><q-card-section><h3>{{ draft.key ? 'Configurar InfinitePay' : 'Nova configuração InfinitePay' }}</h3><p>Valores são exibidos em reais e enviados para a InfinitePay em centavos.</p>
       <div class="ip-fields"><q-input v-model="draft.key" outlined label="Identificador interno" :disable="!!configs.find(item => item.key === draft.key)" /><q-input v-model="draft.title" outlined label="Nome da configuração" /><q-input v-model="draft.handle" outlined prefix="$" label="InfiniteTag / login" /><q-input v-model="draft.product" outlined label="Nome do produto" /><q-input v-model="draft.originalPrice" outlined inputmode="decimal" label="Preço original (R$)" /><q-input v-model="draft.price" outlined inputmode="decimal" label="Preço de venda (R$)" /></div>
       <q-input v-model="draft.webhookUrl" outlined label="Webhook InfinitePay" class="q-mt-md" /><p class="ip-note">URL pré-preenchida. Se alterar, ela deve chegar a este servidor e entregar o JSON da InfinitePay para que a compra seja confirmada.</p>
+      <q-input v-model="draft.sourceUrl" outlined label="Link do código fonte" class="q-mt-md" />
+      <q-input v-model="draft.tutorialUrl" outlined label="Link do passo a passo / vídeo" class="q-mt-md" />
       <q-toggle v-model="draft.enabled" color="teal-5" label="Permitir novos links nesta configuração" />
       <q-input v-model="draft.paidMessage" type="textarea" outlined label="Mensagem de pagamento aprovado para comprador" class="q-mt-md" />
       <q-input v-model="draft.declinedMessage" type="textarea" outlined label="Mensagem de pagamento recusado" class="q-mt-md" />

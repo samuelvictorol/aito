@@ -18,11 +18,13 @@
             <q-tab name="overview" icon="mdi-finance" label="Dashboard" />
             <q-tab name="detail" icon="mdi-view-grid-outline" label="Detalhar" />
             <q-tab name="whatsapp" icon="mdi-whatsapp" label="WhatsApp" />
+            <q-tab name="botbuilder-licenses" icon="mdi-shield-key-outline" label="Licenças" />
             <q-tab name="lgpd" icon="mdi-shield-lock-outline" label="LGPD" />
           </q-tabs>
 
           <q-tab-panels v-model="tab" animated class="admin-app__panels">
             <q-tab-panel name="whatsapp" class="q-pa-none"><WhatsAppWorkspace /></q-tab-panel>
+            <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="overview"><FinanceDashboard admin title="" /></q-tab-panel>
 
             <q-tab-panel name="detail">
@@ -98,10 +100,11 @@ import AffiliateManager from 'components/AffiliateManager.vue'
 import CouponManager from 'components/CouponManager.vue'
 import AffiliatePurchaseManager from 'components/AffiliatePurchaseManager.vue'
 import AdminNotificationManager from 'components/AdminNotificationManager.vue'
+import BotBuilderLicensesManager from 'components/BotBuilderLicensesManager.vue'
 
 export default {
   name: 'AdminPanelPage',
-  components: { WhatsAppWorkspace, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, GeneratedCredentialsDialog },
+  components: { WhatsAppWorkspace, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, GeneratedCredentialsDialog },
   data () {
     return {
       tab: 'projects', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
@@ -116,7 +119,7 @@ export default {
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
     navigationTab: {
-      get () { return ['projects', 'overview', 'detail', 'lgpd', 'whatsapp'].includes(this.tab) ? this.tab : 'detail' },
+      get () { return ['projects', 'overview', 'detail', 'lgpd', 'whatsapp', 'botbuilder-licenses'].includes(this.tab) ? this.tab : 'detail' },
       set (value) { if (value !== this.tab && canLeaveBotEditor()) this.tab = value }
     }
   },
