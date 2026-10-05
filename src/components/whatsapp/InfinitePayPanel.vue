@@ -7,7 +7,7 @@ import { useQuasar } from 'quasar'
 const $q = useQuasar()
 const configs = ref([]), groups = ref([]), selected = ref(''), busy = ref(false)
 const draft = ref(null), groupDraft = ref({ name: '', contacts: '' }), groupId = ref('')
-const defaultWebhook = `${String(apiBaseURL).replace(/\/$/, '')}/webhooks/infinitepay`
+const defaultWebhook = `${String(apiBaseURL).replace(/\/$/, '')}/webhooks/whatsapp/infinitepay`
 const selectedConfig = computed(() => configs.value.find(item => item.key === selected.value))
 const toReal = cents => (Number(cents || 0) / 100).toFixed(2).replace('.', ',')
 function toCents(value) {
