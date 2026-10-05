@@ -28,6 +28,7 @@ const draftKey = `aito.bot.flow.${currentAdmin().id || 'admin'}.${props.flowId}`
 const nodes = ref([]), edges = ref([])
 const meta = ref({ name: '', description: '', active: false, channels: ['whatsapp'], settings: {} })
 const aiProfiles = ref([])
+const paymentConfigs = ref([]), contactGroups = ref([])
 const defaultAI = () => ({ profileKey: '', includeHistory: true, historyLimit: 20 })
 const assets = ref([]), selectedNodeId = ref(''), selectedEdgeId = ref(''), keywordDraft = ref('')
 const loading = ref(true), saving = ref(false), dirty = ref(false), toast = ref(''), analysis = ref({ errors: [], warnings: [], conflicts: [] })
@@ -41,7 +42,11 @@ const canUndo = computed(() => history.value.length > 0 || serializeEditor() !==
 const canRedo = computed(() => future.value.length > 0)
 
 function normalize(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim() }
-function defaultAction(type = 'http') { return { type, method: 'POST', url: '', headers: [{ name: 'Content-Type', value: 'application/json' }], body: '{\n  "mensagem": "{{mensagem}}",\n  "telefone": "{{telefone}}"\n}', timeoutMs: 10000, resultVariable: 'api_result', continueOnError: false, waitMs: 1000, variableName: '', variableValue: '', chatAction: '', chatActionValue: 60 } }
+function defaultAction(type = 'http') { return { type, integrationKey: '', recipients: [], contactGroupIds: [], message: '', method: 'POST', url: '', headers: [{ name: 'Content-Type', value: 'application/json' }], body: '{\n  "mensagem": "{{mensagem}}",\n  "telefone": "{{telefone}}"\n}', timeoutMs: 10000, resultVariable: 'api_result', continueOnError: false, waitMs: 1000, variableName: '', variableValue: '', chatAction: '', chatActionValue: 60 } }
+function uniqueLabel(base) { const used = new Set(nodes.value.map(node => normalize(node.data.label))); let label = base, index = 2; while (used.has(normalize(label))) label = `${base} ${index++}`; return label }
+const stageOptions = computed(() => nodes.value.filter(node => node.id !== selectedNodeId.value).map(node => ({ id: node.id, label: node.data.label })))
+const duplicateStages = computed(() => { const names = new Set(); return nodes.value.map(node => normalize(node.data.label)).filter(name => { if (names.has(name)) return true; names.add(name); return false }) })
+const variablesHelp = '{{nome_contato}}, {{num_contato}}, {{imgurl_contato}}, {{metadata}}, {{mensagem}} e variáveis definidas nos cards'
 function defaultOutput(type = 'text') { return { outputId: crypto.randomUUID(), type, text: type === 'text' ? 'Digite aqui a resposta do bot.' : '', assetId: null, caption: '', sendAsVoice: false, sendAsDocument: false, latitude: null, longitude: null, locationName: '', locationAddress: '', contactPhone: '', contactName: '' } }
 
 const localConflicts = computed(() => {
@@ -60,16 +65,16 @@ function mapFlow(flow) {
   meta.value = { name: flow.name, description: flow.description, active: flow.active, channels: ['whatsapp'], settings: { messageIntervalMs: 1000, ...flow.settings } }
   nodes.value = (flow.nodes || []).map((node) => ({
     id: node.nodeId, type: 'bot', position: node.position,
-    data: { ...node.data, ai: { ...defaultAI(), ...node.data?.ai }, messages: (node.data?.messages || []).map((item) => ({ ...defaultOutput(item.type), ...item, assetId: item.assetId || null })), action: { ...defaultAction(node.data?.action?.type), ...(node.data?.action || {}) }, kind: node.type },
+    data: { ...node.data, returnToNodeId: node.data?.returnToNodeId || '', ai: { ...defaultAI(), ...node.data?.ai }, messages: (node.data?.messages || []).map((item) => ({ ...defaultOutput(item.type), ...item, assetId: item.assetId || null })), action: { ...defaultAction(node.data?.action?.type), ...(node.data?.action || {}) }, kind: node.type },
   }))
-  edges.value = (flow.edges || []).map((edge) => ({ id: edge.edgeId, source: edge.source, target: edge.target, label: edge.label || edge.keywords?.join(' · ') || 'automático', markerEnd: MarkerType.ArrowClosed, data: { keywords: [...(edge.keywords || [])], regex: edge.regex || '', matchMode: edge.matchMode || 'any', priority: edge.priority || 0 }, style: { stroke: '#249e85', strokeWidth: 2 } }))
+  edges.value = (flow.edges || []).map((edge) => ({ id: edge.edgeId, source: edge.source, target: edge.target, label: edge.label || edge.keywords?.join(' · ') || 'automático', markerEnd: MarkerType.ArrowClosed, data: { keywords: [...(edge.keywords || [])], regex: edge.regex || '', matchMode: edge.matchMode || 'any', priority: edge.priority || 0, event: edge.event || '' }, style: { stroke: '#249e85', strokeWidth: 2 } }))
 }
 
 function flowPayload() {
   return {
     ...meta.value, version: version.value, channels: ['whatsapp'], settings: { ...meta.value.settings, messageIntervalMs: 1000 },
-    nodes: nodes.value.map((node) => ({ nodeId: node.id, type: node.data.kind, position: node.position, data: { ...(node.data.kind === 'ai' ? { ai: { ...node.data.ai } } : {}), label: node.data.label, messages: (node.data.messages || []).map((item) => ({ ...item })), action: { ...node.data.action, headers: (node.data.action?.headers || []).map((item) => ({ ...item })) }, addTags: node.data.addTags || [], removeTags: node.data.removeTags || [], resetContext: Boolean(node.data.resetContext) } })),
-    edges: edges.value.map((edge) => ({ edgeId: edge.id, source: edge.source, target: edge.target, label: edge.label || '', keywords: edge.data?.keywords || [], regex: edge.data?.regex || '', matchMode: edge.data?.matchMode || 'any', priority: Number(edge.data?.priority || 0) })),
+    nodes: nodes.value.map((node) => ({ nodeId: node.id, type: node.data.kind, position: node.position, data: { ...(node.data.kind === 'ai' ? { ai: { ...node.data.ai } } : {}), label: node.data.label, returnToNodeId: node.data.returnToNodeId || '', messages: (node.data.messages || []).map((item) => ({ ...item })), action: { ...node.data.action, headers: (node.data.action?.headers || []).map((item) => ({ ...item })) }, addTags: node.data.addTags || [], removeTags: node.data.removeTags || [], resetContext: Boolean(node.data.resetContext) } })),
+    edges: edges.value.map((edge) => ({ edgeId: edge.id, source: edge.source, target: edge.target, label: edge.label || '', keywords: edge.data?.keywords || [], regex: edge.data?.regex || '', matchMode: edge.data?.matchMode || 'any', priority: Number(edge.data?.priority || 0), event: edge.data?.event || '' })),
   }
 }
 const previewData = computed(() => JSON.stringify(flowPayload(), null, 2))
@@ -136,7 +141,7 @@ async function loadAssets() { try { assets.value = (await api.get('/assets', { p
 async function load() {
   loading.value = true; suspendTracking = true
   try {
-    const [{ data }] = await Promise.all([api.get(`/flows/${props.flowId}`), loadAssets(), api.get('/ai-profiles').then(response => { aiProfiles.value = response.data.items }).catch(() => { aiProfiles.value = []; showToast('Configurações de IA indisponíveis. Atualize a página após a atualização do servidor.') })])
+    const [{ data }] = await Promise.all([api.get(`/flows/${props.flowId}`), loadAssets(), api.get('/ai-profiles').then(response => { aiProfiles.value = response.data.items }).catch(() => { aiProfiles.value = []; showToast('Configurações de IA indisponíveis. Atualize a página após a atualização do servidor.') }), api.get('/infinitepay/configs').then(response => { paymentConfigs.value = response.data.items || [] }).catch(() => {}), api.get('/contact-groups').then(response => { contactGroups.value = response.data.items || [] }).catch(() => {})])
     mapFlow(data.flow); analysis.value = data.analysis
     savedSnapshot = serializeEditor(); trackedSnapshot = savedSnapshot; history.value = []; future.value = []; dirty.value = false
     try { const draft = sessionStorage.getItem(draftKey); if (draft && draft !== savedSnapshot) { const parsed = JSON.parse(draft); if (parsed.version === version.value) { mapFlow(parsed); dirty.value = true; trackedSnapshot = serializeEditor(); showToast('Rascunho recuperado. Revise e salve para aplicar.'); } else conflictDraft.value = parsed; } } catch { /* Invalid local drafts are ignored. */ }
@@ -162,9 +167,11 @@ function showToast(value) { toast.value = value; window.setTimeout(() => { if (t
 function addNode(kind = 'message', preset) {
   const id = crypto.randomUUID(), count = nodes.value.length
   const labels = { message: 'Mensagens', choice: 'Decisão', action: 'Ação', ai: 'Funções com I.A.', end: 'Final' }
-  const messages = ['action', 'ai'].includes(kind) ? [] : [defaultOutput(preset === 'media' ? 'media' : 'text')]
-  const action = defaultAction(preset === 'wait' ? 'wait' : 'http')
-  nodes.value.push({ id, type: 'bot', position: { x: 180 + (count % 3) * 290, y: 100 + Math.floor(count / 3) * 200 }, data: { ai: defaultAI(), kind: preset === 'media' ? 'message' : kind, label: preset === 'media' ? 'Arquivo' : preset === 'wait' ? 'Espera' : labels[kind] || 'Novo card', messages, action, addTags: [], removeTags: [], resetContext: false } })
+  const messages = preset === 'payment' ? [{ ...defaultOutput(), text: '💚 *Pagamento seguro*\nDe {{payment_original_value}} por *{{payment_value}}*\nPague aqui: {{payment_url}}\n\nO link fica disponível mesmo se você sair desta etapa.' }] : ['action', 'ai'].includes(kind) ? [] : [defaultOutput(preset === 'media' ? 'media' : 'text')]
+  const action = defaultAction(preset === 'wait' ? 'wait' : preset === 'payment' ? 'infinitepay' : preset === 'external' ? 'whatsapp' : 'http')
+  if (preset === 'payment') action.integrationKey = paymentConfigs.value[0]?.key || ''
+  const label = preset === 'media' ? 'Arquivo' : preset === 'wait' ? 'Espera' : preset === 'payment' ? 'Pagamento InfinitePay' : preset === 'external' ? 'Chat WhatsApp' : labels[kind] || 'Novo card'
+  nodes.value.push({ id, type: 'bot', position: { x: 180 + (count % 3) * 290, y: 100 + Math.floor(count / 3) * 200 }, data: { ai: defaultAI(), kind: preset === 'media' ? 'message' : kind, label: uniqueLabel(label), returnToNodeId: '', messages, action, addTags: [], removeTags: [], resetContext: false } })
   selectedNodeId.value = id; selectedEdgeId.value = ''; previewOpen.value = false
 }
 function connect(params) {
@@ -233,6 +240,7 @@ function pasteNode() {
   const node = JSON.parse(JSON.stringify(copiedNode.value))
   node.id = crypto.randomUUID(); node.selected = false
   node.position = { x: node.position.x + 45, y: node.position.y + 45 }
+  node.data.label = uniqueLabel(node.data.label)
   node.data.messages = node.data.messages.map(output => ({ ...output, outputId: crypto.randomUUID() }))
   nodes.value.push(node); selectedNodeId.value = node.id; selectedEdgeId.value = ''
   copiedNode.value = node
@@ -282,9 +290,9 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
       <span class="status-chip">{{ meta.active ? 'Fluxo ativo' : 'Rascunho' }}</span>
       <button v-if="dirty" class="btn ghost" @click="discard">Descartar</button>
       <button class="btn ghost" @click="simulatorOpen = true">Simular bot</button>
-      <button class="btn" :disabled="loading || saving || localConflicts.length > 0" @click="save">{{ saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
+      <button class="btn" :disabled="loading || saving || localConflicts.length > 0 || duplicateStages.length > 0" @click="save">{{ saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
     </div>
-    <div v-if="analysis.errors?.length || localConflicts.length" class="validation danger"><b>Corrija antes de salvar:</b> {{ analysis.errors?.[0] || `Há ${localConflicts.length} palavra(s)-chave repetida(s).` }}</div>
+    <div v-if="analysis.errors?.length || localConflicts.length || duplicateStages.length" class="validation danger"><b>Corrija antes de salvar:</b> {{ duplicateStages.length ? `A etapa “${duplicateStages[0]}” aparece mais de uma vez.` : analysis.errors?.[0] || `Há ${localConflicts.length} palavra(s)-chave repetida(s).` }}</div>
     <div v-if="conflictDraft" class="validation"><b>Outro administrador atualizou este fluxo.</b> A versão atual está aberta e seu rascunho foi preservado. <button class="btn ghost" @click="restoreConflictingDraft">Revisar meu rascunho</button></div>
     <div v-else-if="analysis.warnings?.length" class="validation"><b>Atenção:</b> {{ analysis.warnings[0] }}</div>
     <div v-if="loading" class="card empty">Carregando editor…</div>
@@ -297,6 +305,8 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
         <button class="tool-button extra" data-help="Cria um card já preparado para escolher imagem, áudio, vídeo ou documento." @click="addNode('message','media')">▧ Arquivo</button>
         <button class="tool-button extra" data-help="Cria uma pausa silenciosa antes do próximo card." @click="addNode('action','wait')">◷ Espera</button>
         <button class="tool-button" @click="addNode('ai')">✦ Funções com I.A.</button>
+        <button class="tool-button" data-help="Gera um link de compra e aguarda a confirmação verificada da InfinitePay." @click="addNode('action','payment')">💳 InfinitePay</button>
+        <button class="tool-button" data-help="Envia uma mensagem para contatos ou grupos configurados." @click="addNode('action','external')">↗ Chat WhatsApp</button>
         <span class="toolbar-spacer"></span>
         <button class="tool-button" title="Exportar arquivo Aito JSON" @click="exportJson">Exportar JSON</button>
         <button class="icon-button" title="Tela cheia" @click="toggleFullscreen(false)"><q-icon name="mdi-fullscreen" /></button>
@@ -328,7 +338,7 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
         <template v-else-if="selectedNode">
           <div class="inspector-title"><div><span class="eyebrow">Configurar card</span><h2>{{ selectedNode.data.label }}</h2></div><button v-if="selectedNode.data.kind !== 'start'" class="icon-button delete-button" title="Remover este card" @click="removeSelected">×</button></div>
           <div class="field"><label>Tipo</label><select v-model="selectedNode.data.kind" :disabled="selectedNode.data.kind === 'start'"><option value="start">Início</option><option value="message">Mensagem</option><option value="choice">Decisão</option><option value="action">Ação</option><option value="ai">Funções com I.A.</option><option value="end">Final</option></select></div>
-          <div class="field"><label>Título interno</label><input v-model="selectedNode.data.label"></div>
+          <div class="field"><label>Etapa (título único)</label><input v-model="selectedNode.data.label"><small>Cada card precisa de um nome diferente neste diagrama.</small></div>
 
           <section v-if="selectedNode.data.kind === 'ai'">
             <div class="field"><label>Configuração de IA</label><select v-model="selectedNode.data.ai.profileKey"><option value="">Selecione…</option><option v-for="profile in aiProfiles" :key="profile.key" :value="profile.key">{{ profile.title }} · {{ profile.model }}</option></select><small>Cadastre os assistentes na aba Integrações.</small></div>
@@ -337,7 +347,9 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
             <p class="tip">Ao entrar, envia os balões abaixo e aguarda a próxima pergunta. A IA responde até o cliente usar menu, uma condição de saída ou atingir o tempo de inatividade.</p>
           </section>
           <div v-if="selectedNode.data.kind === 'action'" class="action-editor">
-            <div class="field"><label>O que executar?</label><select v-model="selectedNode.data.action.type"><option value="http">Chamar endpoint HTTP</option><option value="wait">Aguardar</option><option value="set_variable">Definir variável</option><option value="chat">Ação na conversa</option></select></div>
+            <div class="field"><label>O que executar?</label><select v-model="selectedNode.data.action.type"><option value="http">Chamar endpoint HTTP</option><option value="wait">Aguardar</option><option value="set_variable">Definir variável</option><option value="chat">Ação na conversa</option><option value="infinitepay">Pagamento InfinitePay</option><option value="whatsapp">Chat WhatsApp</option></select></div>
+            <template v-if="selectedNode.data.action.type === 'infinitepay'"><div class="field"><label>Configuração InfinitePay</label><select v-model="selectedNode.data.action.integrationKey"><option value="">Selecione…</option><option v-for="config in paymentConfigs" :key="config.key" :value="config.key">{{ config.title }} · {{ (config.priceCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }}</option></select><small>Preços e respostas ficam em Integrações. A seta “aprovado” só segue após confirmação pela InfinitePay.</small></div><p class="tip">Use <code v-pre>{{payment_url}}</code>, <code v-pre>{{payment_original_value}}</code>, <code v-pre>{{payment_value}}</code> e <code v-pre>{{payment_order_nsu}}</code> nos balões abaixo. O pedido continuará sendo monitorado se o cliente sair deste ramo.</p></template>
+            <template v-if="selectedNode.data.action.type === 'whatsapp'"><div class="field"><label>Telefones e IDs de grupos do WhatsApp (um por linha)</label><textarea :value="selectedNode.data.action.recipients?.join('\n')" @input="selectedNode.data.action.recipients = $event.target.value.split(/[\n,;]+/).map(v => v.trim()).filter(Boolean)" placeholder="5561999999999"></textarea><small>Também aceita <code v-pre>{{num_contato}}</code> ou variável definida em outro card para iniciar uma nova conversa.</small></div><div class="field"><label>Grupos de contatos cadastrados</label><select v-model="selectedNode.data.action.contactGroupIds" multiple size="4"><option v-for="group in contactGroups" :key="group._id" :value="group._id">{{ group.name }} · {{ group.contacts.length }} contatos</option></select></div><div class="field"><label>Mensagem</label><textarea v-model="selectedNode.data.action.message" @keydown.stop></textarea><small>{{ variablesHelp }}</small></div></template>
             <template v-if="selectedNode.data.action.type === 'http'">
               <div class="method-url"><select v-model="selectedNode.data.action.method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select><input v-model="selectedNode.data.action.url" placeholder="https://api.exemplo.com/webhook"></div>
               <div class="subhead"><b>Cabeçalhos</b><button @click="addHeader">＋ adicionar</button></div>
@@ -350,10 +362,10 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
             </template>
             <template v-else-if="selectedNode.data.action.type === 'wait'"><div class="field"><label>Tempo de espera (ms)</label><input v-model.number="selectedNode.data.action.waitMs" type="number" min="0" max="60000"><small>A pausa acontece sem mostrar “digitando”.</small></div></template>
             <template v-else-if="selectedNode.data.action.type === 'set_variable'"><div class="field"><label>Nome da variável</label><input v-model="selectedNode.data.action.variableName" placeholder="protocolo"></div><div class="field"><label>Valor</label><textarea v-model="selectedNode.data.action.variableValue" @keydown.stop></textarea></div></template>
-            <template v-else><div class="field"><label>Operação</label><select v-model="selectedNode.data.action.chatAction"><option value="">Selecione…</option><option value="takeover">Encaminhar para atendimento humano</option><option value="bot">Retomar bot</option><option value="close">Finalizar atendimento</option><option value="seen">Marcar como lida</option><option value="unread">Marcar como não lida</option><option value="archive">Arquivar</option><option value="unarchive">Desarquivar</option><option value="pin">Fixar</option><option value="unpin">Desafixar</option><option value="mute">Silenciar</option><option value="unmute">Remover silêncio</option></select></div><div v-if="selectedNode.data.action.chatAction==='mute'" class="field"><label>Minutos</label><input v-model.number="selectedNode.data.action.chatActionValue" type="number" min="1"></div></template>
+            <template v-else-if="selectedNode.data.action.type === 'chat'"><div class="field"><label>Operação</label><select v-model="selectedNode.data.action.chatAction"><option value="">Selecione…</option><option value="takeover">Encaminhar para atendimento humano</option><option value="bot">Retomar bot</option><option value="close">Finalizar atendimento</option><option value="seen">Marcar como lida</option><option value="unread">Marcar como não lida</option><option value="archive">Arquivar</option><option value="unarchive">Desarquivar</option><option value="pin">Fixar</option><option value="unpin">Desafixar</option><option value="mute">Silenciar</option><option value="unmute">Remover silêncio</option></select></div><div v-if="selectedNode.data.action.chatAction==='mute'" class="field"><label>Minutos</label><input v-model.number="selectedNode.data.action.chatActionValue" type="number" min="1"></div></template>
           </div>
 
-          <template v-if="selectedNode.data.kind !== 'action'">
+          <template v-if="selectedNode.data.kind !== 'action' || selectedNode.data.action.type === 'infinitepay'">
             <div class="messages-head"><div><b>Mensagens enviadas</b><small>1 segundo entre cada balão</small></div><div class="add-output"><button title="Adicionar texto" @click="addOutput('text')">＋ Texto</button><button title="Adicionar arquivo" @click="addOutput('media')">▧</button><button title="Adicionar localização" @click="addOutput('location')">⌖</button><button title="Adicionar contato" @click="addOutput('contact')">◉</button></div></div>
             <article v-for="(output,index) in selectedNode.data.messages" :key="output.outputId" class="output-card">
               <header><span>Balão {{ index + 1 }}</span><select v-model="output.type"><option value="text">Texto</option><option value="media">Arquivo</option><option value="location">Localização</option><option value="contact">Contato</option></select><button title="Mover balão para cima" aria-label="Mover balão para cima" :disabled="index === 0" @click="moveOutput(index, -1)">↑</button><button title="Mover balão para baixo" aria-label="Mover balão para baixo" :disabled="index === selectedNode.data.messages.length - 1" @click="moveOutput(index, 1)">↓</button><button title="Remover este balão" @click="removeOutput(index)">×</button></header>
@@ -373,9 +385,11 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
           <div class="field"><label>Adicionar etiquetas</label><input v-model="addTagsText" placeholder="lead, interesse"></div>
           <div class="field"><label>Remover etiquetas</label><input v-model="removeTagsText"></div>
           <label class="toggle compact"><input v-model="selectedNode.data.resetContext" type="checkbox"> Reiniciar contexto após este card</label>
+          <div v-if="selectedNode.data.kind !== 'start' && selectedNode.data.kind !== 'ai'" class="field"><label>Ao concluir, retornar à etapa</label><select v-model="selectedNode.data.returnToNodeId"><option value="">Continuar pelas setas ou aguardar</option><option v-for="stage in stageOptions" :key="stage.id" :value="stage.id">{{ stage.label }}</option></select><small>O card de destino e suas saídas automáticas serão executados. Use para voltar ao menu ou a uma etapa anterior.</small></div>
         </template>
         <template v-else-if="selectedEdge">
           <span class="eyebrow">Condição da seta</span><h2>Quando seguir este caminho?</h2>
+          <div v-if="nodes.find(node => node.id === selectedEdge.source)?.data?.action?.type === 'infinitepay'" class="field"><label>Resultado do pagamento</label><select v-model="selectedEdge.data.event"><option value="">Saída comum</option><option value="paid">Pagamento aprovado</option><option value="declined">Pagamento recusado</option></select><small>A InfinitePay documenta webhook de aprovação. Recusas dependem de um evento verificável do provedor.</small></div>
           <div :class="['field',{conflict:edgeHasConflict}]"><label>Palavras e opções</label><textarea v-model="keywordDraft" placeholder="1&#10;orçamento&#10;quero comprar" @input="syncKeywords" @keydown.stop></textarea><small v-if="edgeHasConflict">Uma palavra já existe em outra seta deste card.</small><small v-else>Uma por linha. Enter agora funciona normalmente. Deixe vazio para uma passagem automática.</small></div>
           <div class="field"><label>Nome visual da seta</label><input v-model="selectedEdge.label"></div>
           <div class="field"><label>Regex opcional</label><input v-model="selectedEdge.data.regex" placeholder="^(quero|preciso).*bot"><small>Expressões potencialmente perigosas são recusadas.</small></div>
@@ -397,7 +411,7 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
       </aside>
     </div>
     <button class="configure-floating btn" @click="inspectorOpen = !inspectorOpen"><q-icon name="mdi-tune" />{{ selectedNode ? 'Configurar card' : selectedEdge ? 'Configurar conexão' : 'Configurar fluxo' }}</button>
-    <BotSimulator v-if="simulatorOpen" :flow-id="flowId" :flow="flowPayload()" :assets="assets" @close="simulatorOpen = false" />
+    <BotSimulator v-if="simulatorOpen" :flow-id="flowId" :flow="flowPayload()" :assets="assets" :payment-configs="paymentConfigs" @close="simulatorOpen = false" />
     <div v-if="toast" class="toast">{{ toast }}</div>
   </section>
 </template>

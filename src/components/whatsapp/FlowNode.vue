@@ -11,6 +11,8 @@ const preview = computed(() => {
     if (action.type === 'http') return `${action.method || 'POST'} ${action.url || 'Configure o endpoint'}`
     if (action.type === 'wait') return `Aguardar ${action.waitMs || 0} ms`
     if (action.type === 'set_variable') return `Definir ${action.variableName || 'variável'}`
+    if (action.type === 'infinitepay') return `Pagamento InfinitePay · ${action.integrationKey || 'Escolha a configuração'}`
+    if (action.type === 'whatsapp') return `Enviar para ${(action.recipients?.length || 0) + (action.contactGroupIds?.length || 0)} destinatário(s)`
     return action.chatAction ? `Conversa: ${action.chatAction}` : 'Configure a ação'
   }
   const messages = props.data.messages || []

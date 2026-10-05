@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { botApi, waApi, messageOf } from 'src/services/whatsapp'
 import FlowMediaPreview from './FlowMediaPreview.vue'
 import { formatWhatsApp } from 'src/services/whatsapp-format'
-const props = defineProps({ flowId: String, flow: Object, assets: Array })
+const props = defineProps({ flowId: String, flow: Object, assets: Array, paymentConfigs: Array })
 const emit = defineEmits(['close'])
 const messages = ref([]), input = ref(''), busy = ref(false), state = ref(null), error = ref(''), events = ref([]), list = ref(null), mocks = ref('{}')
 const aiLive = ref(false), aiResponse = ref('Resposta de teste da IA.')
@@ -32,7 +32,7 @@ async function run() {
   const current = generation, text = pending.join('\n'); pending = []; busy.value = true; error.value = ''
   try {
     let httpResponses; try { httpResponses = JSON.parse(mocks.value) } catch { throw new Error('O JSON das respostas de teste é inválido.') }
-    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, text, httpResponses, aiLive: aiLive.value, aiResponse: aiResponse.value }, { timeout: 240000 })
+    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, text, httpResponses, aiLive: aiLive.value, aiResponse: aiResponse.value, paymentConfigs: props.paymentConfigs }, { timeout: 240000 })
     if (current !== generation) return
     state.value = data.state; events.value.push(...(data.events || []))
     let elapsed = 0
@@ -44,6 +44,15 @@ async function run() {
     if (!data.outputs?.length && !data.events?.length) events.value.push('O fluxo aguardou a próxima mensagem sem enviar uma resposta.')
   } catch (cause) { if (current === generation) error.value = messageOf(cause) }
   finally { if (current === generation) { busy.value = false; if (pending.length) { clearTimeout(collectTimer); collectTimer = setTimeout(run, Math.max(0, lastInputAt + collectWindowMs.value - Date.now())) } } }
+}
+async function paymentEvent(event) {
+  busy.value = true; error.value = ''
+  try {
+    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, paymentEvent: event, paymentConfigs: props.paymentConfigs })
+    state.value = data.state; events.value.push(...(data.events || []))
+    for (const output of data.outputs || []) { messages.value.push({ ...output, from: 'bot' }); scroll() }
+  } catch (cause) { error.value = messageOf(cause) }
+  finally { busy.value = false }
 }
 function assetName(id) { return props.assets?.find(asset => asset._id === id)?.name || 'Arquivo da biblioteca' }
 function exampleMocks() { mocks.value = JSON.stringify(Object.fromEntries(httpNodes.value.map(node => [node.nodeId, { status: 200, body: { ok: true } }])), null, 2) }
@@ -69,6 +78,7 @@ onBeforeUnmount(reset)
           <form class="phone-compose" @submit.prevent="send"><input v-model="input" aria-label="Mensagem do cliente" placeholder="Mensagem" maxlength="4096"><button :disabled="!input.trim() || !settingsReady" aria-label="Enviar mensagem de teste">➤</button></form>
         </div>
         <aside class="sim-info"><button @click="reset">Reiniciar conversa</button>
+          <section v-if="state?.paymentNodeId" class="q-my-md"><p>Teste a resposta da InfinitePay sem criar uma compra real.</p><div class="payment-test-actions"><button :disabled="busy" @click="paymentEvent('paid')">Simular aprovação</button><button :disabled="busy" @click="paymentEvent('declined')">Simular recusa</button></div></section>
           <section v-if="hasAI" class="q-my-md"><label><input v-model="aiLive" type="checkbox" :disabled="busy" @change="reset"> Usar IA real (consome API)</label><label v-if="!aiLive"><small>Resposta de teste</small><textarea v-model="aiResponse" rows="3"></textarea></label></section>
           <details v-if="httpNodes.length"><summary>Respostas das integrações</summary><p>Informe status e body para cada card. <button @click="exampleMocks">Preencher exemplo</button></p><textarea v-model="mocks" aria-label="JSON das respostas de teste" rows="10"></textarea><ul><li v-for="node in httpNodes" :key="node.nodeId">{{ node.data.label }}: <code>{{ node.nodeId }}</code></li></ul></details>
           <p v-if="error" role="alert" class="sim-error">{{ error }}</p><button v-if="!settingsReady" @click="loadSettings().catch(cause => error = messageOf(cause))">Tentar carregar configuração</button><ul aria-live="polite"><li v-for="(event,index) in events" :key="index">{{ event }}</li></ul>

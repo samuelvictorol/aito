@@ -230,3 +230,7 @@ onBeforeUnmount(() => { persistDraft(); ++listEpoch; ++messageEpoch; clearTimeou
 <style scoped>
 .wa-chats{height:clamp(500px,calc(100dvh - 300px),950px)}@media(max-width:700px){.wa-chats{height:calc(100dvh - 294px);min-height:420px}}
 </style>
+
+<style scoped>
+.wa-chat-row{min-width:0;max-width:100%;overflow:hidden}.wa-chat-info{width:0;min-width:0}.wa-chat-info>div{min-width:0}.wa-chat-info p{display:block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wa-chat-info>small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
