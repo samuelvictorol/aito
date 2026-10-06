@@ -32,6 +32,7 @@ const paymentConfigs = ref([]), contactGroups = ref([])
 const defaultAI = () => ({ profileKey: '', includeHistory: true, historyLimit: 20 })
 const assets = ref([]), selectedNodeId = ref(''), selectedEdgeId = ref(''), keywordDraft = ref('')
 const loading = ref(true), saving = ref(false), dirty = ref(false), toast = ref(''), analysis = ref({ errors: [], warnings: [], conflicts: [] })
+const loadError = ref('')
 const previewOpen = ref(false), testingAction = ref(false), actionResult = ref(null), uploading = ref(false)
 const history = ref([]), future = ref([])
 let savedSnapshot = '', trackedSnapshot = '', historyTimer, suspendTracking = true
@@ -137,19 +138,26 @@ watch([meta, nodes, edges], () => {
 
 watch(selectedEdgeId, () => { keywordDraft.value = selectedEdge.value?.data?.keywords?.join('\n') || '' })
 
-async function loadAssets() { try { assets.value = (await api.get('/assets', { params: { limit: 100 } })).data.items } catch { assets.value = [] } }
+async function loadAssets() { try { assets.value = (await api.get('/assets', { params: { limit: 100 }, timeout: 10000 })).data.items || [] } catch { assets.value = [] } }
 async function load() {
   loading.value = true; suspendTracking = true
+  loadError.value = ''
   try {
-    const [{ data }] = await Promise.all([api.get(`/flows/${props.flowId}`), loadAssets(), api.get('/ai-profiles').then(response => { aiProfiles.value = response.data.items }).catch(() => { aiProfiles.value = []; showToast('Configurações de IA indisponíveis. Atualize a página após a atualização do servidor.') }), api.get('/infinitepay/configs').then(response => { paymentConfigs.value = response.data.items || [] }).catch(() => {}), api.get('/contact-groups').then(response => { contactGroups.value = response.data.items || [] }).catch(() => {})])
-    mapFlow(data.flow); analysis.value = data.analysis
+    const { data } = await api.get(`/flows/${props.flowId}`, { timeout: 15000 })
+    if (!data?.flow || !Array.isArray(data.flow.nodes) || !Array.isArray(data.flow.edges)) throw new Error('O servidor retornou um fluxograma incompleto. Atualize a página e tente novamente.')
+    mapFlow(data.flow); analysis.value = data.analysis || { errors: [], warnings: [], conflicts: [] }
+    // A falha de biblioteca/integrações não deve impedir a abertura do diagrama.
+    void loadAssets()
+    void api.get('/ai-profiles', { timeout: 10000 }).then(response => { aiProfiles.value = response.data.items || [] }).catch(() => { aiProfiles.value = []; showToast('Configurações de IA indisponíveis. Atualize a página após a atualização do servidor.') })
+    void api.get('/infinitepay/configs', { timeout: 10000 }).then(response => { paymentConfigs.value = response.data.items || [] }).catch(() => { paymentConfigs.value = [] })
+    void api.get('/contact-groups', { timeout: 10000 }).then(response => { contactGroups.value = response.data.items || [] }).catch(() => { contactGroups.value = [] })
     savedSnapshot = serializeEditor(); trackedSnapshot = savedSnapshot; history.value = []; future.value = []; dirty.value = false
     try { const draft = sessionStorage.getItem(draftKey); if (draft && draft !== savedSnapshot) { const parsed = JSON.parse(draft); if (parsed.version === version.value) { mapFlow(parsed); dirty.value = true; trackedSnapshot = serializeEditor(); showToast('Rascunho recuperado. Revise e salve para aplicar.'); } else conflictDraft.value = parsed; } } catch { /* Invalid local drafts are ignored. */ }
-  } catch (cause) { showToast(messageOf(cause)) }
+  } catch (cause) { loadError.value = messageOf(cause); showToast(loadError.value) }
   finally { loading.value = false; await nextTick(); suspendTracking = false }
 }
 async function save() {
-  if (saving.value || loading.value) return
+  if (saving.value || loading.value || loadError.value) return
   saving.value = true; flushHistory()
   try {
     const { data } = await api.put(`/flows/${props.flowId}`, flowPayload())
@@ -181,6 +189,7 @@ function connect(params) {
 }
 function selectNode({ node }) { selectedNodeId.value = node.id; selectedEdgeId.value = ''; previewOpen.value = false }
 function selectEdge({ edge }) { selectedEdgeId.value = edge.id; selectedNodeId.value = ''; previewOpen.value = false }
+function onFlowInit(instance) { flowInstance = instance; window.requestAnimationFrame(() => instance.fitView({ padding: 0.18 })) }
 function clearSelection() { selectedNodeId.value = ''; selectedEdgeId.value = '' }
 function removeSelected() {
   if (selectedNode.value) {
@@ -278,7 +287,7 @@ function keydown(event) {
 }
 
 onBeforeRouteLeave(() => canLeave())
-onMounted(() => { unregisterGuard = registerEditorGuard(canLeave); document.addEventListener('fullscreenchange', fullscreenChanged); headObserver = new ResizeObserver(entries => editorRoot.value?.style.setProperty('--builder-head-height', `${entries[0].target.offsetHeight + 12}px`)); headObserver.observe(editorRoot.value.querySelector('.builder-head')); load(); window.addEventListener('beforeunload', beforeUnload); window.addEventListener('keydown', keydown) })
+onMounted(() => { unregisterGuard = registerEditorGuard(canLeave); document.addEventListener('fullscreenchange', fullscreenChanged); if (window.ResizeObserver && editorRoot.value?.querySelector('.builder-head')) { headObserver = new ResizeObserver(entries => editorRoot.value?.style.setProperty('--builder-head-height', `${entries[0].target.offsetHeight + 12}px`)); headObserver.observe(editorRoot.value.querySelector('.builder-head')) } load(); window.addEventListener('beforeunload', beforeUnload); window.addEventListener('keydown', keydown) })
 onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); document.removeEventListener('fullscreenchange', fullscreenChanged); if (dirty.value) { try { sessionStorage.setItem(draftKey, serializeEditor()) } catch { /* Browser storage may be disabled. */ } }; clearTimeout(historyTimer); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('keydown', keydown) })
 </script>
 
@@ -290,12 +299,13 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
       <span class="status-chip">{{ meta.active ? 'Fluxo ativo' : 'Rascunho' }}</span>
       <button v-if="dirty" class="btn ghost" @click="discard">Descartar</button>
       <button class="btn ghost" @click="simulatorOpen = true">Simular bot</button>
-      <button class="btn" :disabled="loading || saving || localConflicts.length > 0 || duplicateStages.length > 0" @click="save">{{ saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
+      <button class="btn" :disabled="loading || !!loadError || saving || localConflicts.length > 0 || duplicateStages.length > 0" @click="save">{{ saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
     </div>
     <div v-if="analysis.errors?.length || localConflicts.length || duplicateStages.length" class="validation danger"><b>Corrija antes de salvar:</b> {{ duplicateStages.length ? `A etapa “${duplicateStages[0]}” aparece mais de uma vez.` : analysis.errors?.[0] || `Há ${localConflicts.length} palavra(s)-chave repetida(s).` }}</div>
     <div v-if="conflictDraft" class="validation"><b>Outro administrador atualizou este fluxo.</b> A versão atual está aberta e seu rascunho foi preservado. <button class="btn ghost" @click="restoreConflictingDraft">Revisar meu rascunho</button></div>
     <div v-else-if="analysis.warnings?.length" class="validation"><b>Atenção:</b> {{ analysis.warnings[0] }}</div>
     <div v-if="loading" class="card empty">Carregando editor…</div>
+    <div v-else-if="loadError" class="card empty"><div><p>{{ loadError }}</p><button class="btn" @click="load">Tentar novamente</button></div></div>
     <div v-else class="builder-shell card">
       <div class="canvas-toolbar">
         <button class="tool-button" data-help="Envia um ou vários balões, com 1 segundo entre eles." @click="addNode('message')">＋ Mensagem</button>
@@ -320,7 +330,7 @@ onBeforeUnmount(() => { unregisterGuard?.(); headObserver?.disconnect(); documen
         <button v-if="selectedNode || selectedEdge" class="icon-button delete-button" title="Remover seleção (Delete)" @click="removeSelected">×</button>
       </div>
       <div class="flow-canvas">
-        <VueFlow @init="flowInstance = $event" v-model:nodes="nodes" v-model:edges="edges" fit-view-on-init :min-zoom="0.25" :max-zoom="1.8" @connect="connect" @node-click="selectNode" @edge-click="selectEdge" @pane-click="clearSelection">
+        <VueFlow @init="onFlowInit" v-model:nodes="nodes" v-model:edges="edges" :min-zoom="0.03" :max-zoom="1.8" @connect="connect" @node-click="selectNode" @edge-click="selectEdge" @pane-click="clearSelection">
           <template #node-bot="props"><FlowNode v-bind="props" /></template>
           <Background pattern-color="#cbdad6" :gap="22" />
           <MiniMap pannable zoomable node-color="#75d9c3" />
