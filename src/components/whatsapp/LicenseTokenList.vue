@@ -1,8 +1,10 @@
 <script setup>
 import { ref } from 'vue'
 import { useQuasar } from 'quasar'
+import { waApi, messageOf } from 'src/services/whatsapp'
 
-defineProps({ licenses: { type: Array, default: () => [] } })
+const props = defineProps({ licenses: { type: Array, default: () => [] }, phone: { type: String, default: '' } })
+const emit = defineEmits(['changed'])
 const $q = useQuasar()
 const visible = ref({})
 async function copy(token) {
@@ -13,6 +15,8 @@ async function copy(token) {
     $q.notify({ type: 'negative', message: 'Não foi possível copiar. Exiba o token para copiá-lo manualmente.' })
   }
 }
+async function rotate(license) { try { const { data } = await waApi.post(`/contacts/${encodeURIComponent(props.phone)}/licenses/${license._id}/rotate`); Object.assign(license, data.data); emit('changed'); $q.notify({ type: 'positive', message: 'Token renovado.' }) } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
+async function toggle(license) { try { const { data } = await waApi.patch(`/contacts/${encodeURIComponent(props.phone)}/licenses/${license._id}`, { active: !license.active }); Object.assign(license, data.data); emit('changed') } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
 </script>
 
 <template>
@@ -20,7 +24,7 @@ async function copy(token) {
     <div v-for="license in licenses" :key="license._id" class="license-list__item">
       <div class="license-list__heading"><strong>WhatsApp BotBuilder</strong><span :class="license.active ? 'is-active' : 'is-inactive'">{{ license.active ? 'Ativo' : 'Suspenso' }}</span></div>
       <div class="license-list__token"><code>{{ visible[license._id] ? license.token : '••••••••••••••••••••••••' }}</code><q-btn flat round dense size="sm" :icon="visible[license._id] ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :aria-label="visible[license._id] ? 'Ocultar token' : 'Mostrar token'" @click="visible[license._id] = !visible[license._id]" /><q-btn flat round dense size="sm" icon="mdi-content-copy" aria-label="Copiar token" @click="copy(license.token)" /></div>
-      <small>Instalação: {{ license.installationId || 'Ainda não ativada' }}</small>
+      <small>Instalação: {{ license.installationId || 'Ainda não ativada' }}</small><div class="license-list__actions"><q-btn flat dense no-caps size="sm" icon="mdi-refresh" label="Novo token" @click="rotate(license)" /><q-btn flat dense no-caps size="sm" :color="license.active ? 'red-3' : 'teal-3'" :icon="license.active ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline'" :label="license.active ? 'Remover' : 'Ativar'" @click="toggle(license)" /></div>
     </div>
   </div>
 </template>

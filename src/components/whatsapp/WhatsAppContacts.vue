@@ -9,6 +9,7 @@ const emit = defineEmits(['open-chat'])
 const $q = useQuasar()
 const contacts = ref([]), total = ref(0), page = ref(1), pages = ref(1), search = ref(''), loading = ref(false), opening = ref('')
 const groups = ref([]), groupDialog = ref(false), groupDraft = ref({ name: '', contacts: '' }), groupId = ref(''), savingGroup = ref(false)
+const tokenCreating = ref('')
 let timer, epoch = 0
 
 async function load() {
@@ -55,6 +56,7 @@ function removeGroup(group) {
     catch (error) { $q.notify({ type: 'negative', message: messageOf(error) }) }
   })
 }
+async function createToken(contact) { tokenCreating.value = contact._id; try { await waApi.post(`/contacts/${encodeURIComponent(contact.phone)}/licenses`); await load(); $q.notify({ type: 'positive', message: 'Token criado para este contato.' }) } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } finally { tokenCreating.value = '' } }
 watch(search, () => { clearTimeout(timer); page.value = 1; timer = setTimeout(load, 300) })
 watch(() => props.revision, load)
 onMounted(() => { load(); loadGroups() })
@@ -70,7 +72,7 @@ onMounted(() => { load(); loadGroups() })
         <q-avatar size="54px" color="teal-9" text-color="teal-2"><img v-if="contact.avatarUrl" :src="contact.avatarUrl" :alt="contact.name || contact.phone" loading="lazy" /><span v-else>{{ (contact.name || contact.phone || '?').slice(0, 1).toUpperCase() }}</span></q-avatar>
         <div class="wa-contact-grid__details"><strong>{{ contact.name || contact.phone }}</strong><span>{{ contact.phone }}</span><small>{{ contact.lastSeenAt ? `Último contato: ${formatDate(contact.lastSeenAt)}` : 'Contato salvo' }}</small></div>
         <div class="wa-contact-grid__actions"><q-btn outline no-caps color="teal-3" icon="mdi-message-text-outline" label="Abrir conversa" :loading="opening === contact._id" @click="open(contact)" /><q-btn flat no-caps color="teal-3" icon="mdi-account-multiple-plus-outline" label="Criar grupo" @click="editGroup(null, contact)" /></div>
-        <LicenseTokenList v-if="contact.licenses?.length" :licenses="contact.licenses" class="wa-contact-grid__licenses" />
+        <div class="wa-contact-grid__license-head"><strong>WhatsApp BotBuilder</strong><q-btn v-if="!contact.licenses?.length" flat dense no-caps icon="mdi-key-plus" label="Criar token" :loading="tokenCreating === contact._id" @click="createToken(contact)" /></div><LicenseTokenList v-if="contact.licenses?.length" :licenses="contact.licenses" :phone="contact.phone" class="wa-contact-grid__licenses" @changed="load" />
       </article>
     </div>
     <div v-if="!loading && !contacts.length" class="wa-empty"><q-icon name="mdi-account-search-outline" size="46px" /><p>Nenhum contato encontrado.</p><span>Os contatos aparecem aqui automaticamente quando conversam pelo WhatsApp.</span></div>
