@@ -1,6 +1,7 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import { api } from 'boot/axios'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { api, apiBaseURL } from 'boot/axios'
+import { io } from 'socket.io-client'
 import { useQuasar } from 'quasar'
 const $q = useQuasar()
 const data = ref(null), busy = ref(false), visible = ref({})
@@ -21,7 +22,9 @@ async function buy() {
   finally { busy.value = false }
 }
 async function copy(token) { await navigator.clipboard.writeText(token); $q.notify({ type: 'positive', message: 'Token copiado.' }) }
-onMounted(load)
+let productSocket, timer
+onMounted(() => { load(); const url = new URL(apiBaseURL, window.location.origin); productSocket = io(`${url.origin}/products`, { auth: { token: localStorage.getItem('aito_user_token') } }); productSocket.on('purchase.updated', load); productSocket.on('connect', load); timer = setInterval(() => { if (data.value?.orders?.some(order => order.status === 'pending')) load() }, 15000) })
+onBeforeUnmount(() => { productSocket?.disconnect(); clearInterval(timer) })
 </script>
 <template>
   <section class="products"><div class="products__top"><div><span>SEUS PRODUTOS</span><h2>WhatsApp BotBuilder</h2></div><q-btn flat round icon="mdi-refresh" aria-label="Atualizar compras" :loading="busy" @click="load" /></div>
