@@ -21,14 +21,15 @@
       :aria-label="activeBrand ? `Conhecer o projeto ${activeBrand.name}` : 'Nenhum projeto disponível'"
       @click="openSelectedBrand"
     >
-      <span aria-live="polite" aria-atomic="true">{{ activeBrand?.name }}</span>
+      <span>{{ activeBrand?.name }}</span>
       <small>Conhecer projeto ↗</small>
     </button>
     <div class="brand-carousel__controls" aria-label="Navegação dos projetos">
-      <button type="button" aria-label="Projeto anterior" :disabled="activeIndex <= 0" @click="stepBrand(-1)">
+      <button type="button" :aria-label="paused ? 'Retomar movimento dos projetos' : 'Pausar movimento dos projetos'" :aria-pressed="paused" @click="paused = !paused"><q-icon :name="paused ? 'mdi-play' : 'mdi-pause'" size="19px" aria-hidden="true" /></button>
+      <button type="button" aria-label="Projeto anterior" :disabled="normalizedBrands.length < 2" @click="stepBrand(-1)">
         <q-icon name="mdi-chevron-left" size="23px" aria-hidden="true" />
       </button>
-      <button type="button" aria-label="Próximo projeto" :disabled="activeIndex >= normalizedBrands.length - 1" @click="stepBrand(1)">
+      <button type="button" aria-label="Próximo projeto" :disabled="normalizedBrands.length < 2" @click="stepBrand(1)">
         <q-icon name="mdi-chevron-right" size="23px" aria-hidden="true" />
       </button>
     </div>
@@ -38,8 +39,10 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as THREE from 'three'
+import { wrapPosition, nearestLoopTarget } from 'src/utils/carouselLoop'
 
 const props = defineProps({
+  reducedMotion: { type: Boolean, default: false },
   brands: {
     type: Array,
     default: () => []
@@ -62,8 +65,12 @@ let renderer
 let carouselGroup
 let animationFrame = 0
 let destroyed = false
-let targetOffset = 0
-let currentOffset = 0
+const paused = ref(false)
+const targetOffsets = [0, 0]
+const currentOffsets = [0, 0]
+let interactionUntil = 0
+let inView = false
+let visibilityObserver
 let pointerX = 0
 let pointerY = 0
 let dragStartX = 0
@@ -79,7 +86,7 @@ let layoutRows = 0
 let activeRow = 0
 const coins = []
 
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
 const lerp = (start, end, amount) => start + (end - start) * amount
 
 function carouselLayout() {
@@ -88,23 +95,18 @@ function carouselLayout() {
   return { rows, columns, center: Math.max(columns - 1, 0) / 2 }
 }
 
-function limitOffset(offset) {
-  const { center } = carouselLayout()
-  return clamp(offset, -center, center)
-}
-
 function focusBrand(index) {
   if (!normalizedBrands.value.length) return
-  const nextIndex = clamp(index, 0, normalizedBrands.value.length - 1)
+  const nextIndex = ((index % normalizedBrands.value.length) + normalizedBrands.value.length) % normalizedBrands.value.length
   const { rows, center } = carouselLayout()
   activeRow = nextIndex % rows
-  targetOffset = center - Math.floor(nextIndex / rows)
+  const count = Math.ceil((coins.length - activeRow) / rows)
+  targetOffsets[activeRow] = nearestLoopTarget(center - Math.floor(nextIndex / rows), currentOffsets[activeRow], count)
   activeIndex.value = nextIndex
+  interactionUntil = performance.now() + 4000
 }
 
-function stepBrand(direction) {
-  focusBrand(activeIndex.value + direction)
-}
+function stepBrand(direction) { focusBrand(activeIndex.value + direction) }
 
 function openSelectedBrand() {
   if (activeBrand.value) emit('select', activeBrand.value)
@@ -236,7 +238,8 @@ function updateCoins(time, delta) {
   coins.forEach((coin, index) => {
     const column = Math.floor(index / rows)
     const row = index % rows
-    const offset = column - center + currentOffset
+    const count = Math.ceil((coins.length - row) / rows)
+    const offset = wrapPosition(column - center + currentOffsets[row], count)
     const distance = Math.abs(offset)
     const hovered = index === hoverIndex
     const distanceFromHover = hoverIndex >= 0 ? column - Math.floor(hoverIndex / rows) : 0
@@ -265,7 +268,9 @@ function updateCoins(time, delta) {
     coin.children[2].material.emissiveIntensity = focused ? 0.92 : 0.42
   })
 
-  const columnIndex = clamp(Math.round(center - targetOffset), 0, Math.ceil(coins.length / rows) - 1)
+  const count = Math.ceil((coins.length - activeRow) / rows)
+  const selectionOffset = time * 1000 < interactionUntil ? targetOffsets[activeRow] : currentOffsets[activeRow]
+  const columnIndex = ((Math.round(center - selectionOffset) % count) + count) % count
   const nextIndex = Math.min(columnIndex * rows + activeRow, coins.length - 1)
   if (nextIndex !== activeIndex.value) activeIndex.value = nextIndex
 }
@@ -301,7 +306,10 @@ function handlePointerDown(event) {
   dragDistance = 0
   dragStartX = event.clientX
   dragStartY = event.clientY
-  dragStartOffset = targetOffset
+  const hitCoin = getCoinFromHit(raycaster.intersectObjects(coins, true)[0])
+  activeRow = hitCoin ? hitCoin.userData.index % carouselLayout().rows : (carouselLayout().rows === 2 && pointerY < 0 ? 1 : 0)
+  dragStartOffset = targetOffsets[activeRow]
+  interactionUntil = performance.now() + 4000
   canvas.value.setPointerCapture?.(event.pointerId)
 }
 
@@ -310,12 +318,13 @@ function handlePointerMove(event) {
   if (!isDragging) return
   dragDistance = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY)
   const sensitivity = window.innerWidth < 768 ? 0.009 : 0.007
-  targetOffset = limitOffset(dragStartOffset + (event.clientX - dragStartX) * sensitivity)
+  targetOffsets[activeRow] = dragStartOffset + (event.clientX - dragStartX) * sensitivity
 }
 
 function handlePointerUp(event) {
   if (!isDragging) return
   isDragging = false
+  interactionUntil = performance.now() + 4000
   canvas.value.releasePointerCapture?.(event.pointerId)
 
   if (dragDistance > 8) return
@@ -334,6 +343,7 @@ function handlePointerUp(event) {
 function handlePointerCancel(event) {
   if (!isDragging) return
   isDragging = false
+  interactionUntil = performance.now() + 4000
   canvas.value.releasePointerCapture?.(event.pointerId)
 }
 
@@ -350,7 +360,10 @@ function handleWheel(event) {
   event.preventDefault()
   event.stopPropagation()
   const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
-  targetOffset = limitOffset(targetOffset - Math.sign(delta) * 0.58)
+  updatePointer(event)
+  activeRow = carouselLayout().rows === 2 && pointerY < 0 ? 1 : 0
+  targetOffsets[activeRow] -= Math.sign(delta) * 0.58
+  interactionUntil = performance.now() + 4000
 }
 
 function handleResize() {
@@ -360,8 +373,10 @@ function handleResize() {
   if (rows !== layoutRows) {
     layoutRows = rows
     activeRow = activeIndex.value % rows
-    targetOffset = center - Math.floor(activeIndex.value / rows)
-    currentOffset = targetOffset
+    for (let row = 0; row < rows; row++) {
+      targetOffsets[row] = center - Math.floor(activeIndex.value / rows)
+      currentOffsets[row] = targetOffsets[row]
+    }
   }
   camera.aspect = rect.width / Math.max(rect.height, 1)
   camera.position.z = rows === 2 ? 8.3 : 8
@@ -374,11 +389,15 @@ function animate(time) {
   if (destroyed) return
   const delta = Math.min((time - lastFrame) / 1000, 0.05)
   lastFrame = time
-  currentOffset = lerp(currentOffset, targetOffset, 1 - Math.pow(0.002, delta))
+  const { rows } = carouselLayout()
+  if (inView && !document.hidden && !paused.value && !props.reducedMotion && !isDragging && time > interactionUntil) {
+    for (let row = 0; row < rows; row++) targetOffsets[row] += delta * 0.045 * (row === 1 ? 1 : -1)
+  }
+  for (let row = 0; row < rows; row++) currentOffsets[row] = lerp(currentOffsets[row], targetOffsets[row], 1 - Math.pow(0.002, delta))
   carouselGroup.rotation.y = lerp(carouselGroup.rotation.y, pointerX * 0.06, 0.08)
   carouselGroup.position.y = lerp(carouselGroup.position.y, pointerY * 0.05, 0.08)
   updateCoins(time / 1000, delta)
-  renderer.render(scene, camera)
+  if (inView) renderer.render(scene, camera)
   animationFrame = window.requestAnimationFrame(animate)
 }
 
@@ -414,6 +433,8 @@ function initialize() {
   handleResize()
   resizeObserver = new ResizeObserver(handleResize)
   resizeObserver.observe(canvas.value)
+  visibilityObserver = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting }, { rootMargin: '100px' })
+  visibilityObserver.observe(canvas.value)
   canvas.value.addEventListener('pointerdown', handlePointerDown)
   canvas.value.addEventListener('pointermove', handlePointerMove)
   canvas.value.addEventListener('pointerup', handlePointerUp)
@@ -435,6 +456,7 @@ onBeforeUnmount(() => {
   destroyed = true
   window.cancelAnimationFrame(animationFrame)
   resizeObserver?.disconnect()
+  visibilityObserver?.disconnect()
   canvas.value?.removeEventListener('pointerdown', handlePointerDown)
   canvas.value?.removeEventListener('pointermove', handlePointerMove)
   canvas.value?.removeEventListener('pointerup', handlePointerUp)
@@ -456,14 +478,14 @@ onBeforeUnmount(() => {
 .brand-carousel {
   position: relative;
   width: 100%;
-  min-height: min(58vh, 34rem);
+  min-height: min(70vh, 44rem);
   overflow: hidden;
 }
 
 .brand-carousel__canvas {
   display: block;
   width: 100%;
-  height: min(58vh, 34rem);
+  height: min(70vh, 44rem);
   touch-action: pan-y;
   cursor: grab;
 }
@@ -509,7 +531,7 @@ onBeforeUnmount(() => {
   min-width: 9.5rem;
   padding: 0.58rem 0.8rem;
   border-radius: 0.75rem;
-  max-width: calc(100% - 8rem);
+  max-width: calc(100% - 11rem);
   text-align: left;
   cursor: pointer;
 }

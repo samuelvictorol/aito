@@ -161,31 +161,16 @@ export const institutionalCases = Object.freeze([
   }
 ])
 
+// Fictional conversations inspired by the kinds of projects shown above.
 export const institutionalTestimonials = Object.freeze([
-  {
-    name: 'EletroNogueira',
-    role: 'Elétrica e hidráulica',
-    quote: 'A migração aconteceu com clareza, suporte próximo e entregas que a equipe conseguiu acompanhar.',
-    img: 'en.jfif'
-  },
-  {
-    name: 'IRW Motors',
-    role: 'Automotivo',
-    quote: 'O atendimento 24/7 qualificou os leads e deixou o time de vendas focado no que importa.',
-    img: 'irw.jfif'
-  },
-  {
-    name: 'Flávia Kamila',
-    role: 'Delegada + Educação',
-    quote: 'O app trouxe praticidade, segurança e confiabilidade para o meu trabalho, com formulários inteligentes e monitoramento do meu app.',
-    img: 'kamila.png'
-  },
-  {
-    name: 'Onicloud',
-    role: 'Escalabilidade em cloud',
-    quote: 'Temos um desenvolvedor dedicado que entende o nosso negócio, nos ajuda a evoluir e nos da tranquilidade para focar no que importa.',
-    img: 'oni-mini.png'
-  },
+  { name: 'Marina', role: 'Loja de iluminação · exemplo', quote: 'Agora o cliente encontra o catálogo e chega à equipe com o pedido bem encaminhado.' },
+  { name: 'Rafael', role: 'Operação em cloud · exemplo', quote: 'Consigo acompanhar os recursos e entender onde a operação precisa evoluir.' },
+  { name: 'Camila', role: 'Educação digital · exemplo', quote: 'Os formulários organizam o diagnóstico e deixam o acompanhamento muito mais simples.' },
+  { name: 'Bruno', role: 'Comércio e estoque · exemplo', quote: 'O atendimento consulta os produtos e nossa equipe assume a conversa quando precisa.' },
+  { name: 'Juliana', role: 'Pagamentos · exemplo', quote: 'A confirmação do pagamento já leva o cliente para o próximo passo do atendimento.' },
+  { name: 'André', role: 'Campanhas e notificações · exemplo', quote: 'Os avisos ficaram organizados e conseguimos acompanhar cada etapa dos envios.' },
+  { name: 'Luiza', role: 'CRM e integrações · exemplo', quote: 'O lead entra pelo site e segue para o processo certo, sem copiar tudo à mão.' },
+  { name: 'Pedro', role: 'Serviços e agendamento · exemplo', quote: 'O bot cuida das primeiras perguntas e eu recebo o contexto antes de conversar.' },
 ])
 
 export const institutionalFounders = Object.freeze([
@@ -193,6 +178,7 @@ export const institutionalFounders = Object.freeze([
     id: 'samuel',
     name: 'Samuel Victor',
     role: 'Produto, negócio e fullstack',
+    skills: ['Produto digital', 'UX/UI', 'Vue.js', 'Node.js', 'Integrações', 'IA'],
     summary: 'Conecta produto, venda e experiência para transformar ideia em software util, bonito e mensurável.',
     image: '/samuel.png',
     instagram: 'https://www.instagram.com/samuelvictorol/',
@@ -202,6 +188,7 @@ export const institutionalFounders = Object.freeze([
     id: 'dion',
     name: 'Dion Vitor',
     role: 'Arquitetura, cloud e segurança',
+    skills: ['Arquitetura', 'Cloud', 'Segurança', 'APIs', 'Escalabilidade', 'Observabilidade'],
     summary: 'Desenha sistemas preparados para a operação real, com arquitetura clara, escala e segurança.',
     image: '/dion.png',
     instagram: 'https://www.instagram.com/dionn_vitor/',

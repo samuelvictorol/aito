@@ -84,8 +84,14 @@
           </div>
           <div class="landing-3d__copy" :style="sectionCopyStyle(index)">
             <p :id="`${section.id}-eyebrow`" class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
+            <article v-if="section.id.startsWith('founder-')" class="landing-3d__founder-profile">
+              <div class="landing-3d__founder-heading"><img :src="founderForSection(section.id).image" :alt="founderForSection(section.id).name" /><div><span>{{ founderForSection(section.id).role }}</span><h2 :id="`${section.id}-title`">{{ founderForSection(section.id).name }}</h2></div></div>
+              <p>{{ founderForSection(section.id).summary }}</p>
+              <div class="landing-3d__founder-skills" :aria-label="`Competências de ${founderForSection(section.id).name}`"><span v-for="skill in founderForSection(section.id).skills" :key="skill">{{ skill }}</span></div>
+              <div class="landing-3d__founder-socials"><a :href="founderForSection(section.id).instagram" target="_blank" rel="noopener noreferrer" :aria-label="`Instagram de ${founderForSection(section.id).name}`"><q-icon name="mdi-instagram" /></a><a :href="founderForSection(section.id).portfolio" target="_blank" rel="noopener noreferrer" :aria-label="`Portfólio de ${founderForSection(section.id).name}`"><q-icon name="mdi-web" /></a></div>
+            </article>
             <h1 v-if="index === 0" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h1>
-            <h2 v-else-if="section.title" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h2>
+            <h2 v-else-if="section.title && !section.id.startsWith('founder-')" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h2>
             <!-- <p v-if="section.description && !isMobile" class="landing-3d__description">{{ section.description }}</p> -->
 
             <div v-if="section.id === 'inicio'" class="landing-3d__hero-actions">
@@ -116,7 +122,7 @@
 
           <div v-if="section.id !== 'inicio'" class="landing-3d__visual">
             <template v-if="section.id === 'marcas'">
-              <AitoBrandCarousel :brands="institutionalBrands" @select="handleBrandSelect" />
+              <AitoBrandCarousel :brands="institutionalBrands" :reduced-motion="prefersReducedMotion" @select="handleBrandSelect" />
             </template>
 
             <template v-else-if="section.id === 'cases'">
@@ -131,68 +137,17 @@
                 </article>
               </div>
 
-              <div class="landing-3d__case-grid">
-                <article v-for="item in institutionalCases" :key="item.title" class="landing-3d__case-card">
-                  <img v-if="item.image" class="landing-3d__case-logo" :src="item.image" :alt="item.title" loading="lazy" />
-                  <div v-else class="landing-3d__case-icon"><q-icon :name="item.icon" size="21px" aria-hidden="true" /></div>
-                  <p class="landing-3d__case-kicker">{{ item.subtitle }}</p>
-                  <h3>{{ item.title }}</h3>
-                  <p>{{ item.text }}</p>
-                  <div class="landing-3d__tag-row">
-                    <span v-for="tag in item.tags" :key="tag">{{ tag }}</span>
-                  </div>
-                  <a v-if="item.href" :href="item.href" target="_blank" rel="noopener noreferrer" class="landing-3d__case-link">
-                    Conhecer projeto <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
-                  </a>
-                  <button v-else type="button" class="landing-3d__case-link" @click="handleBrandSelect({ name: item.title, summary: item.text })">Sobre o projeto <q-icon name="mdi-arrow-top-right" aria-hidden="true" /></button>
-                </article>
-              </div>
+              <div class="landing-3d__device-showcase"><LandingDeviceGallery :slides="landingShowcase.laptop" device="laptop" label="Sistemas e operações no notebook" :reduced-motion="prefersReducedMotion" /><LandingDeviceGallery :slides="landingShowcase.phone" device="phone" label="Atendimento na palma da mão" :interval="7500" :reduced-motion="prefersReducedMotion" /></div>
+              <p class="landing-3d__illustration-note">Telas ilustrativas. Toque para ampliar e explorar cada detalhe.</p>
             </template>
 
             <template v-else-if="section.id === 'satisfacao'">
-              <div class="landing-3d__satisfaction-grid">
-                <div class="landing-3d__satisfaction-meter">
-                  <q-icon name="mdi-heart" size="31px" aria-hidden="true" />
-                  <strong>98%</strong>
-                  <span>de satisfação</span>
-                  <small>Relações que continuam depois do go-live.</small>
-                </div>
-                <article v-for="item in institutionalTestimonials" :key="item.name" class="landing-3d__testimonial">
-                  <div class="landing-3d__testimonial-head">
-                    <img v-if="item.img" :src="item.img" :alt="item.name" />
-                    <span v-else class="landing-3d__avatar-placeholder">+</span>
-                    <div><strong>{{ item.name }}</strong><small>{{ item.role }}</small></div>
-                  </div>
-                  <p>&ldquo;{{ item.quote }}&rdquo;</p>
+              <div class="landing-3d__speech-grid">
+                <article v-for="(item,index) in institutionalTestimonials" :key="item.name" class="landing-3d__speech" :class="{ 'landing-3d__speech--accent': index % 3 === 1 }">
+                  <p>{{ item.quote }}</p><footer><span class="landing-3d__speech-avatar" aria-hidden="true">{{ item.name.charAt(0) }}</span><div><strong>{{ item.name }}</strong><small>{{ item.role }}</small></div></footer>
                 </article>
               </div>
-            </template>
-
-            <template v-else-if="section.id === 'founder-samuel' || section.id === 'founder-dion'">
-              <article
-                class="landing-3d__founder-card"
-                :class="{ 'is-focused': founderFocused === section.id }"
-                tabindex="0"
-                @mouseenter="founderFocused = section.id"
-                @mouseleave="founderFocused = null"
-                @focusin="founderFocused = section.id"
-                @focusout="founderFocused = null"
-                @click="founderFocused = founderFocused === section.id ? null : section.id"
-              >
-                <img :src="founderForSection(section.id).image" :alt="founderForSection(section.id).name" class="landing-3d__founder-image" />
-                <div>
-                  <span class="landing-3d__founder-role">{{ founderForSection(section.id).role }}</span>
-                  <p>{{ founderForSection(section.id).summary }}</p>
-                </div>
-                <div class="landing-3d__founder-socials">
-                  <a :href="founderForSection(section.id).instagram" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-                    <q-icon name="mdi-instagram" size="18px" aria-hidden="true" />
-                  </a>
-                  <a :href="founderForSection(section.id).portfolio" target="_blank" rel="noopener noreferrer" aria-label="Portfolio">
-                    <q-icon name="mdi-web" size="18px" aria-hidden="true" />
-                  </a>
-                </div>
-              </article>
+              <p class="landing-3d__illustration-note">Conversas fictícias inspiradas em cenários de projetos. Não representam depoimentos de clientes.</p>
             </template>
 
             <template v-else-if="section.id === 'contato'">
@@ -312,13 +267,14 @@ import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
 import AitoLoadingGate from 'components/landing3d/AitoLoadingGate.vue'
 import AitoThreeScene from 'components/landing3d/AitoThreeScene.vue'
 import AitoBrandCarousel from 'components/landing3d/AitoBrandCarousel.vue'
+import LandingDeviceGallery from 'components/landing3d/LandingDeviceGallery.vue'
+import { landingShowcase } from 'src/data/landingShowcase'
 import IAChatComponent from 'components/IAChatComponent.vue'
 import AuthDialog from 'components/AuthDialog.vue'
 import { useLandingScroll } from 'src/composables/useLandingScroll'
 import { landing3dSections } from 'src/data/landing3dSections'
 import {
   institutionalBrands,
-  institutionalCases,
   institutionalFounders,
   institutionalServices,
   institutionalTestimonials
@@ -357,7 +313,6 @@ const accessDialogOpen = ref(false)
 const referralDialogOpen = ref(false)
 const iaChat = ref(false)
 const coursePromptOpen = ref(false)
-const founderFocused = ref(null)
 const sessionVersion = ref(0)
 let introTextTimer
 let sceneReadyWatchdog
@@ -911,5 +866,32 @@ onBeforeUnmount(() => {
 .landing-3d__section--solucoes .landing-3d__title { font-size: clamp(2.5rem, 4.4vw, 4.6rem); max-width: 14ch; }
 @media(max-width: 1100px) { .landing-3d__section--cases .landing-3d__service-grid, .landing-3d__section--cases .landing-3d__case-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 767px) { .landing-3d__section--cases .landing-3d__service-grid, .landing-3d__section--cases .landing-3d__case-grid { grid-template-columns: 1fr; } .landing-3d__section--solucoes .landing-3d__visual { min-height: 19rem; } }
+
+
+.landing-3d__section--marcas { width: min(100%, 1920px); padding-inline: clamp(1rem, 3vw, 4rem); }
+.landing-3d__device-showcase { display: grid; grid-template-columns: minmax(0, 1fr) 240px; align-items: center; gap: clamp(2rem, 5vw, 5rem); padding: 1rem 1rem 0; }
+.landing-3d__illustration-note { margin: 1.1rem 0 0; color: #83aea1; font-size: .65rem; line-height: 1.6; text-align: center; }
+.landing-3d__section--satisfacao .landing-3d__section-inner { display: block; }
+.landing-3d__section--satisfacao .landing-3d__copy { margin-bottom: 1.4rem; }
+.landing-3d__speech-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 1.6rem 1.1rem; }
+.landing-3d__speech { position: relative; padding: 1.1rem; border: 1px solid #35736380; border-radius: 20px 20px 20px 4px; background: linear-gradient(145deg,#0b302eee,#061b20ed); box-shadow: 0 12px 30px #0003; }
+.landing-3d__speech::after { content: ''; position: absolute; bottom: -9px; left: 16px; width: 16px; height: 16px; background: #082326; border-right: 1px solid #35736380; border-bottom: 1px solid #35736380; transform: skewY(-30deg); }
+.landing-3d__speech--accent { margin-top: 1.3rem; background: linear-gradient(145deg,#134b3eee,#0b302ded); border-radius: 20px 20px 4px 20px; }
+.landing-3d__speech p { margin: 0 0 1rem; color: #d8eee6; font-size: .78rem; line-height: 1.65; }
+.landing-3d__speech footer { display: flex; align-items: center; gap: .55rem; }
+.landing-3d__speech-avatar { display: grid; place-items: center; flex: 0 0 29px; height: 29px; border-radius: 50%; color: #aff6dd; background: #3c9b7d35; font-size: .7rem; font-weight: 700; }
+.landing-3d__speech strong,.landing-3d__speech small { display: block; }
+.landing-3d__speech strong { color: #beebda; font-size: .7rem; }
+.landing-3d__speech small { margin-top: .15rem; color: #88b3a2; font-size: .6rem; }
+.landing-3d__founder-profile { padding: clamp(1.3rem, 3vw, 2.2rem); border: 1px solid #3b806b; border-radius: 22px; background: linear-gradient(140deg,#103a34ee,#061c22ed); box-shadow: 0 24px 65px #0005; }
+.landing-3d__founder-heading { display: flex; align-items: center; gap: 1rem; }
+.landing-3d__founder-heading img { width: 72px; height: 72px; object-fit: cover; border-radius: 50%; border: 1px solid #70c9ac; }
+.landing-3d__founder-heading span { display: block; color: #8cddc3; font-size: .65rem; line-height: 1.5; }
+.landing-3d__founder-heading h2 { margin: .4rem 0 0; color: #edfff9; font-size: clamp(1.6rem, 2.7vw, 2.7rem); line-height: 1.15; font-weight: 700; letter-spacing: -.03em; }
+.landing-3d__founder-profile>p { color: #b6d5c9; font-size: .9rem; line-height: 1.7; margin: 1.3rem 0; }
+.landing-3d__founder-skills { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.3rem; }
+.landing-3d__founder-skills span { padding: .38rem .65rem; border: 1px solid #3c7c69; border-radius: 999px; color: #c7f5e2; background: #154d3c50; font-size: .65rem; }
+@media(max-width:1100px) { .landing-3d__speech-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media(max-width:767px) { .landing-3d__device-showcase { grid-template-columns: 1fr; justify-items: center; gap: 2.3rem; padding: .5rem .4rem 0; } .landing-3d__speech-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.4rem .7rem; } .landing-3d__speech { padding: .8rem; } .landing-3d__speech p { font-size: .73rem; } .landing-3d__speech--accent { margin-top: 0; } .landing-3d__founder-heading img { width: 60px; height: 60px; } .landing-3d__founder-profile { width: 100%; } }
 
 </style>

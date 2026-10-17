@@ -46,7 +46,7 @@ export const landing3dSections = Object.freeze([
   {
     id: 'satisfacao',
     eyebrow: '04 / RELAÇÃO DE LONGO PRAZO',
-    title: 'Tecnologia boa deixa a rotina mais leve.',
+    title: '',
     description: 'Acompanhamento proximo, entregas visiveis e decisoes que fazem sentido para quem usa.',
     align: 'right',
     modelKey: 'obj3'
