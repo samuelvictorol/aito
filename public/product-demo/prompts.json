@@ -1,0 +1,48 @@
+[
+  {
+    "key": "flow",
+    "prompt": "Commercial product screenshot for WhatsApp BotBuilder landing page. Deliver ONLY the application screen, edge-to-edge, no physical device, no perspective, no extra frame. Crystal-clear UI, large legible Portuguese typography, polished teal / dark navy / white visual system like reference. All people and conversations fictional. Preserve plausible existing product capabilities. No lorem ipsum, no garbled text, no claims of native Claude integration. Wide 16:10 desktop editor screen. Recompose reference to remove enormous empty canvas: zoom into a SIMPLE 4-card flow with readable titles \"Boas-vindas\", \"Escolha do cliente\", \"Criar pedido\", \"Atendimento humano\". Three connected branches with teal lines. Top tabs \"Conversas\", \"Fluxos\", \"Catálogo\", \"Integrações\". Top headline \"Seu atendimento em um fluxo\". Right panel occupies 25% with title \"Configurar card\", text field \"Boas-vindas\" and text \"Olá! Como podemos ajudar?\" plus \"1. Fazer pedido\" \"2. Falar com a equipe\". One prominent \"Salvar e aplicar\" button. Large simplified UI, realistic software screenshot, coherent polished clean spacing.",
+    "reference": "codex-clipboard-3756d0c7-f866-4405-9d97-87afab1da801.png",
+    "tool": "built-in image_gen",
+    "deliveredSource": "exec-1877c9d2-63ed-47d8-b81a-9a0f6291fd8f.png",
+    "optimization": "Responsive WebP variants, width 420/720 portrait or 840/1440 landscape, quality 86, no text redraw."
+  },
+  {
+    "key": "order",
+    "prompt": "Commercial product screenshot for WhatsApp BotBuilder landing page. Deliver ONLY the application screen, edge-to-edge, no physical device, no perspective, no extra frame. Crystal-clear UI, large legible Portuguese typography, polished teal / dark navy / white visual system like reference. All people and conversations fictional. Preserve plausible existing product capabilities. No lorem ipsum, no garbled text, no claims of native Claude integration. Portrait 9:19 smartphone chat screen, no hardware frame. Fix and complete the reference order conversation rather than empty stalled response. WhatsApp-like chat. Header \"Brasa Burger\", small \"Atendimento automático\". Outgoing green \"Quero fazer um pedido\". Incoming white \"🍔 É para retirada ou entrega?\" Outgoing \"Retirada\". Incoming modest appetizing burger photo and text \"Clássico da Brasa · BUGR1\\nR$ 24,90\\nUse /add BUGR1 para adicionar.\". Outgoing \"/add BUGR1\". Incoming \"✅ 1x Clássico da Brasa\\nTotal: R$ 24,90\\nDigite /confirmar para conferir.\". Outgoing \"/confirmar\". Incoming \"Pedido conferido! Digite /finalizar.\". Outgoing \"/finalizar\". Final incoming \"🎉 Pedido recebido! Obrigado pela preferência.\" Compact but LARGE readable bubbles, no timestamps clutter, no file selector, input composer bottom \"Mensagem\".",
+    "reference": "codex-clipboard-6b2b67ef-b9ee-4eb3-9b5e-4b44942abdb2.png",
+    "tool": "built-in image_gen",
+    "deliveredSource": "exec-10cc7277-cb31-497b-8f81-7546698c0168.png",
+    "optimization": "Responsive WebP variants, width 420/720 portrait or 840/1440 landscape, quality 86, no text redraw."
+  },
+  {
+    "key": "chats",
+    "prompt": "Commercial product screenshot for WhatsApp BotBuilder landing page. Deliver ONLY the application screen, edge-to-edge, no physical device, no perspective, no extra frame. Crystal-clear UI, large legible Portuguese typography, polished teal / dark navy / white visual system like reference. All people and conversations fictional. Preserve plausible existing product capabilities. No lorem ipsum, no garbled text, no claims of native Claude integration. Wide 16:10 desktop conversations dashboard populated with realistic fictional example people. Left sidebar 28% dark teal \"Conversas\", search \"Nome ou telefone\", list four contacts with small diverse friendly adult portrait avatars: \"Marina Costa\", \"Lucas Almeida\", \"Ana Ribeiro\", \"Pedro Santos\". No real numbers or PII. Selected Marina. Right WhatsApp-like chat ivory background header \"Marina Costa\", badge \"IA ativa\", controls small. Incoming \"Oi! Vocês têm o catálogo?\" Outgoing \"Olá, Marina! Temos sim. 😊 O que você está procurando?\" Incoming \"Quero um orçamento para minha loja.\" Outgoing \"Claro! Vou organizar as opções para você.\" Incoming \"Obrigada!\" Outgoing small product attachment card \"Orçamento.pdf\" with check mark. Upper right elegant badge \"Equipe online\". Make full screen dense enough but minimal legible large text. This is a commercial illustrative screen, not a fake real customer testimonial.",
+    "reference": "codex-clipboard-e15e6c11-da14-4956-8214-a526a7e89852.png",
+    "tool": "built-in image_gen",
+    "deliveredSource": "exec-bce6399c-afe3-49db-9494-c9363bd7e8ea.png",
+    "optimization": "Responsive WebP variants, width 420/720 portrait or 840/1440 landscape, quality 86, no text redraw."
+  },
+  {
+    "key": "adapt",
+    "prompt": "Commercial product screenshot for WhatsApp BotBuilder landing page. Deliver ONLY the application screen, edge-to-edge, no physical device, no perspective, no extra frame. Crystal-clear UI, large legible Portuguese typography, polished teal / dark navy / white visual system like reference. All people and conversations fictional. Preserve plausible existing product capabilities. No lorem ipsum, no garbled text, no claims of native Claude integration. Wide 16:10 desktop screenshot inspired by reference integration but replace LC brand with generic fictional \"Sua empresa\". Sidebar \"Gestão\" links \"Visão geral\", \"Clientes\", \"Produtos\", selected \"WhatsApp\". Main pane simple BotBuilder editor integrated into a business admin panel, top title \"Seu WhatsApp dentro do seu sistema\". Readable three connected cards \"Receber cliente\", \"Consultar catálogo\", \"Encaminhar à equipe\". Right inspector \"Sua marca. Seu processo.\" with small labels \"API\", \"Webhooks\", \"Código fonte\". White and muted blue host dashboard with teal BotBuilder cards. Bottom discreet integration strip \"Personalize com Claude Code e Codex\" clearly marked \"Assistentes de desenvolvimento\". No actual vendor logos, no native chatbot provider claim. Large readable text, simplified enough to understand at thumbnail size.",
+    "reference": "codex-clipboard-e2c3fa67-3ec0-48bf-a9e0-bd84dd55812e.png",
+    "tool": "built-in image_gen",
+    "deliveredSource": "exec-fe8a5368-5ce4-4a5f-a5f5-37ee7cb150e9.png",
+    "optimization": "Responsive WebP variants, width 420/720 portrait or 840/1440 landscape, quality 86, no text redraw."
+  },
+  {
+    "key": "phone",
+    "prompt": "Create a polished Portuguese WhatsApp BotBuilder MOBILE CONVERSATIONS PANEL screenshot for a product sales page. Use attached desktop empty chat as layout identity reference, but deliver portrait 9:19 edge-to-edge app screen, no physical phone or extra margin. Top dark teal header 'Conversas' with small 'Equipe online'. Four short fictional people rows with friendly diverse adult portrait avatars: Marina Costa badge 'IA ativa', Lucas Almeida badge 'Com Ana', Ana Ribeiro badge 'Bot ativo', Pedro Santos badge 'Aguardando'. Below those, selected active chat Marina Costa with WhatsApp ivory background and 4 very large readable bubbles: incoming 'Olá! Posso ver o catálogo?', outgoing mint 'Claro, Marina! 😊 Vou te ajudar.', incoming 'Quero um orçamento para minha loja.', outgoing 'Perfeito! Já encaminhei para a Ana.' Small status 'Ana assumiu o atendimento' above last bubble. Bottom input 'Mensagem'. Commercial illustrative demo, crisp clean typography, no personal data, no lorem ipsum. Simplify controls for legibility.",
+    "reference": "codex-clipboard-e15e6c11-da14-4956-8214-a526a7e89852.png",
+    "tool": "built-in image_gen",
+    "deliveredSource": "exec-ae4e6efb-b995-451b-ad1b-f54dc4c285f5.png",
+    "optimization": "Responsive WebP variants, width 420/720 portrait or 840/1440 landscape, quality 86, no text redraw."
+  },
+  {
+    "key": "ai-emblem",
+    "prompt": "Edit the supplied brain/chat icon into a cleaner premium 3D icon. Preserve its merged brain and speech bubble silhouette and turquoise/mint palette. Smooth edges, satin ceramic material, restrained depth and studio highlights. Center with 10% margin. Transparent background, no text or logos. Readable at 160px on dark navy.",
+    "reference": "exec-83db8437-b07d-4b7b-b4b2-6b669085b04f.png",
+    "tool": "built-in image_gen"
+  }
+]

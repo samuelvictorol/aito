@@ -6,33 +6,47 @@ import { formatWhatsApp } from 'src/services/whatsapp-format'
 const props = defineProps({ flowId: String, flow: Object, assets: Array, paymentConfigs: Array })
 const emit = defineEmits(['close'])
 const messages = ref([]), input = ref(''), busy = ref(false), state = ref(null), error = ref(''), events = ref([]), list = ref(null), mocks = ref('{}')
+const retryAvailable = ref(false)
 const aiLive = ref(false), aiResponse = ref('Resposta de teste da IA.')
 const hasAI = computed(() => props.flow.nodes.some(node => node.type === 'ai'))
 const httpNodes = computed(() => props.flow.nodes.filter(node => node.type === 'action' && node.data.action.type === 'http'))
-let generation = 0, collectTimer, pending = [], timers = new Map(), lastInputAt = 0, settingsRevision = 0
+let generation = 0, collectTimer, pending = [], timers = new Map(), lastInputAt = 0, settingsRevision = 0, activeRequest, failedRequest
 const collectWindowMs = ref(3000), settingsReady = ref(false)
 async function loadSettings() {
   const revision = ++settingsRevision
-  const { data } = await waApi.get('/bot-settings')
-  if (revision === settingsRevision) { collectWindowMs.value = data.collectWindowMs; settingsReady.value = true }
+  try {
+    const { data } = await waApi.get('/bot-settings')
+    if (revision === settingsRevision) { collectWindowMs.value = data.collectWindowMs; settingsReady.value = true }
+  } catch (cause) { if (revision === settingsRevision) throw cause }
 }
-onMounted(() => loadSettings().catch(cause => { error.value = messageOf(cause) }))
+onMounted(() => { const current = generation; loadSettings().catch(cause => { if (current === generation) error.value = messageOf(cause) }) })
 function scroll() { nextTick(() => { if (list.value) list.value.scrollTop = list.value.scrollHeight }) }
-function reset() { generation++; clearTimeout(collectTimer); for (const [timer, resolve] of timers) { clearTimeout(timer); resolve() }; timers.clear(); pending = []; messages.value = []; state.value = null; events.value = []; error.value = ''; busy.value = false }
+function reset() { generation++; activeRequest?.abort(); activeRequest = null; failedRequest = null; retryAvailable.value = false; clearTimeout(collectTimer); for (const [timer, resolve] of timers) { clearTimeout(timer); resolve() }; timers.clear(); pending = []; messages.value = []; state.value = null; events.value = []; error.value = ''; busy.value = false }
 function wait(ms) { return new Promise(resolve => { const timer = setTimeout(() => { timers.delete(timer); resolve() }, ms); timers.set(timer, resolve) }) }
+function scheduleRun() { clearTimeout(collectTimer); if (pending.length && !busy.value && !failedRequest && settingsReady.value) collectTimer = setTimeout(run, Math.max(0, lastInputAt + collectWindowMs.value - Date.now())) }
+async function retrySettings() {
+  const current = generation
+  try { await loadSettings(); if (current === generation) { error.value = ''; scheduleRun() } } catch (cause) { if (current === generation) error.value = messageOf(cause) }
+}
 async function send() {
   const text = input.value.trim(); if (!text) return
   lastInputAt = Date.now(); const current = generation
   messages.value.push({ from: 'client', text }); pending.push(text); input.value = ''; scroll()
   clearTimeout(collectTimer)
-  try { await loadSettings(); if (current === generation) { clearTimeout(collectTimer); collectTimer = setTimeout(run, Math.max(0, lastInputAt + collectWindowMs.value - Date.now())) } } catch (cause) { error.value = messageOf(cause) }
+  try { await loadSettings(); if (current === generation) scheduleRun() } catch (cause) { if (current === generation) { settingsReady.value = false; error.value = messageOf(cause) } }
 }
 async function run() {
-  if (busy.value || !pending.length) return
-  const current = generation, text = pending.join('\n'); pending = []; busy.value = true; error.value = ''
+  if (busy.value || failedRequest || !pending.length) return
+  const text = pending.join('\n'); pending = []
+  await simulate({ text })
+}
+async function simulate(request) {
+  const current = generation, controller = new AbortController()
+  activeRequest = controller; busy.value = true; error.value = ''; retryAvailable.value = false
   try {
     let httpResponses; try { httpResponses = JSON.parse(mocks.value) } catch { throw new Error('O JSON das respostas de teste é inválido.') }
-    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, text, httpResponses, aiLive: aiLive.value, aiResponse: aiResponse.value, paymentConfigs: props.paymentConfigs }, { timeout: 240000 })
+    if (!httpResponses || Array.isArray(httpResponses) || typeof httpResponses !== 'object') throw new Error('As respostas de teste precisam ser um objeto JSON por card.')
+    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, ...request, httpResponses, aiLive: aiLive.value, aiResponse: aiResponse.value, paymentConfigs: props.paymentConfigs }, { timeout: 240000, signal: controller.signal })
     if (current !== generation) return
     state.value = data.state; events.value.push(...(data.events || []))
     let elapsed = 0
@@ -42,17 +56,17 @@ async function run() {
       messages.value.push({ ...output, from: 'bot' }); scroll()
     }
     if (!data.outputs?.length && !data.events?.length) events.value.push('O fluxo aguardou a próxima mensagem sem enviar uma resposta.')
-  } catch (cause) { if (current === generation) error.value = messageOf(cause) }
-  finally { if (current === generation) { busy.value = false; if (pending.length) { clearTimeout(collectTimer); collectTimer = setTimeout(run, Math.max(0, lastInputAt + collectWindowMs.value - Date.now())) } } }
+  } catch (cause) { if (current === generation) { failedRequest = request; retryAvailable.value = true; error.value = messageOf(cause) } }
+  finally { if (current === generation) { activeRequest = null; busy.value = false; scheduleRun() } }
 }
 async function paymentEvent(event) {
-  busy.value = true; error.value = ''
-  try {
-    const { data } = await botApi.post(`/flows/${props.flowId}/simulate`, { flow: props.flow, state: state.value, paymentEvent: event, paymentConfigs: props.paymentConfigs })
-    state.value = data.state; events.value.push(...(data.events || []))
-    for (const output of data.outputs || []) { messages.value.push({ ...output, from: 'bot' }); scroll() }
-  } catch (cause) { error.value = messageOf(cause) }
-  finally { busy.value = false }
+  if (busy.value || failedRequest) return
+  await simulate({ paymentEvent: event })
+}
+async function retry() {
+  if (busy.value || !failedRequest) return
+  const request = failedRequest; failedRequest = null
+  await simulate(request)
 }
 function assetName(id) { return props.assets?.find(asset => asset._id === id)?.name || 'Arquivo da biblioteca' }
 function exampleMocks() { mocks.value = JSON.stringify(Object.fromEntries(httpNodes.value.map(node => [node.nodeId, { status: 200, body: { ok: true } }])), null, 2) }
@@ -78,10 +92,10 @@ onBeforeUnmount(reset)
           <form class="phone-compose" @submit.prevent="send"><input v-model="input" aria-label="Mensagem do cliente" placeholder="Mensagem" maxlength="4096"><button :disabled="!input.trim() || !settingsReady" aria-label="Enviar mensagem de teste">➤</button></form>
         </div>
         <aside class="sim-info"><button @click="reset">Reiniciar conversa</button>
-          <section v-if="state?.paymentNodeId" class="q-my-md"><p>Teste a resposta da InfinitePay sem criar uma compra real.</p><div class="payment-test-actions"><button :disabled="busy" @click="paymentEvent('paid')">Simular aprovação</button><button :disabled="busy" @click="paymentEvent('declined')">Simular recusa</button></div></section>
+          <section v-if="state?.paymentNodeId" class="q-my-md"><p>Teste a resposta da InfinitePay sem criar uma compra real.</p><div class="payment-test-actions"><button :disabled="busy || retryAvailable" @click="paymentEvent('paid')">Simular aprovação</button><button :disabled="busy || retryAvailable" @click="paymentEvent('declined')">Simular recusa</button></div></section>
           <section v-if="hasAI" class="q-my-md"><label><input v-model="aiLive" type="checkbox" :disabled="busy" @change="reset"> Usar IA real (consome API)</label><label v-if="!aiLive"><small>Resposta de teste</small><textarea v-model="aiResponse" rows="3"></textarea></label></section>
           <details v-if="httpNodes.length"><summary>Respostas das integrações</summary><p>Informe status e body para cada card. <button @click="exampleMocks">Preencher exemplo</button></p><textarea v-model="mocks" aria-label="JSON das respostas de teste" rows="10"></textarea><ul><li v-for="node in httpNodes" :key="node.nodeId">{{ node.data.label }}: <code>{{ node.nodeId }}</code></li></ul></details>
-          <p v-if="error" role="alert" class="sim-error">{{ error }}</p><button v-if="!settingsReady" @click="loadSettings().catch(cause => error = messageOf(cause))">Tentar carregar configuração</button><ul aria-live="polite"><li v-for="(event,index) in events" :key="index">{{ event }}</li></ul>
+          <p v-if="error" role="alert" class="sim-error">{{ error }}</p><button v-if="retryAvailable" :disabled="busy" @click="retry">Tentar novamente</button><button v-if="!settingsReady" @click="retrySettings">Tentar carregar configuração</button><ul aria-live="polite"><li v-for="(event,index) in events" :key="index">{{ event }}</li></ul>
         </aside>
       </div>
     </section>
