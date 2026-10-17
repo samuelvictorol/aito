@@ -1,13 +1,36 @@
 <template>
-  <div class="brand-carousel" aria-label="Carrossel 3D de marcas">
-    <canvas ref="canvas" class="brand-carousel__canvas"></canvas>
+  <div
+    class="brand-carousel"
+    role="region"
+    aria-roledescription="carrossel"
+    aria-label="Cases e produtos"
+    @keydown.left.prevent="stepBrand(-1)"
+    @keydown.right.prevent="stepBrand(1)"
+    @keydown.home.prevent="focusBrand(0)"
+    @keydown.end.prevent="focusBrand(normalizedBrands.length - 1)"
+  >
+    <canvas ref="canvas" class="brand-carousel__canvas" aria-hidden="true"></canvas>
     <div class="brand-carousel__hint">
       <q-icon name="mdi-gesture-swipe-horizontal" size="17px" aria-hidden="true" />
-      <!-- Arraste para explorar · clique para abrir um case -->
+      <span>Arraste para explorar</span>
     </div>
-    <div class="brand-carousel__active" aria-live="polite">
-      <span>{{ activeBrand?.name }}</span>
-      <small>{{ activeBrand?.shortLabel }}</small>
+    <button
+      class="brand-carousel__active"
+      type="button"
+      :disabled="!activeBrand"
+      :aria-label="activeBrand ? `Conhecer o projeto ${activeBrand.name}` : 'Nenhum projeto disponível'"
+      @click="openSelectedBrand"
+    >
+      <span aria-live="polite" aria-atomic="true">{{ activeBrand?.name }}</span>
+      <small>Conhecer projeto ↗</small>
+    </button>
+    <div class="brand-carousel__controls" aria-label="Navegação dos projetos">
+      <button type="button" aria-label="Projeto anterior" :disabled="activeIndex <= 0" @click="stepBrand(-1)">
+        <q-icon name="mdi-chevron-left" size="23px" aria-hidden="true" />
+      </button>
+      <button type="button" aria-label="Próximo projeto" :disabled="activeIndex >= normalizedBrands.length - 1" @click="stepBrand(1)">
+        <q-icon name="mdi-chevron-right" size="23px" aria-hidden="true" />
+      </button>
     </div>
   </div>
 </template>
@@ -25,7 +48,7 @@ const props = defineProps({
 
 const emit = defineEmits(['select'])
 const canvas = ref(null)
-const activeIndex = ref(0)
+const activeIndex = ref(Math.floor(props.brands.length / 2))
 
 const normalizedBrands = computed(() => props.brands.map((brand) => ({
   ...brand,
@@ -52,10 +75,40 @@ let lastFrame = 0
 let resizeObserver
 let raycaster
 let pointer
+let layoutRows = 0
+let activeRow = 0
 const coins = []
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 const lerp = (start, end, amount) => start + (end - start) * amount
+
+function carouselLayout() {
+  const rows = window.innerWidth < 768 && coins.length > 1 ? 2 : 1
+  const columns = Math.ceil(coins.length / rows)
+  return { rows, columns, center: Math.max(columns - 1, 0) / 2 }
+}
+
+function limitOffset(offset) {
+  const { center } = carouselLayout()
+  return clamp(offset, -center, center)
+}
+
+function focusBrand(index) {
+  if (!normalizedBrands.value.length) return
+  const nextIndex = clamp(index, 0, normalizedBrands.value.length - 1)
+  const { rows, center } = carouselLayout()
+  activeRow = nextIndex % rows
+  targetOffset = center - Math.floor(nextIndex / rows)
+  activeIndex.value = nextIndex
+}
+
+function stepBrand(direction) {
+  focusBrand(activeIndex.value + direction)
+}
+
+function openSelectedBrand() {
+  if (activeBrand.value) emit('select', activeBrand.value)
+}
 
 function initials(label) {
   return label
@@ -173,24 +226,25 @@ function createCoin(brand, index) {
 }
 
 function updateCoins(time, delta) {
-  const center = (coins.length - 1) / 2
-  const mobile = window.innerWidth < 768
-  const spacing = mobile ? 1.84 : 1.9
-  const diagonalSlope = mobile ? 0.12 : 0.11
-  const depthStep = mobile ? 0.72 : 0.8
+  const { rows, center } = carouselLayout()
+  const mobile = rows === 2
+  const spacing = mobile ? 2.02 : 2.08
+  const depthStep = mobile ? 0.14 : 0.3
   const hoverIndex = coins.findIndex((coin) => coin.userData.hovered)
   const smoothAmount = 1 - Math.pow(0.0008, Math.max(delta, 0.001))
 
   coins.forEach((coin, index) => {
-    const offset = index - center + currentOffset
+    const column = Math.floor(index / rows)
+    const row = index % rows
+    const offset = column - center + currentOffset
     const distance = Math.abs(offset)
     const hovered = index === hoverIndex
-    const distanceFromHover = hoverIndex >= 0 ? index - hoverIndex : 0
+    const distanceFromHover = hoverIndex >= 0 ? column - Math.floor(hoverIndex / rows) : 0
     const pushDirection = Math.sign(distanceFromHover)
-    const pushStrength = hoverIndex >= 0 && !hovered
+    const pushStrength = hoverIndex >= 0 && !hovered && row === hoverIndex % rows
       ? 0.38 * Math.exp(-Math.abs(distanceFromHover) * 0.9)
       : 0
-    const hoverLiftTarget = hovered ? 0.28 : 0
+    const hoverLiftTarget = hovered ? 0.13 : 0
     const hoverPushTarget = pushDirection * pushStrength
     const hoverTiltTarget = hovered ? -0.075 : 0
 
@@ -199,19 +253,20 @@ function updateCoins(time, delta) {
     coin.userData.hoverTilt = lerp(coin.userData.hoverTilt, hoverTiltTarget, smoothAmount)
 
     coin.position.x = offset * spacing + coin.userData.hoverPush
-    coin.position.y = 0.16 - offset * diagonalSlope + coin.userData.hoverLift
+    coin.position.y = (mobile ? (row === 0 ? 1.2 : -0.9) : 0.2 - offset * 0.035) + coin.userData.hoverLift
     coin.position.z = -0.36 - Math.min(distance, 4) * depthStep + coin.userData.hoverLift * 0.22
-    coin.rotation.y = Math.sin(offset * 0.44) * 0.32 + pointerX * 0.08
-    coin.rotation.x = coin.userData.hoverTilt + offset * 0.035
+    coin.rotation.y = Math.sin(offset * 0.44) * (mobile ? 0.13 : 0.24) + pointerX * 0.06
+    coin.rotation.x = coin.userData.hoverTilt + offset * 0.015
     coin.rotation.z = Math.sin(time * 0.6 + index) * 0.012
-    const scale = Math.max(0.5, 1.04 - distance * 0.2)
+    const scale = mobile ? 0.91 : Math.max(0.72, 1.04 - distance * 0.055)
     const focused = distance < 0.46
-    coin.scale.setScalar(focused ? scale * 1.08 : scale)
+    coin.scale.setScalar(focused ? scale * 1.025 : scale)
     coin.children[0].material.emissiveIntensity = focused ? 0.56 : 0.22
     coin.children[2].material.emissiveIntensity = focused ? 0.92 : 0.42
   })
 
-  const nextIndex = clamp(Math.round(center - currentOffset), 0, coins.length - 1)
+  const columnIndex = clamp(Math.round(center - targetOffset), 0, Math.ceil(coins.length / rows) - 1)
+  const nextIndex = Math.min(columnIndex * rows + activeRow, coins.length - 1)
   if (nextIndex !== activeIndex.value) activeIndex.value = nextIndex
 }
 
@@ -254,8 +309,8 @@ function handlePointerMove(event) {
   updatePointer(event)
   if (!isDragging) return
   dragDistance = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY)
-  const sensitivity = window.innerWidth < 768 ? 0.010 : 0.008
-  targetOffset = clamp(dragStartOffset - (event.clientX - dragStartX) * sensitivity, -3.6, 3.6)
+  const sensitivity = window.innerWidth < 768 ? 0.009 : 0.007
+  targetOffset = limitOffset(dragStartOffset + (event.clientX - dragStartX) * sensitivity)
 }
 
 function handlePointerUp(event) {
@@ -271,9 +326,8 @@ function handlePointerUp(event) {
   const hitCoin = getCoinFromHit(hit)
   const index = hitCoin?.userData?.index
   if (Number.isInteger(index)) {
-    targetOffset = (coins.length - 1) / 2 - index
-    activeIndex.value = index
-    emit('select', normalizedBrands.value[index])
+    focusBrand(index)
+    openSelectedBrand()
   }
 }
 
@@ -290,15 +344,27 @@ function handlePointerLeave() {
 }
 
 function handleWheel(event) {
+  // Vertical scrolling keeps navigating the landing page; horizontal gestures
+  // and Shift + wheel explore the medals without changing sections.
+  if (!event.shiftKey && Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
   event.preventDefault()
-  targetOffset = clamp(targetOffset + Math.sign(event.deltaY) * 0.58, -3.6, 3.6)
+  event.stopPropagation()
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+  targetOffset = limitOffset(targetOffset - Math.sign(delta) * 0.58)
 }
 
 function handleResize() {
   if (!renderer || !camera || !canvas.value) return
   const rect = canvas.value.getBoundingClientRect()
+  const { rows, center } = carouselLayout()
+  if (rows !== layoutRows) {
+    layoutRows = rows
+    activeRow = activeIndex.value % rows
+    targetOffset = center - Math.floor(activeIndex.value / rows)
+    currentOffset = targetOffset
+  }
   camera.aspect = rect.width / Math.max(rect.height, 1)
-  camera.position.z = window.innerWidth < 768 ? 8.8 : 8
+  camera.position.z = rows === 2 ? 8.3 : 8
   camera.updateProjectionMatrix()
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.setSize(rect.width, rect.height, false)
@@ -379,6 +445,7 @@ onBeforeUnmount(() => {
     child.geometry?.dispose()
     if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose())
     else child.material?.dispose()
+    child.material?.map?.dispose()
   })
   renderer?.dispose()
   renderer?.forceContextLoss()
@@ -419,7 +486,7 @@ onBeforeUnmount(() => {
 
 .brand-carousel__hint {
   right: 1rem;
-  bottom: 0.8rem;
+  top: 0.8rem;
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -442,6 +509,46 @@ onBeforeUnmount(() => {
   min-width: 9.5rem;
   padding: 0.58rem 0.8rem;
   border-radius: 0.75rem;
+  max-width: calc(100% - 8rem);
+  text-align: left;
+  cursor: pointer;
+}
+
+.brand-carousel__controls {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.8rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.brand-carousel__controls button {
+  display: grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(19, 188, 157, 0.4);
+  border-radius: 50%;
+  color: #dffff8;
+  background: rgba(3, 17, 19, 0.85);
+  cursor: pointer;
+}
+
+.brand-carousel__active:hover,
+.brand-carousel__controls button:hover:not(:disabled) {
+  border-color: #8fffee;
+  background: rgba(19, 188, 157, 0.14);
+}
+
+.brand-carousel button:focus-visible {
+  outline: 2px solid #8fffee;
+  outline-offset: 3px;
+}
+
+.brand-carousel button:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .brand-carousel__active span {
@@ -459,14 +566,14 @@ onBeforeUnmount(() => {
 @media (max-width: 767px) {
   .brand-carousel,
   .brand-carousel__canvas {
-    min-height: 18rem;
-    height: 18rem;
+    min-height: 22rem;
+    height: 22rem;
   }
 
   .brand-carousel__hint {
     right: 0.7rem;
-    bottom: 0.55rem;
-    max-width: 12rem;
+    top: 0.55rem;
+    max-width: 10rem;
     font-size: 0.58rem;
   }
 
@@ -475,6 +582,15 @@ onBeforeUnmount(() => {
     bottom: 0.55rem;
     min-width: 8rem;
     padding: 0.46rem 0.6rem;
+  }
+
+  .brand-carousel__controls {
+    right: 0.7rem;
+    bottom: 0.55rem;
+  }
+
+  .brand-carousel__hint span {
+    display: none;
   }
 }
 </style>

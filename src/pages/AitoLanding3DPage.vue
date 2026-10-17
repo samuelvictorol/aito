@@ -79,6 +79,9 @@
         :aria-labelledby="section.title ? `${section.id}-title` : `${section.id}-eyebrow`"
       >
         <div class="landing-3d__section-inner">
+          <div v-if="section.id === 'inicio'" class="landing-3d__visual landing-3d__hero-monitor">
+            <LandingVideoMonitor />
+          </div>
           <div class="landing-3d__copy" :style="sectionCopyStyle(index)">
             <p :id="`${section.id}-eyebrow`" class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
             <h1 v-if="index === 0" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h1>
@@ -111,11 +114,8 @@
             </div>
           </div>
 
-          <div class="landing-3d__visual">
-            <template v-if="section.id === 'inicio'">
-              <LandingVideoMonitor />
-            </template>
-            <template v-else-if="section.id === 'marcas'">
+          <div v-if="section.id !== 'inicio'" class="landing-3d__visual">
+            <template v-if="section.id === 'marcas'">
               <AitoBrandCarousel :brands="institutionalBrands" @select="handleBrandSelect" />
             </template>
 
@@ -700,7 +700,11 @@ onBeforeUnmount(() => {
 }
 
 .landing-3d__section-inner { display: grid; width: 100%; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; gap: clamp(2rem, 6vw, 6rem); }
-.landing-3d__section--inicio .landing-3d__section-inner { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); }
+.landing-3d__section--inicio .landing-3d__section-inner { grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr); }
+.landing-3d__section--inicio .landing-3d__copy { order: 2; }
+.landing-3d__section--inicio .landing-3d__hero-monitor { order: 1; }
+.landing-3d__section--marcas .landing-3d__section-inner { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.landing-3d__section--marcas .landing-3d__copy { margin-bottom: 0.5rem; }
 .landing-3d__section--right .landing-3d__copy { order: 2; }
 .landing-3d__section--right .landing-3d__visual { order: 1; }
 .landing-3d__section--center .landing-3d__section-inner { grid-template-columns: 1fr; }

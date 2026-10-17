@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { positionFromSectionCenters } from './landingScrollPosition'
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -34,19 +35,7 @@ export function useLandingScroll(sectionCount = 1) {
         return window.scrollY + rect.top + rect.height / 2
       })
 
-      const nextIndex = centers.findIndex((center) => center >= viewportCenter)
-      let measuredPosition = 0
-
-      if (nextIndex <= 0) {
-        measuredPosition = 0
-      } else if (nextIndex === -1) {
-        measuredPosition = sections.length - 1
-      } else {
-        const previousIndex = nextIndex - 1
-        const range = Math.max(centers[nextIndex] - centers[previousIndex], 1)
-        const amount = clamp((viewportCenter - centers[previousIndex]) / range, 0, 1)
-        measuredPosition = previousIndex + amount
-      }
+      const measuredPosition = positionFromSectionCenters(centers, viewportCenter)
 
       sectionPosition.value = clamp(
         measuredPosition,

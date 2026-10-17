@@ -4,3 +4,10 @@ export const landingHeroVideo = Object.freeze({
   src: '',
   poster: ''
 })
+
+// The product presentation has its own source; adding it does not change the
+// institutional presentation. Keep empty until the product video is available.
+export const botBuilderHeroVideo = Object.freeze({
+  src: '',
+  poster: ''
+})

@@ -124,7 +124,7 @@ const MODEL_KEYFRAMES = {
   obj2: [
     { section: 0, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
     { section: 1, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
-    { section: 2, x: 2.4, y: 0.02, rx: -0.15, ry: -0.65, scale: 1, opacity: 1 },
+    { section: 2, x: 2.4, y: 0.02, rx: 0.35, ry: -0.8, rz: -0.04, scale: 1, opacity: 1 },
     { section: 3, x: 3.8, y: -0.1, rx: 0.38, ry: -0.65, rz: -0.15, scale: 0.94, opacity: 0 },
     { section: 4, x: -4.1, y: -0.9, rx: 0.7, ry: 2.1, rz: -0.35, scale: 0.65, opacity: 0 }
   ],
@@ -1227,9 +1227,10 @@ function updateModels(sectionPosition, elapsedTime) {
     const isBaseDanceRobot = key === 'obj4'
     const isDanceRobot = key === 'obj4Dance'
     let positionY = state.y * verticalScale + mobileYOffset
-    let rotationX = state.rx * rotationFactor
-    let rotationY = state.ry * rotationFactor
-    let rotationZ = state.rz * rotationFactor
+    const poseRotationFactor = key === 'obj2' ? 1 : rotationFactor
+    let rotationX = state.rx * poseRotationFactor
+    let rotationY = state.ry * poseRotationFactor
+    let rotationZ = state.rz * poseRotationFactor
     let scale = state.scale * modelScale
     let opacity = state.opacity
 
@@ -1243,7 +1244,8 @@ function updateModels(sectionPosition, elapsedTime) {
     }
 
     if (!props.soloDance) {
-      const facing = mouseFacingRotation(rotationX, rotationY, rotationZ, rotationFactor)
+      const pointerStrength = rotationFactor * (key === 'obj2' ? 0.55 : 1)
+      const facing = mouseFacingRotation(rotationX, rotationY, rotationZ, pointerStrength)
       rotationX = facing.x
       rotationY = facing.y
       rotationZ = facing.z

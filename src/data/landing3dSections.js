@@ -22,7 +22,7 @@ export const landing3dSections = Object.freeze([
   {
     id: 'marcas',
     eyebrow: '01 / CLIENTES E OPERAÇÕES',
-    title: 'Grandes marcas e pessoas ainda maiores em nosso case.',
+    title: '',
     description: 'Projetos reais, contextos diferentes e a mesma busca: tecnologia funcionando no ritmo do negocio.',
     align: 'left',
     modelKey: 'logo'

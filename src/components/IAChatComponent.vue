@@ -9,12 +9,12 @@
             <q-img src="/ia.gif" width="50px" alt="gif robo atendimento 24h com i.a" />
           </q-btn>
           <div>
-            Assistente Virtual <br />
-            <q-badge color="positive" text-color="white" rounded>
-              online
-            </q-badge>
+            Assistente AITO <br />
+            <span class="assistant-subtitle">Serviços · WhatsApp · IA</span>
           </div>
         </div>
+        <div class="row items-center">
+        <q-btn flat round dense icon="mdi-chat-plus-outline" aria-label="Começar nova conversa" :disable="loading" @click="resetChat" />
         <q-btn
           flat
           round
@@ -24,6 +24,7 @@
           class="chat-close"
           @click="emit('close')"
         />
+        </div>
       </div>
 
       <!-- Lista de mensagens -->
@@ -34,34 +35,33 @@
             :class="msg.from === 'user' ? 'justify-end' : 'justify-start'">
             <div class="chat-bubble animate__animated animate__slower"
               :class="msg.from === 'user' ? 'chat-bubble-user animate__slideInRight' : 'chat-bubble-ia animate__slideInLeft'">
-              <div class="text-body2">
+              <div class="text-body2 chat-text">
                 {{ msg.text }}
               </div>
 
               <!-- Botão de link (só aparece quando o backend mandar link) -->
               <div v-if="msg.link" class="q-mt-xs">
               <q-btn :label="msg.link.label || 'Abrir link'" :href="msg.link.url" target="_blank" color="green-14"
-                  rel="noopener" icon="mdi-open-in-new" size="sm" no-caps />
+                  rel="noopener noreferrer" icon="mdi-open-in-new" size="sm" no-caps />
               </div>
             </div>
           </div>
 
           <div v-if="loading" class="q-mt-xs chat-loading text-caption">
-            IA está respondendo...
+            Preparando sua resposta...
           </div>
 
-          <div v-if="showTriage" class="triage-panel">
-            <div class="triage-title">O que você quer resolver?</div>
+          <div v-if="!loading && suggestions.length" class="triage-panel">
+            <div class="triage-title">{{ hasUserMessages ? 'Continue por aqui' : 'O que você quer resolver?' }}</div>
             <div class="triage-options">
               <q-btn
-                v-for="option in triageOptions"
-                :key="option.label"
+                v-for="option in suggestions"
+                :key="option"
                 outline
                 no-caps
                 class="triage-option"
-                :icon="option.icon"
-                :label="option.label"
-                @click="selectTriage(option)"
+                :label="option"
+                @click="sendMessage(option)"
               />
             </div>
           </div>
@@ -72,266 +72,111 @@
       <!-- Input + botão enviar -->
       <div class="chat-input row items-center q-gutter-sm">
         <q-input v-model="currentMessage" class="col" color="secondary" dark dense outlined
-          placeholder="Digite sua mensagem..." :disable="loading" @keyup.enter="sendMessage()" />
+          placeholder="Conte o que você precisa..." :maxlength="MESSAGE_LIMIT" :disable="loading" aria-label="Mensagem para o assistente AITO" @keyup.enter="sendMessage()" />
 
-        <q-btn class="cta-btn" icon="mdi-send" :loading="loading" :disable="!canSend" @click="sendMessage()" />
+        <q-btn class="cta-btn" icon="mdi-send" aria-label="Enviar mensagem" :loading="loading" :disable="!canSend" @click="sendMessage()" />
       </div>
+      <div class="chat-commercial"><q-btn flat dense no-caps icon="mdi-account-outline" label="Falar com a equipe" :href="commercialUrl" target="_blank" rel="noopener noreferrer" /><span>Você escolhe quando avançar.</span></div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted, reactive } from 'vue'
-import { api } from 'boot/axios' // usando o boot/axios
+import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { api } from 'boot/axios'
+import { MESSAGE_LIMIT, initialMessage, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl, offlineReply } from 'src/utils/siteAssistant'
 
 const emit = defineEmits(['close'])
-const STORAGE_KEY = 'aito_site_chat_messages_v2'
-
-const messages = ref([
-  {
-    from: 'ia',
-    text: 'Olá! Sou a IA da AITO. Selecione uma área para eu entender melhor seu projeto.',
-    link: null
-  },
-])
-
+const route = useRoute()
+const STORAGE_KEY = 'aito_site_chat_messages_v3'
+const messages = ref([initialMessage()])
+const suggestions = ref([...initialSuggestions])
 const currentMessage = ref('')
 const loading = ref(false)
-const triageReady = ref(false)
-const leadCaptureStep = ref('')
-const leadCapture = reactive({ name: '', email: '', phone: '' })
-const triageChoicePending = ref(false)
-let triageTimer
-
-const triageOptions = Object.freeze([
-  {
-    label: 'Sistemas sob demanda',
-    icon: 'mdi-layers-outline',
-    message: 'Quero falar sobre sistemas sob demanda.'
-  },
-  {
-    label: 'Automação',
-    icon: 'mdi-cog-sync-outline',
-    message: 'Quero automatizar processos da minha empresa.'
-  },
-  {
-    label: 'IA para WhatsApp',
-    icon: 'mdi-whatsapp',
-    message: 'Quero uma IA para atendimento no WhatsApp.'
-  },
-  {
-    label: 'Chatbots',
-    icon: 'mdi-robot-outline',
-    message: 'Quero criar ou melhorar um chatbot.'
-  },
-  {
-    label: 'Marketing e SEO',
-    icon: 'mdi-chart-line',
-    message: 'Quero ajuda com marketing, SEO e funil digital.'
-  },
-  {
-    label: 'Outros',
-    icon: 'mdi-dots-horizontal-circle-outline',
-    message: 'Tenho outro tipo de projeto e quero explicar.'
-  }
-])
-
-// ref do QScrollArea (no template: ref="scrollAreaRef")
+let requestController
+let disposed = false
 const scrollAreaRef = ref(null)
-
-// função pra descer o scroll até o final
 const scrollToBottom = () => {
   const sa = scrollAreaRef.value
   if (!sa) return
-
   const target = sa.getScrollTarget?.()
   if (!target) return
-
-  const duration = 200
-  sa.setScrollPosition('vertical', target.scrollHeight, duration)
+  sa.setScrollPosition('vertical', target.scrollHeight, 200)
 }
 
-// carregar histórico do sessionStorage (se existir)
 const loadFromSession = () => {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return
-
     const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      messages.value = parsed.map(m => ({
-        from: m.from,
-        text: m.text,
-        link: m.link || null
-      }))
+    const saved = sanitizeMessages(parsed?.messages)
+    if (saved.length) {
+      messages.value = saved
+      suggestions.value = sanitizeReply({ ia_replies: ['restored'], suggestions: parsed?.suggestions }).suggestions
     }
-  } catch (e) {
-    console.error('Erro ao carregar histórico do chat do sessionStorage:', e)
-  }
+  } catch { /* Storage can be disabled; the conversation remains usable. */ }
 }
 
-// salvar histórico no sessionStorage sempre que mudar
-const saveToSession = (val) => {
+const saveToSession = () => {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(val))
-  } catch (e) {
-    console.error('Erro ao salvar histórico do chat no sessionStorage:', e)
-  }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages: sanitizeMessages(messages.value), suggestions: suggestions.value }))
+  } catch { /* Storage can be full or unavailable. */ }
 }
 
-// desce quando montar + tenta recuperar histórico
 onMounted(async () => {
   loadFromSession()
   await nextTick()
   scrollToBottom()
-  triageTimer = window.setTimeout(() => {
-    triageReady.value = true
-    scrollToBottom()
-  }, 1100)
 })
-
 onBeforeUnmount(() => {
-  window.clearTimeout(triageTimer)
+  disposed = true
+  requestController?.abort()
 })
-
-// sempre que o número de mensagens mudar, desce
 watch(
-  () => messages.value.length,
+  () => [messages.value.length, loading.value],
   async () => {
     await nextTick()
     scrollToBottom()
   }
 )
 
-// sempre que qualquer coisa em messages mudar, salva no sessionStorage
-watch(
-  messages,
-  (val) => {
-    saveToSession(val)
-  },
-  { deep: true }
-)
+watch([messages, suggestions], saveToSession, { deep: true })
+const canSend = computed(() => currentMessage.value.trim().length > 0 && !loading.value)
+const hasUserMessages = computed(() => messages.value.some(message => message.from === 'user'))
+const commercialUrl = computed(() => buildCommercialUrl(messages.value))
 
-// Só pode enviar se tiver texto e não estiver carregando resposta da IA
-const canSend = computed(() => {
-  return currentMessage.value.trim().length > 0 && !loading.value
-})
-
-const showTriage = computed(() => {
-  return triageReady.value && !loading.value && !messages.value.some((message) => message.from === 'user')
-})
-
-async function selectTriage(option) {
-  triageChoicePending.value = true
-  await sendMessage(option.message)
+function resetChat() {
+  if (loading.value) return
+  messages.value = [initialMessage()]
+  suggestions.value = [...initialSuggestions]
+  currentMessage.value = ''
 }
 
 const sendMessage = async (presetText = '') => {
-  const text = (presetText || currentMessage.value).trim()
+  const text = (presetText || currentMessage.value).trim().slice(0, MESSAGE_LIMIT)
   if (!text || loading.value) return
+  const history = sanitizeMessages(messages.value).slice(-24).map(({ from, text }) => ({ from, text }))
   currentMessage.value = ''
-
-  if (leadCaptureStep.value === 'name') {
-    leadCapture.name = text
-    messages.value.push({ from: 'user', text, link: null })
-    messages.value.push({ from: 'ia', text: 'Obrigado. Qual e-mail ou WhatsApp devo passar para um especialista falar com voce?', link: null })
-    leadCaptureStep.value = 'contact'
-    return
-  }
-
-  if (leadCaptureStep.value === 'contact') {
-    const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || ''
-    const phone = text.replace(/\D/g, '')
-    if (!email && phone.length < 8) {
-      messages.value.push({ from: 'user', text, link: null })
-      messages.value.push({ from: 'ia', text: 'Pode me enviar um e-mail valido ou um WhatsApp com DDD?', link: null })
-      return
-    }
-
-    leadCapture.email = email
-    leadCapture.phone = email ? '' : phone
-    messages.value.push({ from: 'user', text, link: null })
-    try {
-      await api.post('/leads', {
-        name: leadCapture.name,
-        email: leadCapture.email,
-        phone: leadCapture.phone,
-        message: messages.value.find((message) => message.from === 'user')?.text || 'Atendimento iniciado pela IA.',
-        source: 'ai-assistant',
-        flowType: 'atendimento-ia',
-        tags: ['atendimento I.A']
-      })
-      messages.value.push({ from: 'ia', text: 'Perfeito. Registrei seu contato e nossa equipe vai falar com voce em breve.', link: null })
-    } catch (error) {
-      messages.value.push({ from: 'ia', text: 'Recebi seus dados. Houve uma instabilidade ao registrar, mas vou continuar te atendendo por aqui.', link: null })
-    }
-    leadCaptureStep.value = 'done'
-    return
-  }
-
-  // mensagem do usuário
-  messages.value.push({
-    from: 'user',
-    text,
-    link: null
-  })
+  messages.value.push({ from: 'user', text, link: null })
   loading.value = true
-
+  requestController = new AbortController()
   try {
-    const payload = {
-      last_message: text,
-      history: messages.value.map(m => ({
-        from: m.from,
-        text: m.text
-      }))
-    }
-    const { data } = await api.post('/talk_site_bot', payload)
-
-    const iaReplies = data.ia_replies || []
-    const link = data.link || null
-
-    // adiciona cada resposta da IA com delay em cascata
-    iaReplies.forEach((reply, index) => {
-      setTimeout(() => {
-        messages.value.push({
-          from: 'ia',
-          text: reply,
-          link: null
-        })
-      }, 1000 * (index + 1)) // 1s a mais por mensagem
-    })
-
-
-    // se vier link do backend, adiciona uma "mensagem especial" com botão
-    if (link && link.url) {
-      messages.value.push({
-        from: 'ia',
-        text: link.label || 'Abrir link',
-        link: {
-          label: link.label || 'Abrir link',
-          url: link.url
-        }
-      })
-    }
-
-    if (triageChoicePending.value) {
-      triageChoicePending.value = false
-      window.setTimeout(() => {
-        messages.value.push({ from: 'ia', text: 'Posso encaminhar seu contexto para um especialista. Como posso te chamar?', link: null })
-        leadCaptureStep.value = 'name'
-      }, Math.max(900, (iaReplies.length + 1) * 650))
-    }
-  } catch (e) {
-    console.error(e)
-    triageChoicePending.value = false
-    messages.value.push({
-      from: 'ia',
-      text: 'Tive um problema ao processar sua mensagem. Tente novamente em instantes.',
-      link: null
-    })
+    const { data } = await api.post('/talk_site_bot', { last_message: text, history, page_path: route.path }, { timeout: 14000, signal: requestController.signal })
+    if (disposed) return
+    appendReply(sanitizeReply(data))
+  } catch {
+    if (disposed) return
+    appendReply(offlineReply(text, history))
   } finally {
     loading.value = false
   }
+}
+
+function appendReply(reply) {
+  reply.replies.forEach((text, index) => messages.value.push({ from: 'ia', text, link: index === reply.replies.length - 1 ? reply.link : null }))
+  suggestions.value = reply.suggestions
+  messages.value = sanitizeMessages(messages.value)
 }
 </script>
 
@@ -382,6 +227,12 @@ const sendMessage = async (presetText = '') => {
   font-size: 0.9rem;
   line-height: 1.4;
 }
+
+.chat-text { white-space: pre-line; }
+.assistant-subtitle { font-size: 11px; color: #94c7bc; font-weight: 500; }
+.chat-commercial { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; color: #a9dbcd; }
+.chat-commercial .q-btn { font-size: 11px; }
+.chat-commercial span { font-size: 10px; color: #89aea6; }
 
 .chat-bubble-user {
   background: linear-gradient(135deg, #13bc9d, #12ad89);
