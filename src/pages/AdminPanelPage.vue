@@ -4,7 +4,7 @@
       <q-page class="admin-app__page">
         <div class="admin-app__shell">
           <header class="admin-app__header">
-            <div class="admin-app__brand"><img src="/favicon.png" alt="" /><div><strong>AITOADMIN</strong></div></div>
+            <div class="admin-app__brand"><img src="/aito-logo-restored.png" alt="" /><div><strong>AITOADMIN</strong></div></div>
             <div class="admin-app__session"><span>{{ firstName }}</span><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div>
           </header>
 

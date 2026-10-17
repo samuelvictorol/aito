@@ -29,12 +29,11 @@
 
     <header class="landing-3d__header">
       <button class="landing-3d__brand" type="button" aria-label="Voltar ao inicio" @click="scrollTo('inicio')">
-        <img src="/favicon.png" alt="" width="34" height="34" />
+        <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
         <span>AITO<span>SOFTWARES</span></span>
       </button>
 
       <div class="landing-3d__header-actions">
-        <router-link class="landing-3d__product-link" to="/whatsappbotbuilder">WhatsApp BotBuilder</router-link>
         <button class="landing-3d__account-link" type="button" aria-label="Abrir acesso" @click="openAccessChooser">
           <q-icon name="mdi-account-outline" aria-hidden="true" />
           <span class="landing-3d__account-label">{{ accountLabel }}</span>
@@ -58,7 +57,7 @@
         :key="section.id"
         type="button"
         :class="{ 'is-active': activeSection === index }"
-        :aria-label="`Ir para a secao ${index + 1}: ${section.title}`"
+        :aria-label="`Ir para a secao ${index + 1}: ${section.title || section.eyebrow}`"
         :aria-current="activeSection === index ? 'step' : undefined"
         @click="scrollTo(section.id)"
       >
@@ -77,13 +76,13 @@
           `landing-3d__section--${section.id}`
         ]"
         data-landing-3d-section
-        :aria-labelledby="`${section.id}-title`"
+        :aria-labelledby="section.title ? `${section.id}-title` : `${section.id}-eyebrow`"
       >
         <div class="landing-3d__section-inner">
           <div class="landing-3d__copy" :style="sectionCopyStyle(index)">
-            <p class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
+            <p :id="`${section.id}-eyebrow`" class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
             <h1 v-if="index === 0" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h1>
-            <h2 v-else :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h2>
+            <h2 v-else-if="section.title" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h2>
             <!-- <p v-if="section.description && !isMobile" class="landing-3d__description">{{ section.description }}</p> -->
 
             <div v-if="section.id === 'inicio'" class="landing-3d__hero-actions">
@@ -101,6 +100,7 @@
               <span><strong>50+</strong> operações atendidas</span>
               <span><strong>200+</strong> entregas</span>
               <span><strong>98%</strong> satisfação</span>
+              <span><strong>+120k</strong> faturado</span>
             </div>
 
             <div v-if="section.id === 'contato'" class="landing-3d__contact-copy">
@@ -112,11 +112,14 @@
           </div>
 
           <div class="landing-3d__visual">
-            <template v-if="section.id === 'marcas'">
+            <template v-if="section.id === 'inicio'">
+              <LandingVideoMonitor />
+            </template>
+            <template v-else-if="section.id === 'marcas'">
               <AitoBrandCarousel :brands="institutionalBrands" @select="handleBrandSelect" />
             </template>
 
-            <template v-else-if="section.id === 'solucoes'">
+            <template v-else-if="section.id === 'cases'">
               <div class="landing-3d__service-grid">
                 <article v-for="service in institutionalServices" :key="service.title" class="landing-3d__service-card">
                   <span class="landing-3d__icon-bubble"><q-icon :name="service.icon" size="21px" aria-hidden="true" /></span>
@@ -127,21 +130,21 @@
                   </ul>
                 </article>
               </div>
-            </template>
 
-            <template v-else-if="section.id === 'cases'">
               <div class="landing-3d__case-grid">
                 <article v-for="item in institutionalCases" :key="item.title" class="landing-3d__case-card">
-                  <div class="landing-3d__case-icon"><q-icon :name="item.icon" size="21px" aria-hidden="true" /></div>
+                  <img v-if="item.image" class="landing-3d__case-logo" :src="item.image" :alt="item.title" loading="lazy" />
+                  <div v-else class="landing-3d__case-icon"><q-icon :name="item.icon" size="21px" aria-hidden="true" /></div>
                   <p class="landing-3d__case-kicker">{{ item.subtitle }}</p>
                   <h3>{{ item.title }}</h3>
                   <p>{{ item.text }}</p>
                   <div class="landing-3d__tag-row">
                     <span v-for="tag in item.tags" :key="tag">{{ tag }}</span>
                   </div>
-                  <a :href="item.href" target="_blank" rel="noopener noreferrer" class="landing-3d__case-link">
+                  <a v-if="item.href" :href="item.href" target="_blank" rel="noopener noreferrer" class="landing-3d__case-link">
                     Conhecer projeto <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
                   </a>
+                  <button v-else type="button" class="landing-3d__case-link" @click="handleBrandSelect({ name: item.title, summary: item.text })">Sobre o projeto <q-icon name="mdi-arrow-top-right" aria-hidden="true" /></button>
                 </article>
               </div>
             </template>
@@ -305,6 +308,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
+import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
 import AitoLoadingGate from 'components/landing3d/AitoLoadingGate.vue'
 import AitoThreeScene from 'components/landing3d/AitoThreeScene.vue'
 import AitoBrandCarousel from 'components/landing3d/AitoBrandCarousel.vue'
@@ -396,7 +400,7 @@ function handleIntroReveal() {
   window.clearTimeout(introTextTimer)
   introTextTimer = window.setTimeout(() => {
     introTextVisible.value = true
-  }, prefersReducedMotion.value ? 220 : 1450)
+  }, prefersReducedMotion.value ? 0 : 250)
 }
 function handleIntroComplete() {
   introPhase.value = 'complete'
@@ -410,7 +414,7 @@ function handleIntroComplete() {
 }
 
 function handleAboutCtaClick() {
-  router.push('/aitolearn')
+  router.push('/whatsappbotbuilder')
 }
 
 function handleBrandSelect(brand) {
@@ -455,7 +459,7 @@ function handleAuthSuccess(data) {
 }
 
 function buildWhatsappUrl(message) {
-  return `https://wa.me/556182529083?text=${encodeURIComponent(message)}`
+  return `https://wa.me/5561982637865?text=${encodeURIComponent(message)}`
 }
 
 async function sendLead() {
@@ -741,7 +745,7 @@ onBeforeUnmount(() => {
 .landing-3d__case-card h3 { font-size: 1.15rem; }
 .landing-3d__tag-row { display: flex; margin-top: auto; gap: 0.35rem; flex-wrap: wrap; }
 .landing-3d__tag-row span { padding: 0.26rem 0.42rem; border: 1px solid rgba(19, 188, 157, 0.25); border-radius: 999px; color: var(--aito-aqua); font-size: 0.58rem; }
-.landing-3d__case-link, .landing-3d__dialog-link { display: inline-flex; margin-top: 0.9rem; align-items: center; gap: 0.3rem; color: var(--aito-aqua); font-size: 0.68rem; font-weight: 800; text-decoration: none; }
+.landing-3d__case-link, .landing-3d__dialog-link { border: 0; background: transparent; padding: 0; cursor: pointer; display: inline-flex; margin-top: 0.9rem; align-items: center; gap: 0.3rem; color: var(--aito-aqua); font-size: 0.68rem; font-weight: 800; text-decoration: none; }
 .landing-3d__case-link .q-icon, .landing-3d__dialog-link .q-icon { font-size: 0.95rem; }
 
 .landing-3d__satisfaction-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -889,4 +893,19 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .landing-3d__copy, .landing-3d__header, .landing-3d__content { transition: none; }
 }
+
+.landing-3d__section--cases .landing-3d__section-inner { display: block; }
+.landing-3d__section--cases .landing-3d__copy { margin-bottom: 1.5rem; }
+.landing-3d__section--cases .landing-3d__visual { display: grid; gap: 2rem; }
+.landing-3d__section--cases .landing-3d__service-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.landing-3d__section--cases .landing-3d__case-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.landing-3d__case-logo { width: 100%; height: 4.5rem; object-fit: contain; object-position: left center; }
+.landing-3d__section--solucoes .landing-3d__section-inner { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); }
+.landing-3d__section--solucoes .landing-3d__copy { order: 1; }
+.landing-3d__section--solucoes .landing-3d__visual { order: 2; min-height: 24rem; }
+.landing-3d__section--solucoes .landing-3d__copy::before { background: none; }
+.landing-3d__section--solucoes .landing-3d__title { font-size: clamp(2.5rem, 4.4vw, 4.6rem); max-width: 14ch; }
+@media(max-width: 1100px) { .landing-3d__section--cases .landing-3d__service-grid, .landing-3d__section--cases .landing-3d__case-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width: 767px) { .landing-3d__section--cases .landing-3d__service-grid, .landing-3d__section--cases .landing-3d__case-grid { grid-template-columns: 1fr; } .landing-3d__section--solucoes .landing-3d__visual { min-height: 19rem; } }
+
 </style>

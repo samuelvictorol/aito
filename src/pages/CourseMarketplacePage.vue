@@ -4,7 +4,7 @@
       <q-page class="course-store__page">
         <div class="course-store__shell">
           <header class="course-store__header">
-            <router-link to="/" class="course-store__brand"><img src="/favicon.png" alt=""><span>AITO<span>LEARN</span></span></router-link>
+            <router-link to="/" class="course-store__brand"><img src="/aito-logo-restored.png" alt=""><span>AITO<span>LEARN</span></span></router-link>
             <div class="course-store__actions"><router-link to="/app" class="course-store__link">{{ isUser ? 'Minha area' : 'Entrar' }}</router-link></div>
           </header>
 

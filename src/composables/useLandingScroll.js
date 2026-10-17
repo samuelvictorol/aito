@@ -144,6 +144,18 @@ export function useLandingScroll(sectionCount = 1) {
   const handleWheel = (event) => {
     if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
 
+    const direction = Math.sign(event.deltaY)
+    const sections = getSections()
+    const current = sections.find(section => {
+      const rect = section.getBoundingClientRect()
+      return rect.top <= 2 && rect.bottom > 2
+    })
+    if (current) {
+      const rect = current.getBoundingClientRect()
+      if (rect.height > window.innerHeight + 4 &&
+          ((direction > 0 && rect.bottom > window.innerHeight + 2) ||
+           (direction < 0 && rect.top < -2))) return
+    }
     event.preventDefault()
     lastWheelAt = performance.now()
 
@@ -152,9 +164,9 @@ export function useLandingScroll(sectionCount = 1) {
     wheelAccumulator += normalizeWheelDelta(event)
     if (Math.abs(wheelAccumulator) < 18) return
 
-    const direction = Math.sign(wheelAccumulator)
+    const stepDirection = Math.sign(wheelAccumulator)
     const nextSection = clamp(
-      activeSection.value + direction,
+      (current ? sections.indexOf(current) : activeSection.value) + stepDirection,
       0,
       Math.max(sectionCount - 1, 0)
     )

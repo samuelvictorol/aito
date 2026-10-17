@@ -95,8 +95,8 @@ const BRAND_NAVY = 0x0b1220
 const STAR_COLORS = [0x1fb694, 0x23917d, 0x50dcc4, 0x8fffee]
 const MODEL_LOAD_TIMEOUT_MS = 9000
 const MODEL_LOAD_CONCURRENCY = 2
-const LANDING_MODEL_KEYS = ['intro', 'logo', 'obj2', 'obj3', 'obj4', 'samuel', 'dion']
-const MOBILE_MODEL_BY_SECTION = ['intro', 'logo', 'obj2', 'obj2', 'obj3', 'samuel', 'dion', 'obj4']
+const LANDING_MODEL_KEYS = ['logo', 'obj2', 'obj3', 'obj4', 'samuel', 'dion']
+const MOBILE_MODEL_BY_SECTION = [null, 'logo', 'obj2', null, 'obj3', 'samuel', 'dion', 'obj4']
 const SURPRISE_MODEL_KEYS = ['obj4', 'obj4Dance', 'samuelDance', 'dionDance']
 const COURSE_MODEL_KEYS = ['obj4']
 
@@ -124,8 +124,8 @@ const MODEL_KEYFRAMES = {
   obj2: [
     { section: 0, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
     { section: 1, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
-    { section: 2, x: 2.4, y: 0.02, rx: -0.15, ry: 0.25, scale: 1, opacity: 1 },
-    { section: 3, x: -2.35, y: -0.1, rx: 0.38, ry: 1.35, rz: -0.15, scale: 0.94, opacity: 1 },
+    { section: 2, x: 2.4, y: 0.02, rx: -0.15, ry: -0.65, scale: 1, opacity: 1 },
+    { section: 3, x: 3.8, y: -0.1, rx: 0.38, ry: -0.65, rz: -0.15, scale: 0.94, opacity: 0 },
     { section: 4, x: -4.1, y: -0.9, rx: 0.7, ry: 2.1, rz: -0.35, scale: 0.65, opacity: 0 }
   ],
   obj3: [
@@ -829,6 +829,9 @@ function createStarLayer(count, size, opacity, spread, color) {
     blending: THREE.AdditiveBlending
   })
 
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'float radius = length(gl_PointCoord - vec2(0.5)); if (radius > 0.5) discard; vec4 diffuseColor = vec4(diffuse, opacity * (1.0 - smoothstep(0.12, 0.5, radius)));')
+  }
   return new THREE.Points(geometry, material)
 }
 
@@ -880,7 +883,10 @@ function createThreadStarLayer(count, minLength, maxLength, opacity, spread) {
 
   const line = new THREE.LineSegments(geometry, material)
   line.frustumCulled = false
-  line.userData.threadStars = { basePositions, lengths, phases }
+  const dots = createStarLayer(count, 0.065, opacity, spread, 0x8fffee)
+  dots.geometry.setAttribute('position', new THREE.BufferAttribute(basePositions.slice(), 3))
+  line.add(dots)
+  line.userData.threadStars = { basePositions, lengths, phases, dots, opacity }
   return line
 }
 
@@ -928,7 +934,7 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
       directionY /= directionLength
     }
 
-    const halfLength = lengths[index] * 0.5
+    const halfLength = lengths[index] * 0.5 * easeInOut(introTransitionMix)
     positions[lineStride] = baseX - directionX * halfLength
     positions[lineStride + 1] = baseY - directionY * halfLength
     positions[lineStride + 2] = baseZ
@@ -937,6 +943,8 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
     positions[lineStride + 5] = baseZ
   }
 
+  layer.material.opacity = stars.opacity * introTransitionMix
+  stars.dots.material.opacity = stars.opacity * (1 - introTransitionMix)
   layer.geometry.getAttribute('position').needsUpdate = true
 }
 
@@ -1198,8 +1206,12 @@ function updateModels(sectionPosition, elapsedTime) {
   Object.entries(modelEntries).forEach(([key, entry]) => {
     const keyframes = MODEL_KEYFRAMES[key]
     if (!keyframes) return
+    if (key === 'intro' || props.introPhase === 'loading' || sectionPosition < 0.05 || (sectionPosition >= 2.5 && sectionPosition < 3.5)) {
+      setObjectOpacity(entry.root, 0)
+      return
+    }
 
-    if (activeMobileModel && key !== activeMobileModel) {
+    if (isMobile && key !== activeMobileModel) {
       setObjectOpacity(entry.root, 0)
       if (entry.mixer) entry.mixer.timeScale = 0
       return
@@ -1321,6 +1333,7 @@ function updateScene(elapsedTime, deltaTime) {
   camera.position.y = pointerCurrent.y * (props.reducedMotion ? 0.02 : 0.1)
   camera.lookAt(0, 0, 0)
 
+  introTransitionMix = lerp(introTransitionMix, props.introPhase === 'loading' ? 0 : 1, props.reducedMotion ? 1 : 0.055)
   starField.rotation.y += deltaTime * (props.reducedMotion ? 0.0008 : 0.004)
   starField.rotation.x = pointerCurrent.y * 0.018
   starField.position.y = props.soloDance

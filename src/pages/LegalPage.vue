@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf" class="legal-page">
     <q-page-container><q-page class="legal-page__page"><main class="legal-page__shell">
-      <header class="legal-page__header"><router-link to="/" class="legal-page__brand"><img src="/favicon.png" alt="" /> AITO<span>SOFTWARES</span></router-link><router-link to="/" class="legal-page__back"><q-icon name="mdi-arrow-left" /> Voltar</router-link></header>
+      <header class="legal-page__header"><router-link to="/" class="legal-page__brand"><img src="/aito-logo-restored.png" alt="" /> AITO<span>SOFTWARES</span></router-link><router-link to="/" class="legal-page__back"><q-icon name="mdi-arrow-left" /> Voltar</router-link></header>
       <article class="legal-page__article"><p class="legal-page__eyebrow">AitoSoftwares / {{ type === 'privacy' ? 'LGPD' : 'Termos' }}</p><h1>{{ policy.title }}</h1><p class="legal-page__updated">Versao {{ policy.version || '1.0' }}</p><div class="legal-page__content">{{ policy.content }}</div><p class="legal-page__contact">Para solicitar acesso, correcao ou exclusao de dados, fale com a AitoSoftwares pelo canal oficial de atendimento.</p></article>
     </main></q-page></q-page-container>
   </q-layout>

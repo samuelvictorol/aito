@@ -1,5 +1,14 @@
 export const institutionalBrands = Object.freeze([
   {
+    name: 'STARLUZ', imgUrl: 'starluz-logo.jpg',
+    summary: 'Iluminação e projetos com uma presença digital dedicada à marca.',
+    href: 'https://starluziluminacao.com.br/'
+  },
+  {
+    name: 'LC Eletrônica', imgUrl: 'logo-lc.png',
+    summary: 'Loja digital de eletrônica com catálogo e painel de gestão.'
+  },
+  {
     name: 'Empregos.com.br',
     imgUrl: 'empregos.jfif',
     summary: 'Experiencia digital para conectar pessoas, oportunidades e operações com mais clareza.',
@@ -113,6 +122,19 @@ export const institutionalServices = Object.freeze([
 ])
 
 export const institutionalCases = Object.freeze([
+  {
+    icon: 'mdi-lightbulb-outline', image: '/starluz-logo.jpg',
+    title: 'STARLUZ', subtitle: 'Iluminação e projetos em uma experiência digital.',
+    text: 'Presença digital para apresentar a marca e suas soluções em iluminação.',
+    tags: ['Iluminação', 'Site', 'Experiência digital'],
+    href: 'https://starluziluminacao.com.br/'
+  },
+  {
+    icon: 'mdi-chip', image: '/logo-lc.png',
+    title: 'LC Eletrônica', subtitle: 'Catálogo e gestão para uma loja de eletrônica.',
+    text: 'Loja responsiva com produtos organizados e painel para acompanhar a operação.',
+    tags: ['Loja', 'Catálogo', 'Gestão']
+  },
   {
     icon: 'mdi-account-circle-outline',
     title: 'FlaviaKamila App',

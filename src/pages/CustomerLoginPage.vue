@@ -4,7 +4,7 @@
       <q-page class="customer-login__page row items-center justify-center">
         <q-form class="customer-login__panel" @submit.prevent="login">
           <div class="customer-login__brand">
-            <q-img src="/favicon.png" width="58px" height="38px" fit="contain" />
+            <q-img src="/aito-logo-restored.png" width="58px" height="38px" fit="contain" />
             <div>
               <div class="text-h6 text-weight-bold">Acesso do Cliente</div>
             </div>

@@ -97,7 +97,7 @@
 
         <header class="aito-dance__header">
           <router-link class="aito-dance__brand" to="/" aria-label="AitoSoftwares - inicio">
-            <img src="/favicon.png" alt="" width="34" height="34" />
+            <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
             <span>AITO<span>SOFTWARES</span></span>
           </router-link>
 

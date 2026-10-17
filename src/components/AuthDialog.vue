@@ -3,7 +3,7 @@
     <q-card class="auth-dialog">
       <q-card-section class="auth-dialog__head">
         <div class="auth-dialog__brand">
-          <q-img src="/favicon.png" width="42px" height="42px" fit="contain" />
+          <q-img src="/aito-logo-restored.png" width="42px" height="42px" fit="contain" />
           <div>
             <span class="auth-dialog__eyebrow">AitoSoftwares</span>
             <h3>{{ authMode === 'login' ? 'Entrar na AitoLearn' : 'Criar acesso' }}</h3>

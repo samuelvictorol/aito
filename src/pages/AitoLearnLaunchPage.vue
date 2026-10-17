@@ -19,7 +19,7 @@
 
     <header class="learn-launch__header">
       <router-link class="learn-launch__brand" to="/" aria-label="Voltar para AitoSoftwares">
-        <img src="/favicon.png" alt="" width="34" height="34" />
+        <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
         <span>AITO<span>LEARN</span></span>
       </router-link>
       <div class="learn-launch__header-actions">

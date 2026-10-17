@@ -8,11 +8,11 @@ export const landing3dSections = Object.freeze([
     modelKey: 'intro',
     cta: {
       label: 'Quero meu diagnóstico grátis',
-      href: 'https://wa.me/556182529083?text=Ola%2C%20quero%20meu%20diagnostico%20gratis%20com%20a%20AitoSoftwares.'
+      href: 'https://wa.me/5561982637865?text=Ol%C3%A1%2C%20equipe%20AitoSoftwares!%20Gostaria%20de%20conversar%20sobre%20meu%20projeto%20e%20agendar%20um%20diagn%C3%B3stico%20gratuito.'
     },
     secondaryCta: {
-      label: 'AitoLearn: estude conosco',
-      to: '/aitolearn'
+      label: 'WhatsApp BotBuilder: Construa seu bot',
+      to: '/whatsappbotbuilder'
     },
     surpriseCta: {
       label: 'Surpreenda-me',
@@ -38,7 +38,7 @@ export const landing3dSections = Object.freeze([
   {
     id: 'cases',
     eyebrow: '03 / CASES E PRODUTOS',
-    title: 'Ideias que ganharam forma, fluxo e resultado.',
+    title: '',
     description: 'Cases para ver o tipo de problema que resolvemos e como pensamos cada entrega.',
     align: 'left',
     modelKey: 'obj2'

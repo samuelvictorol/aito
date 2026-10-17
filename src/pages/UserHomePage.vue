@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf" class="user-app">
     <q-page-container><q-page class="user-app__page"><div class="user-app__shell">
-      <header class="user-app__header"><router-link class="user-app__brand" to="/"><img src="/favicon.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="user-app__session"><NotificationBell /><div><strong>{{ firstName }}</strong><small>{{ sessionUser.email }}</small></div><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
+      <header class="user-app__header"><router-link class="user-app__brand" to="/"><img src="/aito-logo-restored.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="user-app__session"><NotificationBell /><div><strong>{{ firstName }}</strong><small>{{ sessionUser.email }}</small></div><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
       <nav class="user-app__nav" aria-label="Area do usuario"><button v-for="item in menu" :key="item.id" type="button" :class="{ 'is-active': activeMenu === item.id }" @click="activeMenu = item.id"><q-icon :name="item.icon" /> {{ item.label }}</button></nav>
 
       <main v-if="activeMenu === 'courses'" class="user-app__main user-app__wide"><UserCoursesPanel /></main>

@@ -4,7 +4,7 @@
       <q-page class="login-page row items-center justify-center">
         <q-form class="login-panel" @submit="login">
           <div class="login-brand">
-            <q-img src="/favicon.png" width="58px" height="38px" fit="contain" />
+            <q-img src="/aito-logo-restored.png" width="58px" height="38px" fit="contain" />
             <div>
               <div class="text-h6 text-weight-bold">Aito Admin</div>
               <div class="text-caption text-grey-7">Gestão e atendimento AitoSoftwares</div>

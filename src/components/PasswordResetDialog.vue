@@ -3,7 +3,7 @@
     <q-card class="password-reset-card">
       <q-card-section class="password-reset-card__head">
         <div class="password-reset-card__brand">
-          <q-img src="/favicon.png" width="42px" height="42px" fit="contain" />
+          <q-img src="/aito-logo-restored.png" width="42px" height="42px" fit="contain" />
           <div>
             <span class="password-reset-card__eyebrow">AitoSoftwares</span>
             <h3>Recuperar acesso</h3>

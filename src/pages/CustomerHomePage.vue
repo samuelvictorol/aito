@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf" class="customer-app">
     <q-page-container><q-page class="customer-app__page"><div class="customer-app__shell">
-      <header class="customer-app__header"><router-link class="customer-app__brand" to="/"><img src="/favicon.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="customer-app__session"><strong>{{ firstName }}</strong><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
+      <header class="customer-app__header"><router-link class="customer-app__brand" to="/"><img src="/aito-logo-restored.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="customer-app__session"><strong>{{ firstName }}</strong><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
       <nav class="customer-app__nav" aria-label="Area do cliente"><button v-for="item in menu" :key="item.id" type="button" :class="{ 'is-active': activeMenu === item.id }" @click="activeMenu = item.id"><q-icon :name="item.icon" /> {{ item.label }}</button></nav>
 
       <main v-if="activeMenu === 'projects'" class="customer-app__main customer-app__wide"><ProjectManager /></main>

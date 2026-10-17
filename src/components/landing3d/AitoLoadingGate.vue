@@ -94,7 +94,7 @@ onBeforeUnmount(() => {
   place-items: center;
   overflow: hidden;
   color: #f5fffd;
-  background: radial-gradient(circle at center, rgba(0, 9, 10, 0.22) 0 12rem, rgba(0, 0, 0, 0.74) 48%, rgba(0, 0, 0, 0.96) 100%);
+  background: radial-gradient(circle at center, rgba(0, 9, 10, 0.18) 0 12rem, rgba(0, 0, 0, 0.48) 48%, rgba(0, 0, 0, 0.72) 100%);
   isolation: isolate;
   pointer-events: none;
   transition: opacity 1280ms cubic-bezier(0.2, 0.8, 0.2, 1), background 1280ms cubic-bezier(0.2, 0.8, 0.2, 1);
