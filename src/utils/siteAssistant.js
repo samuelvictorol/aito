@@ -1,5 +1,6 @@
+import { assistantMenu, assistantCommercialUrl, guidedAssistantReply } from './siteAssistantFlow.js'
 export const MESSAGE_LIMIT = 1200
-export const initialSuggestions = Object.freeze(['Sistemas e integrações', 'Bot ou IA para WhatsApp', 'Disparos e campanhas'])
+export const initialSuggestions = assistantMenu
 export const initialMessage = () => ({ from: 'ia', text: 'Olá! Sou o assistente da AITO. Ajudo você a encontrar a solução para sua operação: sistemas sob medida, automações, bots, IA no WhatsApp ou campanhas com o Notify Flow. O que você quer resolver?', link: null })
 
 export function safeAssistantLink(link) {
@@ -23,16 +24,17 @@ export function sanitizeMessages(messages) {
 export function sanitizeReply(data) {
   const replies = (Array.isArray(data?.ia_replies) ? data.ia_replies : []).filter(reply => typeof reply === 'string' && reply.trim()).slice(0, 3).map(reply => reply.trim().slice(0, MESSAGE_LIMIT))
   if (!replies.length) throw new Error('Resposta vazia do assistente')
-  const suggestions = (Array.isArray(data?.suggestions) ? data.suggestions : []).filter(item => typeof item === 'string' && item.trim()).slice(0, 3).map(item => item.trim().slice(0, 100))
+  const suggestions = (Array.isArray(data?.suggestions) ? data.suggestions : []).filter(item => typeof item === 'string' && item.trim()).slice(0, 4).map(item => item.trim().slice(0, 100))
   return { replies, suggestions, link: safeAssistantLink(data.link) }
 }
 
 export function buildCommercialUrl(messages) {
-  const summary = sanitizeMessages(messages).filter(message => message.from === 'user').slice(-5).map(message => message.text).join('\n').slice(0, 1200)
-  return `https://wa.me/5561982637865?text=${encodeURIComponent(`Olá! Vim pelo site da AitoSoftwares.${summary ? ` Meu contexto:\n${summary}` : ' Quero conversar sobre uma solução para minha empresa.'}`)}`
+  return assistantCommercialUrl(sanitizeMessages(messages))
 }
 
 export function offlineReply(text, history = []) {
+  const guided = guidedAssistantReply(text, history)
+  if (guided) return sanitizeReply(guided)
   const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const current = normalize(text)
   const humanFeature = /transfer|encaminh|passar|bot.*humano|humano.*bot|assumir|assume/.test(current) && /atendent|human|equipe|pessoa/.test(current)
@@ -45,7 +47,7 @@ export function offlineReply(text, history = []) {
   const context = hasTopic(current) ? current : sanitizeMessages(history).filter(message => message.from === 'user').reverse().map(message => normalize(message.text)).find(hasTopic) || current
   const campaign = !humanFeature && /notify|dispar|campanh|massa|notific/.test(context)
   const whatsapp = humanFeature || /whatsapp|\bwpp\b|bot|\bia\b/.test(context)
-  const detail = campaign ? 'Para campanhas e notificações em lote, conheça o Notify Flow. A equipe pode orientar a configuração e integração da sua operação.' : whatsapp ? 'Para atendimento com fluxos visuais e IA no WhatsApp, conheça o BotBuilder. Se precisar adaptar ao seu sistema, nossa equipe pode avaliar a integração.' : 'A AITO desenvolve sistemas sob medida e integrações para automatizar processos. Você pode continuar explicando seu cenário ou falar com nossa equipe.'
+  const detail = campaign ? 'O Notify Flow organiza notificações em massa pelo WhatsApp com API oficial da Meta, e-mail via Gmail e Telegram. A contratação é exclusivamente pelo WhatsApp da AITO, com atendente real e implementação.' : whatsapp ? 'Para atendimento com fluxos visuais e IA no WhatsApp, conheça o BotBuilder. Você pode comprar o código com licença, token key e manuais ou contratar configuração, deploy e integração pela AITO.' : 'A AITO desenvolve sistemas sob medida e integrações para automatizar processos. Você pode continuar explicando seu cenário ou falar com nossa equipe.'
   return {
     replies: [`A conexão com o assistente oscilou. ${detail}`],
     link: campaign ? { label: 'Conhecer o Notify Flow', url: 'https://notify-flow.onrender.com/' } : whatsapp ? { label: 'Conhecer o WhatsApp BotBuilder', url: '/whatsappbotbuilder' } : { label: 'Conversar com a equipe AITO', url: buildCommercialUrl([...history, { from: 'user', text }]) },

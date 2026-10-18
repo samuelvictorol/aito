@@ -131,6 +131,7 @@ export function useLandingScroll(sectionCount = 1) {
   }
 
   const handleWheel = (event) => {
+    if (event.defaultPrevented || event.target?.closest?.('.q-dialog, [role="dialog"], [data-native-scroll]')) return
     if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
 
     const direction = Math.sign(event.deltaY)

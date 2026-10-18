@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { ref, computed } from 'vue'
 import * as helpers from '../src/utils/siteAssistant.js'
+import { guidedAssistantReply, waitForAssistantBubble, assistantMenu } from '../src/utils/siteAssistantFlow.js'
 
 test('only approved product and commercial destinations become clickable links', () => {
   for (const url of ['javascript:alert(1)', '//evil.test', 'https://wa.me/1234', 'http://notify-flow.onrender.com/', 'https://aitosoftwares.com.evil.test/whatsappbotbuilder', 'https://notify-flow.onrender.com@evil.test/', 'https://notify-flow.onrender.com:444/']) assert.equal(helpers.safeAssistantLink({ url }), null, url)
@@ -29,12 +30,12 @@ test('connection fallback guides the current campaign or bot need to a useful ne
 })
 
 const script = readFileSync(new URL('../src/components/IAChatComponent.vue', import.meta.url), 'utf8').match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*\r?\n/gm, '')
-const create = new Function('ref', 'computed', 'watch', 'nextTick', 'onBeforeUnmount', 'onMounted', 'defineEmits', 'useRoute', 'api', 'helpers', 'sessionStorage', `const { MESSAGE_LIMIT, initialMessage, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl, offlineReply } = helpers; ${script}; return { messages, loading, suggestions, currentMessage, sendMessage, resetChat, loadFromSession }`)
+const create = new Function('ref', 'computed', 'watch', 'nextTick', 'onBeforeUnmount', 'onMounted', 'defineEmits', 'useRoute', 'api', 'helpers', 'sessionStorage', `const { MESSAGE_LIMIT, initialMessage, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl, offlineReply, guidedAssistantReply, waitForAssistantBubble } = helpers; ${script}; return { messages, loading, suggestions, currentMessage, sendMessage, resetChat, loadFromSession, scrollAreaRef, trackScroll, scrollToBottom }`)
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
-function fixture(saved = null) {
+function fixture(saved = null, wait = async () => {}) {
   const requests = []
   let unmount
-  const chat = create(ref, computed, () => {}, () => Promise.resolve(), callback => { unmount = callback }, () => {}, () => () => {}, () => ({ path: '/whatsappbotbuilder' }), { post: (url, payload, options) => { const response = deferred(); requests.push({ url, payload, options, ...response }); return response.promise } }, helpers, { getItem: () => saved, setItem: () => {} })
+  const chat = create(ref, computed, () => {}, () => Promise.resolve(), callback => { unmount = callback }, () => {}, () => () => {}, () => ({ path: '/whatsappbotbuilder' }), { post: (url, payload, options) => { const response = deferred(); requests.push({ url, payload, options, ...response }); return response.promise } }, { ...helpers, guidedAssistantReply, waitForAssistantBubble: wait }, { getItem: () => saved, setItem: () => {} })
   return { chat, requests, unmount: () => unmount() }
 }
 
@@ -54,6 +55,75 @@ test('keeps replies in order, avoids duplicate current input and never forces co
   await second
   assert.equal(chat.messages.value.at(-1).text, 'Vamos montar o fluxo de pedidos.')
   assert.equal(chat.loading.value, false)
+})
+
+test('shows the four entry points and completes both commercial funnels with product and modality', () => {
+  assert.equal(helpers.initialSuggestions.length, 4)
+  const comparison = guidedAssistantReply('Soluções para WhatsApp')
+  assert.deepEqual(comparison.suggestions.slice(0, 2), ['WhatsApp BotBuilder', 'Notify Flow'])
+  assert.match(comparison.ia_replies.join(' '), /API oficial da Meta/)
+  for (const [product, action, expected] of [
+    ['WhatsApp BotBuilder', 'Comprar pelo WhatsApp', /compra do código e licença\/token key/],
+    ['WhatsApp BotBuilder', 'Quero implantação pela AITO', /serviço de configuração, deploy e integração/],
+    ['Notify Flow', 'Contratar Notify Flow pelo WhatsApp', /aquisição e implementação com atendente real/],
+    ['Notify Flow', 'Comprar pelo site', /aquisição e implementação com atendente real/],
+  ]) {
+    const detail = guidedAssistantReply(product)
+    assert.match(detail.ia_replies.join(' '), product === 'Notify Flow' ? /exclusivamente/ : /token key.*v1.*manuais/)
+    const history = [{ from: 'user', text: product }, ...detail.ia_replies.map(text => ({ from: 'ia', text }))]
+    const handoff = guidedAssistantReply(action, history)
+    const url = new URL(handoff.link.url)
+    assert.equal(url.pathname, '/5561982637865')
+    assert.match(url.searchParams.get('text'), expected)
+    assert.match(url.searchParams.get('text'), new RegExp(product))
+  }
+  assert.equal(guidedAssistantReply('Comprar pelo site', [{ from: 'user', text: 'WhatsApp BotBuilder' }]).link.url, '/whatsappbotbuilder')
+  assert.deepEqual(guidedAssistantReply('Voltar ao início').suggestions, [...assistantMenu])
+  assert.equal(helpers.sanitizeReply({ ia_replies: ['Olá'], suggestions: assistantMenu }).suggestions.length, 4)
+})
+
+test('delivers bubbles one at a time and clearing cancels the pending turn', async () => {
+  const waits = []
+  const { chat, requests } = fixture(null, signal => {
+    const pending = deferred()
+    signal.addEventListener('abort', () => pending.reject(new Error('cancelled')), { once: true })
+    waits.push(pending)
+    return pending.promise
+  })
+  const turn = chat.sendMessage('Soluções para WhatsApp')
+  assert.equal(requests.length, 0)
+  assert.equal(chat.messages.value.length, 2)
+  assert.equal(chat.loading.value, true)
+  waits[0].resolve()
+  await Promise.resolve(); await Promise.resolve()
+  assert.equal(chat.messages.value.length, 3)
+  assert.equal(waits.length, 2)
+  chat.resetChat()
+  await turn
+  assert.equal(chat.messages.value.length, 1)
+  assert.equal(chat.loading.value, false)
+  assert.deepEqual(chat.suggestions.value, [...assistantMenu])
+})
+
+test('native scroll follows new messages only while the visitor stays at the bottom', () => {
+  const { chat } = fixture()
+  const area = { scrollTop: 0, scrollHeight: 1200, clientHeight: 400 }
+  chat.scrollAreaRef.value = area
+  chat.scrollToBottom()
+  assert.equal(area.scrollTop, 1200)
+  area.scrollTop = 100
+  chat.trackScroll(); chat.scrollToBottom()
+  assert.equal(area.scrollTop, 100)
+  area.scrollTop = 800
+  chat.trackScroll(); chat.scrollToBottom()
+  assert.equal(area.scrollTop, 1200)
+})
+
+test('bubble delay is cancellable when the assistant closes', async () => {
+  const controller = new AbortController()
+  const pending = waitForAssistantBubble(controller.signal, 'Mensagem', 1)
+  controller.abort()
+  await assert.rejects(pending, /cancelada/)
 })
 
 test('recovers network errors with useful guidance and cancels updates after closing', async () => {

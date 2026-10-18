@@ -1,11 +1,11 @@
 <template>
-  <div class="chat-shell bg-dark text-white">
+  <div class="chat-shell bg-dark text-white" @wheel.stop @touchmove.stop>
     <div class="chat-container">
 
       <!-- Cabeçalho -->
       <div class="row items-center justify-between q-mb-md">
         <div class="text-subtitle1 text-bold row items-center">
-          <q-btn round class="ia-fab cta-btn animate__animated animate__slower animate__fadeInUp q-mr-sm">
+          <q-btn round class="ia-fab cta-btn q-mr-sm" tabindex="-1" aria-hidden="true">
             <q-img src="/ia.gif" width="50px" alt="gif robo atendimento 24h com i.a" />
           </q-btn>
           <div>
@@ -14,7 +14,7 @@
           </div>
         </div>
         <div class="row items-center">
-        <q-btn flat round dense icon="mdi-chat-plus-outline" aria-label="Começar nova conversa" :disable="loading" @click="resetChat" />
+        <q-btn flat round dense class="chat-reset" icon="mdi-broom" aria-label="Limpar conversa" @click="resetChat"><q-tooltip>Limpar conversa e voltar ao início</q-tooltip></q-btn>
         <q-btn
           flat
           round
@@ -28,13 +28,12 @@
       </div>
 
       <!-- Lista de mensagens -->
-      <div class="chat-messages">
-        <q-scroll-area ref="scrollAreaRef" class="chat-scroll">
+      <div ref="scrollAreaRef" class="chat-messages" data-native-scroll tabindex="0" aria-label="Histórico da conversa" @scroll="trackScroll">
           <div class="chat-message-list" role="log" aria-live="polite">
           <div v-for="(msg, index) in messages" :key="index" class="q-mb-lg flex"
             :class="msg.from === 'user' ? 'justify-end' : 'justify-start'">
-            <div class="chat-bubble animate__animated animate__slower"
-              :class="msg.from === 'user' ? 'chat-bubble-user animate__slideInRight' : 'chat-bubble-ia animate__slideInLeft'">
+            <div class="chat-bubble"
+              :class="msg.from === 'user' ? 'chat-bubble-user' : 'chat-bubble-ia'">
               <div class="text-body2 chat-text">
                 {{ msg.text }}
               </div>
@@ -48,7 +47,7 @@
           </div>
 
           <div v-if="loading" class="q-mt-xs chat-loading text-caption">
-            Preparando sua resposta...
+            <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span> AITO está digitando...
           </div>
 
           <div v-if="!loading && suggestions.length" class="triage-panel">
@@ -61,12 +60,14 @@
                 no-caps
                 class="triage-option"
                 :label="option"
-                @click="sendMessage(option)"
+                :href="option === 'Atendimento Humanizado' ? commercialUrl : undefined"
+                :target="option === 'Atendimento Humanizado' ? '_blank' : undefined"
+                :rel="option === 'Atendimento Humanizado' ? 'noopener noreferrer' : undefined"
+                @click="option !== 'Atendimento Humanizado' && sendMessage(option)"
               />
             </div>
           </div>
           </div>
-        </q-scroll-area>
       </div>
 
       <!-- Input + botão enviar -->
@@ -86,23 +87,27 @@ import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import { MESSAGE_LIMIT, initialMessage, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl, offlineReply } from 'src/utils/siteAssistant'
+import { guidedAssistantReply, waitForAssistantBubble } from 'src/utils/siteAssistantFlow'
 
 const emit = defineEmits(['close'])
 const route = useRoute()
-const STORAGE_KEY = 'aito_site_chat_messages_v3'
+const STORAGE_KEY = 'aito_site_chat_messages_v4'
 const messages = ref([initialMessage()])
 const suggestions = ref([...initialSuggestions])
 const currentMessage = ref('')
 const loading = ref(false)
 let requestController
 let disposed = false
+let requestId = 0
+let followLatest = true
 const scrollAreaRef = ref(null)
+function trackScroll() {
+  const target = scrollAreaRef.value
+  if (target) followLatest = target.scrollHeight - target.scrollTop - target.clientHeight < 70
+}
 const scrollToBottom = () => {
-  const sa = scrollAreaRef.value
-  if (!sa) return
-  const target = sa.getScrollTarget?.()
-  if (!target) return
-  sa.setScrollPosition('vertical', target.scrollHeight, 200)
+  const target = scrollAreaRef.value
+  if (target && followLatest) target.scrollTop = target.scrollHeight
 }
 
 const loadFromSession = () => {
@@ -134,7 +139,7 @@ onBeforeUnmount(() => {
   requestController?.abort()
 })
 watch(
-  () => [messages.value.length, loading.value],
+  () => [messages.value.length, loading.value, suggestions.value.length],
   async () => {
     await nextTick()
     scrollToBottom()
@@ -147,7 +152,10 @@ const hasUserMessages = computed(() => messages.value.some(message => message.fr
 const commercialUrl = computed(() => buildCommercialUrl(messages.value))
 
 function resetChat() {
-  if (loading.value) return
+  requestId++
+  requestController?.abort()
+  loading.value = false
+  followLatest = true
   messages.value = [initialMessage()]
   suggestions.value = [...initialSuggestions]
   currentMessage.value = ''
@@ -159,22 +167,30 @@ const sendMessage = async (presetText = '') => {
   const history = sanitizeMessages(messages.value).slice(-24).map(({ from, text }) => ({ from, text }))
   currentMessage.value = ''
   messages.value.push({ from: 'user', text, link: null })
+  followLatest = true
   loading.value = true
-  requestController = new AbortController()
+  const turn = ++requestId
+  const controller = requestController = new AbortController()
   try {
-    const { data } = await api.post('/talk_site_bot', { last_message: text, history, page_path: route.path }, { timeout: 14000, signal: requestController.signal })
-    if (disposed) return
-    appendReply(sanitizeReply(data))
+    const guided = guidedAssistantReply(text, history)
+    const data = guided || (await api.post('/talk_site_bot', { last_message: text, history, page_path: route.path }, { timeout: 14000, signal: controller.signal })).data
+    if (disposed || controller.signal.aborted) return
+    await appendReply(sanitizeReply(data), controller.signal)
   } catch {
-    if (disposed) return
-    appendReply(offlineReply(text, history))
+    if (disposed || controller.signal.aborted) return
+    await appendReply(offlineReply(text, history), controller.signal).catch(() => {})
   } finally {
-    loading.value = false
+    if (turn === requestId && !disposed) loading.value = false
   }
 }
 
-function appendReply(reply) {
-  reply.replies.forEach((text, index) => messages.value.push({ from: 'ia', text, link: index === reply.replies.length - 1 ? reply.link : null }))
+async function appendReply(reply, signal) {
+  suggestions.value = []
+  for (const [index, text] of reply.replies.entries()) {
+    await waitForAssistantBubble(signal, text, index)
+    if (disposed || signal.aborted) return
+    messages.value.push({ from: 'ia', text, link: index === reply.replies.length - 1 ? reply.link : null })
+  }
   suggestions.value = reply.suggestions
   messages.value = sanitizeMessages(messages.value)
 }
@@ -206,11 +222,12 @@ function appendReply(reply) {
 .chat-messages {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
-}
-
-.chat-scroll {
-  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: #329b83 #071d20;
 }
 
 .chat-message-list {
@@ -226,7 +243,9 @@ function appendReply(reply) {
   border-radius: 16px;
   font-size: 0.9rem;
   line-height: 1.4;
+  animation: aito-bubble-in 180ms ease-out;
 }
+@keyframes aito-bubble-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
 .chat-text { white-space: pre-line; }
 .assistant-subtitle { font-size: 11px; color: #94c7bc; font-weight: 500; }
@@ -307,6 +326,13 @@ function appendReply(reply) {
   color: #dffff8;
   background: rgba(19, 188, 157, 0.08);
 }
+.chat-reset { color: #9cebd6; border: 1px solid #387769; background: #174c3c55; margin-right: 8px; }
+.chat-shell .chat-container > .row { flex-shrink: 0; }
+.typing-dots { display: inline-flex; gap: 3px; margin-right: 6px; }
+.typing-dots i { width: 4px; height: 4px; border-radius: 50%; background: #82d9be; animation: aito-typing 1.1s infinite alternate; }
+.typing-dots i:nth-child(2) { animation-delay: .2s; }.typing-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes aito-typing { to { opacity: .25; transform: translateY(-3px); } }
+@media(prefers-reduced-motion: reduce) { .typing-dots i { animation: none; } .chat-bubble { animation: none; } }
 
 @media (max-width: 460px) {
   .chat-shell {
