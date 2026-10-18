@@ -138,7 +138,6 @@
               </div>
 
               <div class="landing-3d__device-showcase"><LandingDeviceGallery :slides="landingShowcase.laptop" device="laptop" label="Sistemas e operações no notebook" :reduced-motion="prefersReducedMotion" /><LandingDeviceGallery :slides="landingShowcase.phone" device="phone" label="Atendimento na palma da mão" :interval="7500" :reduced-motion="prefersReducedMotion" /></div>
-              <p class="landing-3d__illustration-note">Telas ilustrativas. Toque para ampliar e explorar cada detalhe.</p>
             </template>
 
             <template v-else-if="section.id === 'satisfacao'">
@@ -147,7 +146,6 @@
                   <p>{{ item.quote }}</p><footer><span class="landing-3d__speech-avatar" aria-hidden="true">{{ item.name.charAt(0) }}</span><div><strong>{{ item.name }}</strong><small>{{ item.role }}</small></div></footer>
                 </article>
               </div>
-              <p class="landing-3d__illustration-note">Conversas fictícias inspiradas em cenários de projetos. Não representam depoimentos de clientes.</p>
             </template>
 
             <template v-else-if="section.id === 'contato'">
@@ -182,7 +180,7 @@
         </div>
 
         <div v-if="index === 0" class="landing-3d__scroll-cue" aria-hidden="true">
-          <span>Explore</span><i></i>
+          <span>Explorar</span><i></i>
         </div>
       </section>
     </div>
@@ -667,7 +665,6 @@ onBeforeUnmount(() => {
 .landing-3d__section--center .landing-3d__eyebrow { justify-content: center; }
 
 .landing-3d__copy { position: relative; z-index: 2; transition: opacity 180ms linear, transform 180ms linear; }
-.landing-3d__copy::before { position: absolute; z-index: -1; inset: -4.5rem -4rem; content: ''; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(3, 9, 11, 0.92), rgba(3, 9, 11, 0.45) 48%, transparent 75%); pointer-events: none; }
 .landing-3d__eyebrow { display: flex; margin: 0 0 1rem; align-items: center; gap: 0.65rem; color: var(--aito-aqua); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 .landing-3d__eyebrow::before { width: 2rem; height: 1px; content: ''; background: linear-gradient(90deg, var(--aito-teal), transparent); }
 .landing-3d__title { max-width: 13ch; margin: 0; color: #f1fffc; font-family: 'Tomorrow', 'Trebuchet MS', system-ui, sans-serif; font-size: 4.6rem; font-weight: 800; letter-spacing: 0; line-height: 0.98; text-shadow: 0 4px 30px rgba(0, 0, 0, 0.62); background: linear-gradient(135deg, #f3fffd 8%, var(--aito-teal) 68%, var(--aito-aqua)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
@@ -875,7 +872,6 @@ onBeforeUnmount(() => {
 .landing-3d__section--satisfacao .landing-3d__copy { margin-bottom: 1.4rem; }
 .landing-3d__speech-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 1.6rem 1.1rem; }
 .landing-3d__speech { position: relative; padding: 1.1rem; border: 1px solid #35736380; border-radius: 20px 20px 20px 4px; background: linear-gradient(145deg,#0b302eee,#061b20ed); box-shadow: 0 12px 30px #0003; }
-.landing-3d__speech::after { content: ''; position: absolute; bottom: -9px; left: 16px; width: 16px; height: 16px; background: #082326; border-right: 1px solid #35736380; border-bottom: 1px solid #35736380; transform: skewY(-30deg); }
 .landing-3d__speech--accent { margin-top: 1.3rem; background: linear-gradient(145deg,#134b3eee,#0b302ded); border-radius: 20px 20px 4px 20px; }
 .landing-3d__speech p { margin: 0 0 1rem; color: #d8eee6; font-size: .78rem; line-height: 1.65; }
 .landing-3d__speech footer { display: flex; align-items: center; gap: .55rem; }

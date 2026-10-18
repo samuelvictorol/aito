@@ -111,12 +111,12 @@ export const institutionalServices = Object.freeze([
     icon: 'mdi-cog-sync-outline',
     title: 'Automação de processos',
     text: 'Rotinas repetitivas viram fluxos rastreáveis e integrados.',
-    items: ['ERP e CRM', 'Gatilhos', 'Dashboards', 'Governança']
+    items: ['ERP e CRM', 'Backups', 'Dashboards', 'Gatilhos']
   },
   {
-    icon: 'mdi-palette-outline',
-    title: 'Produtos digitais',
-    text: 'Interfaces, plataformas e funis preparados para vender e medir.',
+    icon: 'mdi-monitor-dashboard',
+    title: 'CRM, ERP e Produtos Digitais',
+    text: 'Interfaces, plataformas e funis que conectam pessoas, dados e decisões.',
     items: ['UX e UI', 'SEO e performance', 'Checkout', 'Tracking']
   }
 ])
@@ -163,14 +163,14 @@ export const institutionalCases = Object.freeze([
 
 // Fictional conversations inspired by the kinds of projects shown above.
 export const institutionalTestimonials = Object.freeze([
-  { name: 'Marina', role: 'Loja de iluminação · exemplo', quote: 'Agora o cliente encontra o catálogo e chega à equipe com o pedido bem encaminhado.' },
-  { name: 'Rafael', role: 'Operação em cloud · exemplo', quote: 'Consigo acompanhar os recursos e entender onde a operação precisa evoluir.' },
-  { name: 'Camila', role: 'Educação digital · exemplo', quote: 'Os formulários organizam o diagnóstico e deixam o acompanhamento muito mais simples.' },
-  { name: 'Bruno', role: 'Comércio e estoque · exemplo', quote: 'O atendimento consulta os produtos e nossa equipe assume a conversa quando precisa.' },
-  { name: 'Juliana', role: 'Pagamentos · exemplo', quote: 'A confirmação do pagamento já leva o cliente para o próximo passo do atendimento.' },
-  { name: 'André', role: 'Campanhas e notificações · exemplo', quote: 'Os avisos ficaram organizados e conseguimos acompanhar cada etapa dos envios.' },
-  { name: 'Luiza', role: 'CRM e integrações · exemplo', quote: 'O lead entra pelo site e segue para o processo certo, sem copiar tudo à mão.' },
-  { name: 'Pedro', role: 'Serviços e agendamento · exemplo', quote: 'O bot cuida das primeiras perguntas e eu recebo o contexto antes de conversar.' },
+  { name: 'Marina', role: 'Loja de iluminação', quote: 'Agora o cliente encontra o catálogo e chega à equipe com o pedido bem encaminhado.' },
+  { name: 'Rafael', role: 'Operação em cloud', quote: 'Consigo acompanhar os recursos e entender onde a operação precisa evoluir.' },
+  { name: 'Camila', role: 'Educação digital', quote: 'Os formulários organizam o diagnóstico e deixam o acompanhamento muito mais simples.' },
+  { name: 'Bruno', role: 'Comércio e estoque', quote: 'O atendimento consulta os produtos e nossa equipe assume a conversa quando precisa.' },
+  { name: 'Juliana', role: 'Pagamentos', quote: 'A confirmação do pagamento já leva o cliente para o próximo passo do atendimento.' },
+  { name: 'André', role: 'Campanhas e notificações', quote: 'Os avisos ficaram organizados e conseguimos acompanhar cada etapa dos envios.' },
+  { name: 'Luiza', role: 'CRM e integrações', quote: 'O lead entra pelo site e segue para o processo certo, sem copiar tudo à mão.' },
+  { name: 'Pedro', role: 'Serviços e agendamento', quote: 'O bot cuida das primeiras perguntas e eu recebo o contexto antes de conversar.' },
 ])
 
 export const institutionalFounders = Object.freeze([
@@ -178,8 +178,8 @@ export const institutionalFounders = Object.freeze([
     id: 'samuel',
     name: 'Samuel Victor',
     role: 'Produto, negócio e fullstack',
-    skills: ['Produto digital', 'UX/UI', 'Vue.js', 'Node.js', 'Integrações', 'IA'],
-    summary: 'Conecta produto, venda e experiência para transformar ideia em software util, bonito e mensurável.',
+    skills: ['Engenharia de Produto', 'UX/UI', 'Vue.js', 'Node.js', 'Integrações', 'IA', 'BPMN', 'Bot e Automação'],
+    summary: 'Especialista em Tecnologia e Desenvolvimento de Softwares Fullstack. Mais de 6 anos de experiência com foco em experiência do usuário e integração de sistemas.',
     image: '/samuel.png',
     instagram: 'https://www.instagram.com/samuelvictorol/',
     portfolio: 'https://samuelvictorol.github.io/portfolio'
@@ -188,8 +188,8 @@ export const institutionalFounders = Object.freeze([
     id: 'dion',
     name: 'Dion Vitor',
     role: 'Arquitetura, cloud e segurança',
-    skills: ['Arquitetura', 'Cloud', 'Segurança', 'APIs', 'Escalabilidade', 'Observabilidade'],
-    summary: 'Desenha sistemas preparados para a operação real, com arquitetura clara, escala e segurança.',
+    skills: ['AWS', 'GCP', 'Security', 'DevOps', 'Escalabilidade', 'Ambientes de Alta Disponibilidade', 'Monitoramento e Observabilidade', 'Python', 'Integrações'],
+    summary: 'Especialista em Arquitetura de Sistemas e Cloud Computing. Mais de 8 anos de experiência com foco em segurança, escalabilidade e integração de sistemas.',
     image: '/dion.png',
     instagram: 'https://www.instagram.com/dionn_vitor/',
     portfolio: 'https://www.linkedin.com/in/dion-v%C3%ADtor-a519631aa/'

@@ -12,7 +12,6 @@
     <canvas ref="canvas" class="brand-carousel__canvas" aria-hidden="true"></canvas>
     <div class="brand-carousel__hint">
       <q-icon name="mdi-gesture-swipe-horizontal" size="17px" aria-hidden="true" />
-      <span>Arraste para explorar</span>
     </div>
     <button
       class="brand-carousel__active"
