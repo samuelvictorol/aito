@@ -2,12 +2,16 @@
 // captures. fullSrc is optional and is used by the enlarged view.
 export const landingShowcase = {
   laptop: [
-    { src: '/product-demo/flow-1440.webp', fullSrc: '/product-demo/flow-1440.png', alt: 'Editor visual de atendimento e automação' },
-    { src: '/product-demo/chats-1440.webp', fullSrc: '/product-demo/chats-1440.png', alt: 'Conversas, IA e equipe no mesmo painel' },
-    { src: '/product-demo/adapt-1440.webp', fullSrc: '/product-demo/adapt-1440.png', alt: 'Automação integrada a um sistema de gestão' },
+    { src: '/cases/eletro-nogueira-desktop.webp', alt: 'Eletro Nogueira: atendimento no WhatsApp com IA, catálogo e carrinho' },
+    { src: '/cases/lc-eletronica-desktop.webp', alt: 'LC Eletrônica: conversas e agendamento de atendimento técnico' },
+    { src: '/cases/eletrica-capital-desktop.webp', alt: 'Elétrica Capital: painel de vendas, pedidos e estoque' },
+    { src: '/cases/starluz-desktop.webp', alt: 'StarLuz: loja online de iluminação e materiais elétricos' },
   ],
   phone: [
-    { src: '/product-demo/order-720.webp', fullSrc: '/product-demo/order-720.png', alt: 'Pedido pelo WhatsApp, do catálogo à confirmação' },
-    { src: '/product-demo/phone-720.webp', fullSrc: '/product-demo/phone-720.png', alt: 'Atendimento e transferência para uma pessoa da equipe' },
+    { src: '/cases/eletro-nogueira-mobile.webp', alt: 'Eletro Nogueira: filas e triagem de atendimentos no celular' },
+    { src: '/cases/eletrica-capital-mobile.webp', alt: 'Elétrica Capital: indicadores de vendas e gestão no celular' },
+    { src: '/cases/afiliados-mobile.webp', alt: 'Programa de afiliados: indicações, pontos e evolução dos resultados' },
+    { src: '/cases/logs-mobile.webp', alt: 'Logs do sistema: backups, sincronizações e integridade dos dados' },
+    { src: '/cases/aito-notify-mobile.webp', alt: 'AitoNotify: notificações e integrações com WhatsApp, Telegram e Gmail' },
   ],
 }
