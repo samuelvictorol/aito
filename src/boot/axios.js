@@ -13,7 +13,6 @@ const api = axios.create({ baseURL: apiBaseURL })
 const sessionEntries = [
   { tokenKey: 'aito_user_token', userKey: 'aito_user', defaultPath: '/?auth=login' },
   { tokenKey: 'aito_admin_token', userKey: 'aito_admin_user', defaultPath: '/admin/login' },
-  { tokenKey: 'aito_seller_token', userKey: 'aito_seller_user', defaultPath: '/vendedor/login' },
   { tokenKey: 'aito_affiliate_token', userKey: 'aito_affiliate_user', defaultPath: '/affiliate' },
 ]
 

@@ -1,12 +1,14 @@
 <script setup>
 import { ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { waApi, messageOf } from 'src/services/whatsapp'
+import { api } from 'boot/axios'
 
-const props = defineProps({ licenses: { type: Array, default: () => [] }, phone: { type: String, default: '' } })
+defineProps({ licenses: { type: Array, default: () => [] } })
 const emit = defineEmits(['changed'])
 const $q = useQuasar()
 const visible = ref({})
+const headers = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('aito_admin_token') || ''}` } })
+const messageOf = error => error.response?.data?.message || 'Não foi possível atualizar a licença.'
 async function copy(token) {
   try {
     await navigator.clipboard.writeText(token)
@@ -15,8 +17,8 @@ async function copy(token) {
     $q.notify({ type: 'negative', message: 'Não foi possível copiar. Exiba o token para copiá-lo manualmente.' })
   }
 }
-async function rotate(license) { try { const { data } = await waApi.post(`/contacts/${encodeURIComponent(props.phone)}/licenses/${license._id}/rotate`); Object.assign(license, data.data); emit('changed'); $q.notify({ type: 'positive', message: 'Token renovado.' }) } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
-async function toggle(license) { try { const { data } = await waApi.patch(`/contacts/${encodeURIComponent(props.phone)}/licenses/${license._id}`, { active: !license.active }); Object.assign(license, data.data); emit('changed') } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
+async function rotate(license) { try { const { data } = await api.post(`/admin/botbuilder/licenses/${encodeURIComponent(license._id)}/rotate`, {}, headers()); Object.assign(license, data.data); emit('changed'); $q.notify({ type: 'positive', message: 'Token renovado.' }) } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
+async function toggle(license) { try { const { data } = await api.patch(`/admin/botbuilder/licenses/${encodeURIComponent(license._id)}`, { active: !license.active }, headers()); Object.assign(license, data.data); emit('changed') } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
 </script>
 
 <template>

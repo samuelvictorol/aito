@@ -92,14 +92,10 @@ const routes = [
     component: () => import('pages/AdminPanelPage.vue'),
   },
   {
-    path: '/vendedor/login',
-    name: 'seller-login',
-    component: () => import('pages/SellerLoginPage.vue'),
-  },
-  {
     path: '/vendedor',
-    name: 'seller-chat',
-    component: () => import('pages/SellerChatPage.vue'),
+    alias: ['/vendedor/login', '/vendedor/chat'],
+    name: 'whatsapp-moved',
+    component: () => import('pages/WhatsAppMovedPage.vue'),
   },
   // Always leave this as last one,
   // but you can also remove it

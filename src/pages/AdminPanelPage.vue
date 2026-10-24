@@ -8,7 +8,7 @@
             <div class="admin-app__session"><span>{{ firstName }}</span><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div>
           </header>
 
-          <section class="admin-app__hero" :class="{ 'admin-app__hero--compact': tab === 'whatsapp' }">
+          <section class="admin-app__hero">
             <div><p class="admin-app__eyebrow">Painel admin</p></div>
             <div class="admin-app__stats"><span><strong>{{ leads.length }}</strong>Leads</span><span><strong>{{ users.length }}</strong>Usuarios</span><span><strong>{{ customers.length }}</strong>Clientes</span></div>
           </section>
@@ -17,13 +17,11 @@
             <q-tab name="projects" icon="mdi-folder-star-outline" label="Projetos" />
             <q-tab name="overview" icon="mdi-finance" label="Dashboard" />
             <q-tab name="detail" icon="mdi-view-grid-outline" label="Detalhar" />
-            <q-tab name="whatsapp" icon="mdi-whatsapp" label="WhatsApp" />
             <q-tab name="botbuilder-licenses" icon="mdi-shield-key-outline" label="Licenças" />
             <q-tab name="lgpd" icon="mdi-shield-lock-outline" label="LGPD" />
           </q-tabs>
 
           <q-tab-panels v-model="tab" class="admin-app__panels">
-            <q-tab-panel name="whatsapp" class="q-pa-none"><WhatsAppWorkspace /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="overview"><FinanceDashboard admin title="" /></q-tab-panel>
 
@@ -80,11 +78,8 @@
 </template>
 
 <script>
-import { canLeaveBotEditor } from 'src/services/bot-editor-guard'
 import { api } from 'boot/axios'
-import { defineAsyncComponent } from 'vue'
-const WhatsAppWorkspace = defineAsyncComponent(() => import('components/whatsapp/WhatsAppWorkspace.vue'))
-import LicenseTokenList from 'components/whatsapp/LicenseTokenList.vue'
+import LicenseTokenList from 'components/LicenseTokenList.vue'
 import FinanceDashboard from 'components/FinanceDashboard.vue'
 import AdminCostManager from 'components/AdminCostManager.vue'
 import SupportTicketsPanel from 'components/SupportTicketsPanel.vue'
@@ -105,7 +100,7 @@ import BotBuilderLicensesManager from 'components/BotBuilderLicensesManager.vue'
 
 export default {
   name: 'AdminPanelPage',
-  components: { WhatsAppWorkspace, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, GeneratedCredentialsDialog },
+  components: { LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, GeneratedCredentialsDialog },
   data () {
     return {
       tab: 'projects', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
@@ -120,8 +115,8 @@ export default {
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
     navigationTab: {
-      get () { return ['projects', 'overview', 'detail', 'lgpd', 'whatsapp', 'botbuilder-licenses'].includes(this.tab) ? this.tab : 'detail' },
-      set (value) { if (value !== this.tab && canLeaveBotEditor()) this.tab = value }
+      get () { return ['projects', 'overview', 'detail', 'lgpd', 'botbuilder-licenses'].includes(this.tab) ? this.tab : 'detail' },
+      set (value) { this.tab = value }
     }
   },
   mounted () {
@@ -152,7 +147,7 @@ export default {
     async savePolicy () { this.loading.policy = true; try { const { data } = await api.put(`/admin/policies/${this.policyDraft.type}`, this.policyDraft, this.headers); this.policyDraft = data.data; this.policies = this.policies.map(item => item.type === data.data.type ? data.data : item); this.$q.notify({ type: 'positive', message: 'Documento atualizado.' }) } catch (error) { this.notifyError(error) } finally { this.loading.policy = false } },
     deletePolicy () { this.$q.dialog({ title: 'Excluir documento', message: 'A rota publica usara o texto padrao.', cancel: true, persistent: true }).onOk(async () => { try { await api.delete(`/admin/policies/${this.policyDraft.type}`, this.headers); await this.loadPolicies(); this.$q.notify({ type: 'positive', message: 'Documento excluido.' }) } catch (error) { this.notifyError(error) } }) },
     notifyError (error) { this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel concluir a operacao.' }) },
-    logout () { if (!canLeaveBotEditor()) return; localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
+    logout () { localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
   }
 }
 </script>
@@ -168,10 +163,6 @@ export default {
 .admin-app__brand small { display: block; margin-top: .2rem; color: rgba(229,255,250,.55); font-size: .65rem; }
 .admin-app__session { color: #8fffee; font-size: .76rem; }
 .admin-app__hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; padding: 7vh 0 2.5rem; }
-.admin-app__hero--compact { padding: 1rem 0; align-items: center; }
-.admin-app__hero--compact .admin-app__stats { display: none; }
-.admin-app__hero--compact .admin-app__eyebrow { margin: 0; }
-.admin-app .admin-app__hero.admin-app__hero--compact { padding: 1rem 0; align-items: center; }
 .admin-app__eyebrow { margin: 0 0 .7rem; color: #8fffee; font-size: .67rem; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
 .admin-app__hero h1, .admin-app__section h2 { margin: 0; color: #effffb; font-size: clamp(2rem, 4vw, 4rem); line-height: 1; }
 .admin-app__hero p:last-child, .admin-app__section-head span { max-width: 32rem; color: rgba(229,255,250,.62); line-height: 1.5; font-size: .8rem; }
