@@ -27,8 +27,6 @@
         </div>
       </div>
 
-      <q-form v-if="!conversationToken" class="chat-contact-gate" @submit="identify"><q-icon name="mdi-chat-processing-outline" size="48px" color="teal-3"/><h2>Vamos começar pelo seu nome.</h2><p>Informe um contato para conversar com a AITO e facilitar a continuidade do atendimento.</p><q-input v-model.trim="visitor.name" dark outlined label="Seu nome" maxlength="100" :rules="[v => v.length >= 2 || 'Informe seu nome']"/><q-btn-toggle v-model="contactMode" no-caps spread :options="[{label:'Usar e-mail',value:'email'},{label:'Usar telefone',value:'phone'}]" toggle-color="teal-7" class="q-mb-md"/><q-input v-model.trim="visitor.contact" dark outlined :type="contactMode === 'email' ? 'email' : 'tel'" :label="contactMode === 'email' ? 'Seu e-mail' : 'Telefone com DDD'" :rules="[v => Boolean(v.trim()) || 'Informe um contato']"/><q-btn unelevated color="teal-7" no-caps type="submit" label="Começar conversa" :loading="identifying" class="full-width"/><q-banner v-if="identificationError" class="bg-red-10 text-white q-mt-md" rounded>{{ identificationError }}</q-banner><p class="contact-privacy">Usaremos esses dados para este atendimento. <router-link to="/politica-privacidade">Política de privacidade</router-link></p></q-form>
-      <template v-else>
       <!-- Lista de mensagens -->
       <div ref="scrollAreaRef" class="chat-messages" data-native-scroll tabindex="0" aria-label="Histórico da conversa" @scroll="trackScroll">
           <div class="chat-message-list" role="log" aria-live="polite">
@@ -52,7 +50,7 @@
             <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span> AITO está digitando...
           </div>
 
-          <div v-if="!loading && suggestions.length" class="triage-panel">
+          <div v-if="conversationToken && !loading && suggestions.length" class="triage-panel">
             <div class="triage-title">{{ hasUserMessages ? 'Continue por aqui' : 'O que você quer resolver?' }}</div>
             <div class="triage-options">
               <q-btn
@@ -70,14 +68,14 @@
       </div>
 
       <!-- Input + botão enviar -->
-      <div class="chat-input row items-center q-gutter-sm">
+      <q-form class="chat-input row items-center q-gutter-sm" @submit.prevent="sendMessage()">
         <q-input v-model="currentMessage" class="col" color="secondary" dark dense outlined
-          placeholder="Conte o que você precisa..." :maxlength="MESSAGE_LIMIT" :disable="loading" aria-label="Mensagem para o assistente AITO" @keyup.enter="sendMessage()" />
+          :placeholder="inputPlaceholder" :maxlength="conversationToken ? MESSAGE_LIMIT : identificationStep === 'name' ? 100 : 400" :disable="loading" aria-label="Mensagem para o assistente AITO" :autocomplete="conversationToken ? 'off' : identificationStep === 'name' ? 'name' : 'off'" />
 
-        <q-btn class="cta-btn" icon="mdi-send" aria-label="Enviar mensagem" :loading="loading" :disable="!canSend" @click="sendMessage()" />
-      </div>
-      <div class="chat-commercial"><q-btn flat dense no-caps icon="mdi-account-outline" label="Falar com a equipe" :href="commercialUrl" target="_blank" rel="noopener noreferrer" /><span>Você escolhe quando avançar.</span></div>
-      </template>
+        <q-btn class="cta-btn" type="submit" icon="mdi-send" aria-label="Enviar mensagem" :loading="loading" :disable="!canSend" />
+      </q-form>
+      <p v-if="!conversationToken" class="contact-privacy">Usaremos seu nome e contato para este atendimento. <router-link to="/politica-privacidade">Política de privacidade</router-link></p>
+      <div v-else class="chat-commercial"><q-btn flat dense no-caps icon="mdi-account-outline" label="Falar com a equipe" :href="commercialUrl" target="_blank" rel="noopener noreferrer" /><span>Você escolhe quando avançar.</span></div>
     </div>
   </div>
 </template>
@@ -86,29 +84,49 @@
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
-import { MESSAGE_LIMIT, initialMessage, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl } from 'src/utils/siteAssistant'
+import { MESSAGE_LIMIT, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl } from 'src/utils/siteAssistant'
 import { waitForAssistantBubble } from 'src/utils/siteAssistantFlow'
+import { identityGreeting, identityContactQuestion, identityWelcome, parseVisitorName, parseVisitorContact } from 'src/utils/siteAssistantIdentity'
 
 const emit = defineEmits(['close'])
 const route = useRoute()
 const STORAGE_KEY = 'aito_site_chat_messages_v4'
-const messages = ref([initialMessage()])
-const suggestions = ref([...initialSuggestions])
+const messages = ref([{ from: 'ia', text: identityGreeting(), link: null }])
+const suggestions = ref([])
 const currentMessage = ref('')
 const loading = ref(false)
-const identificationError = ref('')
-const conversationToken = ref(''), identifying = ref(false), visitor = reactive({ name: '', contact: '' }), contactMode = ref('email')
-async function identify() {
-  if (identifying.value) return
-  identifying.value = true; identificationError.value = ''
+const conversationToken = ref(''), identifying = ref(false), identificationStep = ref('name'), visitor = reactive({ name: '', email: '', phone: '' })
+const inputPlaceholder = computed(() => conversationToken.value ? 'Conte o que você precisa...' : identificationStep.value === 'name' ? 'Digite seu nome...' : 'Seu e-mail e/ou telefone com DDD...')
+async function identify(text) {
+  if (identifying.value || loading.value) return
+  const turn = ++requestId
+  const controller = requestController = new AbortController()
+  identifying.value = loading.value = true
+  currentMessage.value = ''; followLatest = true
+  messages.value.push({ from: 'user', text, link: null })
   try {
-    const result = (await api.post('/site-assistant/start', { name: visitor.name, [contactMode.value]: visitor.contact, pagePath: route.path })).data
-    if (disposed) return
+    if (identificationStep.value === 'name') {
+      const name = parseVisitorName(text)
+      if (!name) { await appendReply({ replies: ['Como posso chamar você? Envie seu nome, por favor.'], suggestions: [], link: null }, controller.signal); return }
+      visitor.name = name
+      identificationStep.value = 'contact'
+      await appendReply({ replies: [identityContactQuestion(name)], suggestions: [], link: null }, controller.signal)
+      return
+    }
+    const contact = parseVisitorContact(text)
+    if (!contact) { await appendReply({ replies: ['Não consegui reconhecer o contato. Pode enviar um e-mail válido, um telefone com DDD ou os dois na mesma mensagem?'], suggestions: [], link: null }, controller.signal); return }
+    Object.assign(visitor, contact)
+    const result = (await api.post('/site-assistant/start', { name: visitor.name, ...contact, pagePath: route.path }, { timeout: 14000, signal: controller.signal })).data
+    if (disposed || controller.signal.aborted || turn !== requestId) return
+    if (!/^[\w-]{43}$/.test(result.conversationToken || '')) throw new Error('Invalid visitor session')
     conversationToken.value = result.conversationToken
     try { sessionStorage.setItem('aito_site_chat_identity_v1', JSON.stringify({ token: result.conversationToken, name: result.name })) } catch { /* The current conversation also works without browser storage. */ }
-    messages.value = [initialMessage()]; suggestions.value = [...initialSuggestions]
-  } catch (error) { if (!disposed) identificationError.value = error.response?.data?.message || 'Não foi possível iniciar a conversa. Confira seu contato e tente novamente.' }
-  finally { identifying.value = false }
+    await appendReply({ replies: [result.welcomeMessage || identityWelcome(visitor.name)], suggestions: [...initialSuggestions], link: null }, controller.signal)
+    saveToSession()
+  } catch (error) {
+    if (disposed || controller.signal.aborted || turn !== requestId) return
+    await appendReply({ replies: [error.response?.data?.message || 'Não consegui iniciar seu atendimento agora. Pode enviar o contato novamente em instantes?'], suggestions: [], link: null }, controller.signal).catch(() => {})
+  } finally { if (turn === requestId && !disposed) identifying.value = loading.value = false }
 }
 let requestController
 let disposed = false
@@ -125,6 +143,7 @@ const scrollToBottom = () => {
 }
 
 const loadFromSession = () => {
+  if (!conversationToken.value) return
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return
@@ -138,6 +157,7 @@ const loadFromSession = () => {
 }
 
 const saveToSession = () => {
+  if (!conversationToken.value) return
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages: sanitizeMessages(messages.value), suggestions: suggestions.value }))
   } catch { /* Storage can be full or unavailable. */ }
@@ -145,7 +165,11 @@ const saveToSession = () => {
 
 onMounted(async () => {
   try { const saved = JSON.parse(sessionStorage.getItem('aito_site_chat_identity_v1') || 'null'); if (/^[\w-]{43}$/.test(saved?.token || '')) { conversationToken.value = saved.token; visitor.name = saved.name || '' } } catch { /* Identification is requested again if storage is unavailable. */ }
-  loadFromSession()
+  if (conversationToken.value) {
+    messages.value = [{ from: 'ia', text: identityWelcome(visitor.name), link: null }]
+    suggestions.value = [...initialSuggestions]
+    loadFromSession()
+  }
   await nextTick()
   scrollToBottom()
 })
@@ -167,20 +191,22 @@ const hasUserMessages = computed(() => messages.value.some(message => message.fr
 const commercialUrl = computed(() => buildCommercialUrl(messages.value))
 
 function resetChat() {
-  conversationToken.value = ''; identificationError.value = ''
-  try { sessionStorage.removeItem('aito_site_chat_identity_v1') } catch { /* Storage can be disabled. */ }
+  conversationToken.value = ''; identificationStep.value = 'name'
+  Object.assign(visitor, { name: '', email: '', phone: '' })
+  try { sessionStorage.removeItem('aito_site_chat_identity_v1'); sessionStorage.removeItem(STORAGE_KEY) } catch { /* Storage can be disabled. */ }
   requestId++
   requestController?.abort()
-  loading.value = false
+  identifying.value = loading.value = false
   followLatest = true
-  messages.value = [initialMessage()]
-  suggestions.value = [...initialSuggestions]
+  messages.value = [{ from: 'ia', text: identityGreeting(), link: null }]
+  suggestions.value = []
   currentMessage.value = ''
 }
 
 const sendMessage = async (presetText = '') => {
   const text = (presetText || currentMessage.value).trim().slice(0, MESSAGE_LIMIT)
-  if (!text || loading.value || !conversationToken.value) return
+  if (!text || loading.value || identifying.value) return
+  if (!conversationToken.value) return identify(text)
   const history = sanitizeMessages(messages.value).slice(-24).map(({ from, text }) => ({ from, text }))
   currentMessage.value = ''
   messages.value.push({ from: 'user', text, link: null })
@@ -194,7 +220,11 @@ const sendMessage = async (presetText = '') => {
     await appendReply(sanitizeReply(data), controller.signal)
   } catch (error) {
     if (disposed || controller.signal.aborted) return
-    if (error.response?.status === 401) { conversationToken.value = ''; sessionStorage.removeItem('aito_site_chat_identity_v1') }
+    if (error.response?.status === 401) {
+      conversationToken.value = ''; identificationStep.value = 'name'
+      Object.assign(visitor, { name: '', email: '', phone: '' })
+      try { sessionStorage.removeItem('aito_site_chat_identity_v1'); sessionStorage.removeItem(STORAGE_KEY) } catch { /* Storage can be disabled. */ }
+    }
     await appendReply({ replies: [error.response?.data?.message || 'Não consegui enviar sua mensagem agora. Confira a conexão e tente novamente.'], suggestions: [], link: null }, controller.signal).catch(() => {})
   } finally {
     if (turn === requestId && !disposed) loading.value = false
@@ -215,7 +245,7 @@ async function appendReply(reply, signal) {
 
 
 <style scoped>
-.chat-contact-gate{flex:1;min-height:0;overflow:auto;padding:10px 4px}.chat-contact-gate h2{font-size:25px;line-height:1.25}.chat-contact-gate p{color:#b9d6d0;font-size:13px;line-height:1.6}.chat-contact-gate .contact-privacy{font-size:11px}.contact-privacy a{color:#8fffee}
+.contact-privacy{font-size:10px;line-height:1.6;color:#9bc2b5;margin:12px 0 0}.contact-privacy a{color:#8fffee}
 .chat-shell {
   width: min(94vw, 32rem);
   height: min(82vh, 44rem);

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { ref, reactive, computed } from 'vue'
 import * as helpers from '../src/utils/siteAssistant.js'
 import { guidedAssistantReply, waitForAssistantBubble, assistantMenu } from '../src/utils/siteAssistantFlow.js'
+import * as identity from '../src/utils/siteAssistantIdentity.js'
 
 test('only approved product and commercial destinations become clickable links', () => {
   for (const url of ['javascript:alert(1)', '//evil.test', 'https://wa.me/1234', 'http://notify-flow.onrender.com/', 'https://aitosoftwares.com.evil.test/whatsappbotbuilder', 'https://notify-flow.onrender.com@evil.test/', 'https://notify-flow.onrender.com:444/']) assert.equal(helpers.safeAssistantLink({ url }), null, url)
@@ -30,12 +31,12 @@ test('connection fallback guides the current campaign or bot need to a useful ne
 })
 
 const script = readFileSync(new URL('../src/components/IAChatComponent.vue', import.meta.url), 'utf8').match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*\r?\n/gm, '')
-const create = new Function('ref', 'reactive', 'computed', 'watch', 'nextTick', 'onBeforeUnmount', 'onMounted', 'defineEmits', 'useRoute', 'api', 'helpers', 'sessionStorage', `const { MESSAGE_LIMIT, initialMessage, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl, offlineReply, guidedAssistantReply, waitForAssistantBubble } = helpers; ${script}; return { messages, loading, suggestions, currentMessage, sendMessage, resetChat, loadFromSession, scrollAreaRef, trackScroll, scrollToBottom, conversationToken, visitor, identify }`)
+const create = new Function('ref', 'reactive', 'computed', 'watch', 'nextTick', 'onBeforeUnmount', 'onMounted', 'defineEmits', 'useRoute', 'api', 'helpers', 'sessionStorage', `const { MESSAGE_LIMIT, initialSuggestions, sanitizeMessages, sanitizeReply, buildCommercialUrl, waitForAssistantBubble, identityGreeting, identityContactQuestion, identityWelcome, parseVisitorName, parseVisitorContact } = helpers; ${script}; return { messages, loading, suggestions, currentMessage, sendMessage, resetChat, loadFromSession, scrollAreaRef, trackScroll, scrollToBottom, conversationToken, visitor, identify, identificationStep }`)
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 function fixture(saved = null, wait = async () => {}, identified = true) {
   const requests = []
   let unmount
-  const chat = create(ref, reactive, computed, () => {}, () => Promise.resolve(), callback => { unmount = callback }, () => {}, () => () => {}, () => ({ path: '/whatsapp-solucoes' }), { post: (url, payload, options) => { const response = deferred(); requests.push({ url, payload, options, ...response }); return response.promise } }, { ...helpers, guidedAssistantReply, waitForAssistantBubble: wait }, { getItem: () => saved, setItem: () => {}, removeItem: () => {} })
+  const chat = create(ref, reactive, computed, () => {}, () => Promise.resolve(), callback => { unmount = callback }, () => {}, () => () => {}, () => ({ path: '/whatsapp-solucoes' }), { post: (url, payload, options) => { const response = deferred(); requests.push({ url, payload, options, ...response }); return response.promise } }, { ...helpers, ...identity, waitForAssistantBubble: wait }, { getItem: () => saved, setItem: () => {}, removeItem: () => {} })
   if (identified) chat.conversationToken.value = 'q'.repeat(43)
   return { chat, requests, unmount: () => unmount() }
 }
@@ -58,18 +59,40 @@ test('keeps identified replies in order and avoids duplicate current input', asy
   assert.equal(chat.loading.value, false)
 })
 
-test('requires identification before talking and creates the visitor session first', async () => {
+test('asks the name, then contact in chat and only then opens the identified conversation', async () => {
   const { chat, requests } = fixture(null, async () => {}, false)
-  await chat.sendMessage('Olá')
+  assert.match(chat.messages.value[0].text, /como você se chama/)
+  await chat.sendMessage('123')
+  assert.equal(chat.identificationStep.value, 'name')
+  await chat.sendMessage('Visitante de teste')
+  assert.match(chat.messages.value.at(-1).text, /Prazer, Visitante/)
+  await chat.sendMessage('contato inválido')
   assert.equal(requests.length, 0)
-  chat.visitor.name = 'Visitante de teste'
-  chat.visitor.contact = 'visitor@example.test'
-  const pending = chat.identify()
+  assert.equal(chat.identificationStep.value, 'contact')
+  const pending = chat.sendMessage('visitor@example.test e (62) 99999-1234')
   assert.equal(requests[0].url, '/site-assistant/start')
   assert.equal(requests[0].payload.email, 'visitor@example.test')
+  assert.equal(requests[0].payload.phone, '62999991234')
+  assert.equal(requests[0].payload.name, 'Visitante de teste')
+  assert.equal(chat.conversationToken.value, '')
   requests[0].resolve({ data: { conversationToken: 'v'.repeat(43), name: 'Visitante de teste' } })
   await pending
   assert.equal(chat.conversationToken.value, 'v'.repeat(43))
+  assert.match(chat.messages.value.at(-1).text, /Obrigado, Visitante/)
+  assert.deepEqual(chat.suggestions.value, [...assistantMenu])
+})
+
+test('resetting during contact submission cancels identification and ignores the late session', async () => {
+  const { chat, requests } = fixture(null, async () => {}, false)
+  await chat.sendMessage('Maria')
+  const pending = chat.sendMessage('maria@example.test')
+  chat.resetChat()
+  assert.equal(requests[0].options.signal.aborted, true)
+  requests[0].resolve({ data: { conversationToken: 'v'.repeat(43), name: 'Maria' } })
+  await pending
+  assert.equal(chat.conversationToken.value, '')
+  assert.equal(chat.identificationStep.value, 'name')
+  assert.equal(chat.messages.value.length, 1)
 })
 
 test('offers the complete AitoNotify package through source purchase or monthly service', () => {
@@ -111,7 +134,7 @@ test('delivers bubbles one at a time and clearing cancels the pending turn', asy
   await turn
   assert.equal(chat.messages.value.length, 1)
   assert.equal(chat.loading.value, false)
-  assert.deepEqual(chat.suggestions.value, [...assistantMenu])
+  assert.deepEqual(chat.suggestions.value, [])
 })
 
 test('native scroll follows new messages only while the visitor stays at the bottom', () => {
@@ -157,7 +180,7 @@ test('starts a new conversation and rejects unsafe cached links without losing v
   assert.equal(chat.messages.value[0].text, 'Mensagem anterior')
   chat.resetChat()
   assert.equal(chat.messages.value.length, 1)
-  assert.match(chat.messages.value[0].text, /AitoNotify/)
+  assert.match(chat.messages.value[0].text, /como você se chama/)
   assert.equal(chat.conversationToken.value, '')
-  assert.deepEqual(chat.suggestions.value, [...helpers.initialSuggestions])
+  assert.deepEqual(chat.suggestions.value, [])
 })

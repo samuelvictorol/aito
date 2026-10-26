@@ -17,7 +17,7 @@
             <q-tab name="projects" icon="mdi-folder-star-outline" label="Projetos" />
             <q-tab name="overview" icon="mdi-finance" label="Dashboard" />
             <q-tab name="detail" icon="mdi-view-grid-outline" label="Detalhar" />
-            <q-tab name="botbuilder-licenses" icon="mdi-shield-key-outline" label="AitoNotify · planos e licenças" />
+            <q-tab name="botbuilder-licenses" icon="mdi-shield-key-outline" label="Kit · planos e licenças" />
             <q-tab name="site-assistant" icon="mdi-message-text-outline" label="Assistente do site" />
             <q-tab name="lgpd" icon="mdi-shield-lock-outline" label="LGPD" />
           </q-tabs>

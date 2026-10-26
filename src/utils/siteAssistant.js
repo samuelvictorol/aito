@@ -1,7 +1,7 @@
 import { assistantMenu, assistantCommercialUrl, guidedAssistantReply } from './siteAssistantFlow.js'
 export const MESSAGE_LIMIT = 1200
 export const initialSuggestions = assistantMenu
-export const initialMessage = () => ({ from: 'ia', text: 'Olá! Sou o assistente da AITO. Ajudo você a encontrar a solução para sua operação: sistemas sob medida, automações, bots, IA no WhatsApp ou campanhas com o AitoNotify. O que você quer resolver?', link: null })
+export const initialMessage = () => ({ from: 'ia', text: 'Olá! Sou o assistente da AITO. Ajudo você a encontrar a solução para sua operação: sistemas sob medida, automações, bots, IA no WhatsApp ou campanhas com o AitoNotify + WhatsApp BotBuilder. O que você quer resolver?', link: null })
 
 export function safeAssistantLink(link) {
   if (!link || typeof link.url !== 'string') return null
@@ -47,10 +47,10 @@ export function offlineReply(text, history = []) {
   const context = hasTopic(current) ? current : sanitizeMessages(history).filter(message => message.from === 'user').reverse().map(message => normalize(message.text)).find(hasTopic) || current
   const campaign = !humanFeature && /notify|dispar|campanh|massa|notific/.test(context)
   const whatsapp = humanFeature || /whatsapp|\bwpp\b|bot|\bia\b/.test(context)
-  const detail = campaign ? 'O AitoNotify organiza notificações em massa pelo WhatsApp com API oficial da Meta, e-mail via Gmail e Telegram. O mesmo pacote inclui o BotBuilder: compre o código-fonte pelo site ou consulte o plano mensal com a equipe.' : whatsapp ? 'Para atendimento com fluxos visuais e IA no WhatsApp, conheça o BotBuilder. Você pode comprar o código com licença, token key e manuais ou contratar configuração, deploy e integração pela AITO.' : 'A AITO desenvolve sistemas sob medida e integrações para automatizar processos. Você pode continuar explicando seu cenário ou falar com nossa equipe.'
+  const detail = campaign ? 'O AitoNotify + WhatsApp BotBuilder organiza notificações em massa pelo WhatsApp com API oficial da Meta, e-mail via Gmail e Telegram. O mesmo pacote inclui o BotBuilder: compre o código-fonte pelo site ou consulte o plano mensal com a equipe.' : whatsapp ? 'O kit AitoNotify + WhatsApp BotBuilder combina atendimento com fluxos visuais e IA, campanhas pela API oficial e painel de equipe. Compre o código-fonte com licença ou converse sobre a implantação e o plano mensal.' : 'A AITO desenvolve sistemas sob medida e integrações para automatizar processos. Você pode continuar explicando seu cenário ou falar com nossa equipe.'
   return {
     replies: [`A conexão com o assistente oscilou. ${detail}`],
-    link: campaign ? { label: 'Conhecer o AitoNotify', url: '/whatsapp-solucoes' } : whatsapp ? { label: 'Conhecer o WhatsApp BotBuilder', url: '/whatsapp-solucoes' } : { label: 'Conversar com a equipe AITO', url: buildCommercialUrl([...history, { from: 'user', text }]) },
+    link: campaign ? { label: 'Conhecer o AitoNotify + WhatsApp BotBuilder', url: '/whatsapp-solucoes' } : whatsapp ? { label: 'Conhecer o kit AitoNotify + WhatsApp BotBuilder', url: '/whatsapp-solucoes' } : { label: 'Conversar com a equipe AITO', url: buildCommercialUrl([...history, { from: 'user', text }]) },
     suggestions: ['Quero criar um bot no WhatsApp', 'Quero fazer disparos em massa', 'Quero falar com um especialista']
   }
 }
