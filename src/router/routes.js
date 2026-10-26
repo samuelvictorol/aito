@@ -19,7 +19,8 @@ const routes = [
     name: 'aitolearn-catalog',
     component: () => import('pages/AitoLearnLaunchPage.vue'),
   },
-  { path: '/whatsappbotbuilder', name: 'whatsappbotbuilder-product', component: () => import('pages/WhatsAppBotBuilderProductPage.vue') },
+  { path: '/whatsapp-solucoes', name: 'whatsapp-solutions-product', component: () => import('pages/WhatsAppBotBuilderProductPage.vue') },
+  { path: '/whatsappbotbuilder', name: 'whatsappbotbuilder-product', redirect: to => ({ path: '/whatsapp-solucoes', query: to.query, hash: to.hash }) },
   {
     path: '/cursos/pagamento',
     name: 'course-payment',

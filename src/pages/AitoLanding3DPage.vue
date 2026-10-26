@@ -367,7 +367,7 @@ function handleIntroComplete() {
 }
 
 function handleAboutCtaClick() {
-  router.push('/whatsappbotbuilder')
+  router.push('/whatsapp-solucoes')
 }
 
 function handleBrandSelect(brand) {

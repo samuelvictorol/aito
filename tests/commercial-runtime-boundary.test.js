@@ -35,7 +35,7 @@ test('site sources do not import a local WhatsApp runtime or visual editor depen
   assert.ok(dependencies['socket.io-client'], 'Product payment confirmations still use Socket.IO')
   for (const path of ['src/pages/WhatsAppBotBuilderProductPage.vue', 'src/components/UserProductsPanel.vue']) {
     const source = read(path)
-    assert.match(source, /\/products\/whatsappbotbuilder/)
+    assert.match(source, /\/products\/(?:whatsappbotbuilder|aitonotify)/)
     assert.match(source, /purchase\.updated/)
   }
 })

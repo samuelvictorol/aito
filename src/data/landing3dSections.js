@@ -11,8 +11,8 @@ export const landing3dSections = Object.freeze([
       href: 'https://wa.me/5561982637865?text=Ol%C3%A1%2C%20equipe%20AitoSoftwares!%20Gostaria%20de%20conversar%20sobre%20meu%20projeto%20e%20agendar%20um%20diagn%C3%B3stico%20gratuito.'
     },
     secondaryCta: {
-      label: 'WhatsApp BotBuilder: Construa seu bot',
-      to: '/whatsappbotbuilder'
+      label: 'AitoNotify: soluções para WhatsApp',
+      to: '/whatsapp-solucoes'
     },
     surpriseCta: {
       label: 'Surpreenda-me',
