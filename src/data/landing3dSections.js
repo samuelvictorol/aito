@@ -11,7 +11,7 @@ export const landing3dSections = Object.freeze([
       href: 'https://wa.me/5561982637865?text=Ol%C3%A1%2C%20equipe%20AitoSoftwares!%20Gostaria%20de%20conversar%20sobre%20meu%20projeto%20e%20agendar%20um%20diagn%C3%B3stico%20gratuito.'
     },
     secondaryCta: {
-      label: 'AitoNotify + WhatsApp BotBuilder: soluções para WhatsApp',
+      label: 'Soluções para WhatsApp: Notificações e Chatbot',
       to: '/whatsapp-solucoes'
     },
     surpriseCta: {
@@ -28,19 +28,19 @@ export const landing3dSections = Object.freeze([
     modelKey: 'logo'
   },
   {
-    id: 'solucoes',
-    eyebrow: '02 / O QUE FAZEMOS',
-    title: 'Criamos soluções sem parar o que está funcionando.',
-    description: 'Entramos onde a operação precisa de clareza, velocidade ou escala e traduzimos o complexo em realidade simples e confiável.',
-    align: 'right',
-    modelKey: 'obj2'
-  },
-  {
     id: 'cases',
-    eyebrow: '03 / CASES E PRODUTOS',
+    eyebrow: '02 / CASES E PRODUTOS',
     title: '',
     description: 'Cases para ver o tipo de problema que resolvemos e como pensamos cada entrega.',
     align: 'left',
+    modelKey: 'obj2'
+  },
+  {
+    id: 'solucoes',
+    eyebrow: '03 / O QUE FAZEMOS',
+    title: 'Criamos soluções sem parar o que está funcionando.',
+    description: 'Entramos onde a operação precisa de clareza, velocidade ou escala e traduzimos o complexo em realidade simples e confiável.',
+    align: 'right',
     modelKey: 'obj2'
   },
   {

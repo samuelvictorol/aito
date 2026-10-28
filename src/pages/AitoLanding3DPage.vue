@@ -99,10 +99,6 @@
                 <span>{{ section.cta.label }}</span>
                 <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
               </a>
-              <button class="landing-3d__cta landing-3d__cta--secondary" type="button" @click="handleAboutCtaClick">
-                <span>{{ section.secondaryCta.label }}</span>
-                <q-icon name="mdi-lightbulb-on-outline" aria-hidden="true" />
-              </button>
             </div>
 
             <div v-if="section.id === 'inicio'" class="landing-3d__proof-row">
@@ -185,6 +181,9 @@
       </section>
     </div>
 
+    <router-link class="landing-3d__whatsapp-fixed" :to="landing3dSections[0].secondaryCta.to">
+      <q-icon name="mdi-whatsapp" aria-hidden="true"/><span>{{ landing3dSections[0].secondaryCta.label }}</span><q-icon name="mdi-arrow-top-right" aria-hidden="true"/>
+    </router-link>
     <p class="landing-3d__counter" aria-live="polite">
       <span>{{ String(activeSection + 1).padStart(2, '0') }}</span><i></i><span>{{ String(landing3dSections.length).padStart(2, '0') }}</span>
     </p>
@@ -366,10 +365,6 @@ function handleIntroComplete() {
   scheduleCoursePrompt()
 }
 
-function handleAboutCtaClick() {
-  router.push('/whatsapp-solucoes')
-}
-
 function handleBrandSelect(brand) {
   selectedBrand.value = brand
   brandDialogOpen.value = true
@@ -499,6 +494,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.landing-3d__whatsapp-fixed { position: fixed; z-index: 9; left: clamp(1rem,5vw,5rem); bottom: 1.3rem; display: flex; align-items: center; gap: .7rem; max-width: calc(100vw - 9rem); padding: 1rem 1.2rem; border: 1px solid #a5ffe6; border-radius: 16px; color: #03241e; background: linear-gradient(120deg,#a5f9cf,#3cdec4); box-shadow: 0 8px 35px #23d5a94d,0 0 0 5px #51d9b415; font: 800 .78rem/1.5 'Montserrat',sans-serif; text-decoration: none; transition: box-shadow 200ms,transform 200ms; }
+.landing-3d__whatsapp-fixed .q-icon { font-size: 24px; flex-shrink: 0; }
+.landing-3d__whatsapp-fixed:hover { transform: translateY(-3px); box-shadow: 0 10px 45px #23d5a980; }
+.landing-3d__whatsapp-fixed:focus-visible { outline: 3px solid white; outline-offset: 4px; }
+.landing-3d--intro-loading .landing-3d__whatsapp-fixed,.landing-3d--intro-object-only .landing-3d__whatsapp-fixed { opacity: 0; pointer-events: none; }
+@media(max-width:767px) { .landing-3d__whatsapp-fixed { left: 1rem; right: 1rem; max-width: none; bottom: .8rem; padding: .8rem 1rem; gap: .6rem; font-size: .68rem; border-radius: 13px; } .landing-3d__whatsapp-fixed span { flex: 1; } .landing-3d__counter { bottom: 5.3rem!important; left: 1rem; right: auto!important; } }
 .landing-3d {
   --aito-teal: #13bc9d;
   --aito-teal-dark: #12ad89;

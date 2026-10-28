@@ -96,7 +96,7 @@ const STAR_COLORS = [0x1fb694, 0x23917d, 0x50dcc4, 0x8fffee]
 const MODEL_LOAD_TIMEOUT_MS = 9000
 const MODEL_LOAD_CONCURRENCY = 2
 const LANDING_MODEL_KEYS = ['logo', 'obj2', 'obj3', 'obj4', 'samuel', 'dion']
-const MOBILE_MODEL_BY_SECTION = [null, 'logo', 'obj2', null, 'obj3', 'samuel', 'dion', 'obj4']
+const MOBILE_MODEL_BY_SECTION = [null, 'logo', null, 'obj2', 'obj3', 'samuel', 'dion', 'obj4']
 const SURPRISE_MODEL_KEYS = ['obj4', 'obj4Dance', 'samuelDance', 'dionDance']
 const COURSE_MODEL_KEYS = ['obj4']
 
@@ -124,8 +124,8 @@ const MODEL_KEYFRAMES = {
   obj2: [
     { section: 0, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
     { section: 1, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
-    { section: 2, x: 2.4, y: 0.02, rx: 0.35, ry: -0.8, rz: -0.04, scale: 1, opacity: 1 },
-    { section: 3, x: 3.8, y: -0.1, rx: 0.38, ry: -0.65, rz: -0.15, scale: 0.94, opacity: 0 },
+    { section: 2, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
+    { section: 3, x: 2.4, y: 0.02, rx: 0.35, ry: -0.8, rz: -0.04, scale: 1, opacity: 1 },
     { section: 4, x: -4.1, y: -0.9, rx: 0.7, ry: 2.1, rz: -0.35, scale: 0.65, opacity: 0 }
   ],
   obj3: [
@@ -1206,7 +1206,7 @@ function updateModels(sectionPosition, elapsedTime) {
   Object.entries(modelEntries).forEach(([key, entry]) => {
     const keyframes = MODEL_KEYFRAMES[key]
     if (!keyframes) return
-    if (key === 'intro' || props.introPhase === 'loading' || sectionPosition < 0.05 || (sectionPosition >= 2.5 && sectionPosition < 3.5)) {
+    if (key === 'intro' || props.introPhase === 'loading' || sectionPosition < 0.05 || (sectionPosition >= 1.5 && sectionPosition < 2.5)) {
       setObjectOpacity(entry.root, 0)
       return
     }
