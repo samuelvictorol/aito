@@ -4,6 +4,7 @@ import { copyToClipboard, useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { canAction, canChannel } from '../services/access.js'
+import ProductLicenseStatus from '../components/ProductLicenseStatus.vue'
 import PageHeader from '../components/PageHeader.vue'
 import CompactPagination from '../components/CompactPagination.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -561,6 +562,7 @@ onBeforeUnmount(() => {
       <div v-else><strong>Canal protegido</strong><span>Configure e conecte o canal antes de acessar suas funções.</span></div>
     </div>
 
+    <ProductLicenseStatus v-if="!auth.isCollaborator" />
     <BrowserNotificationsCard v-if="!auth.isCollaborator" />
     <AdminEmailSecurityCard v-if="!auth.isCollaborator" />
 

@@ -3,12 +3,13 @@ import { vCanAction } from '../../../services/permission-directives.js'
 import { canArea, canAction, isCollaborator } from '../../../services/access.js'
 import { getStoredUser } from '../../../services/tokens.js'
 import ConversationSignature from '../ConversationSignature.vue'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api, messageOf, currentUser } from '../services.js'
 
 const actor = () => currentUser.value || getStoredUser()
 const may = (action) => canAction(actor(), 'web_settings', action)
 const form = ref({ branding: {}, runtime: {}, messages: {adminNick:'Admin'} }), credentials = ref([]), secretForm = ref({ id: '', name: '', description: '', value: '' }), loading = ref(false), secretLoading = ref(false), toast = ref('')
+const collectSeconds = computed({ get: () => Number(form.value.runtime?.collectWindowMs || 3000) / 1000, set: value => { form.value.runtime.collectWindowMs = Math.round(Number(value) * 1000) } })
 function show(value) { toast.value = value; setTimeout(() => { if (toast.value === value) toast.value = '' }, 3400) }
 async function load() {
   try {
@@ -66,6 +67,8 @@ onMounted(load)
       </div>
       <p class="encryption-note">O navegador envia pelo HTTPS do ambiente, o servidor cifra com uma chave exclusiva do volume persistente e só descriptografa em memória no instante da chamada. Logs ocultam tokens, cookies e cabeçalhos sensíveis.</p>
     </article>
+
+    <article class="card credentials-card"><div class="section-head"><span class="settings-icon">◷</span><div><h2>Agrupar mensagens antes de responder</h2><p>Debounce do bot e da IA, sem reiniciar a sessão.</p></div></div><div class="fields"><div class="field"><label for="collect-seconds">Esperar após a última mensagem (segundos)</label><input id="collect-seconds" v-model.number="collectSeconds" type="number" min="0.2" max="15" step="0.1" required></div><p>Por exemplo, com 5 segundos, “boa noite”, “tudo bem?” e “tem furadeira?” são processados juntos após 5 segundos sem novos balões. Cada mensagem reinicia a espera. Vale também para áudio e mídia, respeitando o atendimento humano.</p></div></article>
 
     <article class="card persistence-card"><span class="eyebrow">Infraestrutura mínima</span><h2>O que fica fora do painel?</h2><div><span><b>MongoDB</b><small>Endereço de infraestrutura para fluxos, conversas e arquivos.</small></span><span><b>Redis</b><small>Endereço de infraestrutura da fila BullMQ, com política noeviction.</small></span><span><b>Diretório persistente</b><small>Sessão QR e chave criptográfica; no Render usa o disco montado em /var/data.</small></span><span><b>Chromium</b><small>Binário instalado pela imagem Docker.</small></span></div></article>
     <div v-if="toast" class="toast">{{ toast }}</div>

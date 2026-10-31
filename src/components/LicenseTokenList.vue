@@ -1,6 +1,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useQuasar } from 'quasar'
+import LicenseValidity from './LicenseValidity.vue'
+import LicenseTermDialog from './LicenseTermDialog.vue'
+const termOpen=ref(false),selected=ref(null),termMode=ref('edit')
+function termSaved(value){if(selected.value)Object.assign(selected.value,value);emit('changed')}
+function editTerm(license,mode='edit'){selected.value=license;termMode.value=mode;termOpen.value=true}
 import { api } from 'boot/axios'
 
 defineProps({ licenses: { type: Array, default: () => [] } })
@@ -18,15 +23,15 @@ async function copy(token) {
   }
 }
 async function rotate(license) { try { const { data } = await api.post(`/admin/botbuilder/licenses/${encodeURIComponent(license._id)}/rotate`, {}, headers()); Object.assign(license, data.data); emit('changed'); $q.notify({ type: 'positive', message: 'Token renovado.' }) } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
-async function toggle(license) { try { const { data } = await api.patch(`/admin/botbuilder/licenses/${encodeURIComponent(license._id)}`, { active: !license.active }, headers()); Object.assign(license, data.data); emit('changed') } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
+async function toggle(license) { try { const { data } = await api.patch(`/admin/botbuilder/licenses/${encodeURIComponent(license._id)}`, { active: !(license.enabled??license.active) }, headers()); Object.assign(license, data.data); emit('changed') } catch (e) { $q.notify({ type: 'negative', message: messageOf(e) }) } }
 </script>
 
 <template>
-  <div v-if="licenses.length" class="license-list">
+  <div v-if="licenses.length" class="license-list"><LicenseTermDialog v-model="termOpen" :license="selected" :mode="termMode" @saved="termSaved"/>
     <div v-for="license in licenses" :key="license._id" class="license-list__item">
-      <div class="license-list__heading"><strong>WhatsApp BotBuilder</strong><span :class="license.active ? 'is-active' : 'is-inactive'">{{ license.active ? 'Ativo' : 'Suspenso' }}</span></div>
+      <div class="license-list__heading"><strong>AitoNotify + WhatsApp BotBuilder</strong></div>
       <div class="license-list__token"><code>{{ visible[license._id] ? license.token : '••••••••••••••••••••••••' }}</code><q-btn flat round dense size="sm" :icon="visible[license._id] ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :aria-label="visible[license._id] ? 'Ocultar token' : 'Mostrar token'" @click="visible[license._id] = !visible[license._id]" /><q-btn flat round dense size="sm" icon="mdi-content-copy" aria-label="Copiar token" @click="copy(license.token)" /></div>
-      <small>Instalação: {{ license.installationId || 'Ainda não ativada' }}</small><div class="license-list__actions"><q-btn flat dense no-caps size="sm" icon="mdi-refresh" label="Novo token" @click="rotate(license)" /><q-btn flat dense no-caps size="sm" :color="license.active ? 'red-3' : 'teal-3'" :icon="license.active ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline'" :label="license.active ? 'Remover' : 'Ativar'" @click="toggle(license)" /></div>
+      <LicenseValidity :license="license" compact/><small>Instalação: {{ license.installationId || 'Ainda não ativada' }}</small><div class="license-list__actions"><q-btn flat dense no-caps size="sm" label="Validade" icon="mdi-calendar-edit" @click="editTerm(license)"/><q-btn flat dense no-caps size="sm" label="Renovar" @click="editTerm(license,'renew')"/><q-btn flat dense no-caps size="sm" icon="mdi-refresh" label="Novo token" @click="rotate(license)" /><q-btn flat dense no-caps size="sm" :color="(license.enabled??license.active) ? 'red-3' : 'teal-3'" :icon="(license.enabled??license.active) ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline'" :label="(license.enabled??license.active) ? 'Suspender' : 'Reativar'" @click="toggle(license)" /></div>
     </div>
   </div>
 </template>

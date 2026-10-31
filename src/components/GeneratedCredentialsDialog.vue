@@ -7,7 +7,7 @@
       </q-card-section>
       <q-card-section class="generated-credentials-card__body">
         <p>Guarde ou compartilhe estas informações com o cliente. A senha só será exibida novamente se uma nova senha for gerada.</p>
-        <div class="generated-credentials-card__welcome">Seja Bem Vindo(a) à AitoSoftwares!</div>
+        <q-banner v-if="!customer?.email" rounded class="bg-orange-1 text-orange-10 q-mb-md">Este cadastro contém apenas telefone. Cadastre um e-mail no perfil do cliente para habilitar o login com validação multifator.</q-banner><div class="generated-credentials-card__welcome">Seja Bem Vindo(a) à AitoSoftwares!</div>
         <div class="generated-credentials-card__field"><span>Cliente</span><strong>{{ customer?.name || '-' }}</strong></div>
         <div class="generated-credentials-card__field"><span>E-mail</span><strong>{{ customer?.email || '-' }}</strong></div>
         <div class="generated-credentials-card__field"><span>Senha temporária</span><code>{{ password || '-' }}</code></div>

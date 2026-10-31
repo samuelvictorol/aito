@@ -1,3 +1,4 @@
+import { publicManifestUrl } from './pwa-branding.js'
 import { shallowRef } from 'vue'
 import { isPrototypePath } from './prototype-mode.js'
 const promptEvent = shallowRef(null)
@@ -8,7 +9,7 @@ export function configureInstallManifest(path) {
   const mode=isPrototypePath(path)?'prototype':'production'
   if(mode!==manifestMode){promptEvent.value=null;manifestMode=mode;installed.value=window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone===true}
   const link=document.querySelector('link[rel="manifest"]')
-  if(link)link.href=mode==='prototype'?'/comunicacao/app/prototype.webmanifest':'/comunicacao/app/manifest.webmanifest'
+  if(link)link.href=mode==='prototype'?'/comunicacao/app/prototype.webmanifest':publicManifestUrl()
 }
 export function initializeInstallPrompt() {
   if(started || typeof window==='undefined')return

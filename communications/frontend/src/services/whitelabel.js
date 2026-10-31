@@ -1,3 +1,4 @@
+import { applyPwaBranding } from './pwa-branding.js'
 import { computed, reactive, readonly } from 'vue'
 import { inPrototype, DEMO_BRANDING } from './prototype-runtime.js'
 import { http, unwrap } from './http.js'
@@ -208,6 +209,7 @@ export function applyBranding(value) {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', branding.primaryColor)
     document.title = branding.pageTitle
   }
+  applyPwaBranding(branding)
   cacheLoadingBrand(branding)
   return branding
 }

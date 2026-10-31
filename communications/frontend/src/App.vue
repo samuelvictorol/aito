@@ -5,6 +5,9 @@ import { isPrototypePath } from './services/prototype-mode.js'
 import { configureInstallManifest } from './services/install-app.js'
 import ScreenLoading from './components/ScreenLoading.vue'
 import { useRouteLoading } from './services/route-loading.js'
+import ProductLicenseGate from './components/ProductLicenseGate.vue'
+import { startLicenseMonitor, stopLicenseMonitor, useProductLicense } from './services/product-license.js'
+import { connectSocket } from './services/socket.js'
 import WhiteLabelFooter from './components/WhiteLabelFooter.vue'
 import { useWhiteLabel } from './services/whitelabel.js'
 import { disableBrowserPush } from './services/browser-push.js'
@@ -13,6 +16,11 @@ import { stopAppSounds } from './services/sounds.js'
 const route = useRoute()
 const screenLoading = useRouteLoading()
 const whiteLabel = useWhiteLabel()
+const productLicense = useProductLicense()
+const licenseProtected = computed(() => Boolean(route.meta.requiresAuth) && !isPrototypePath(route.path))
+const licenseBlocked = computed(() => licenseProtected.value && !productLicense.allowed.value)
+watch(licenseProtected, value => value ? startLicenseMonitor() : stopLicenseMonitor(), { immediate: true })
+watch(productLicense.allowed, value => { if (value && licenseProtected.value) connectSocket() })
 const layoutOwnsFooter = computed(() => route.matched.some((record) => record.path === '/') || route.name === 'my-profile' || isPrototypePath(route.path))
 onMounted(() => { if (!isPrototypePath(window.location.pathname)) whiteLabel.load() })
 watch(() => route.fullPath, () => {
@@ -29,7 +37,8 @@ watch(() => route.fullPath, () => {
 
 <template>
   <div :class="['app-root', { 'app-root--public': !layoutOwnsFooter }]">
-    <div class="app-route" :aria-busy="screenLoading.active.value" :inert="screenLoading.active.value || undefined"><router-view /></div>
+    <div class="app-route" :aria-busy="screenLoading.active.value" :inert="screenLoading.active.value || licenseBlocked || undefined"><router-view /></div>
+    <ProductLicenseGate v-if="licenseBlocked" />
     <WhiteLabelFooter v-if="!layoutOwnsFooter" />
     <Transition name="spa-loading-fade"><ScreenLoading v-if="screenLoading.visible.value" :label="screenLoading.label.value" /></Transition>
   </div>

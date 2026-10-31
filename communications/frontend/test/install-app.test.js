@@ -8,7 +8,7 @@ describe('home screen shortcuts',()=>{
     expect(manifest.href).toBe('/comunicacao/app/prototype.webmanifest')
     expect(service.installTarget('/prototype/app-mobile/cloud')).toBe('/comunicacao/app/prototype/app-mobile')
     expect(service.installTarget('/app-mobile/web')).toBe('/comunicacao/app/app-mobile')
-    service.configureInstallManifest('/app-mobile');expect(manifest.href).toBe('/comunicacao/app/manifest.webmanifest')
+    service.configureInstallManifest('/app-mobile');expect(manifest.href).toBe('/comunicacao/api/settings/app.webmanifest')
   })
   it('uses the native prompt when the browser supplies it, once per event',async()=>{
     const service=await import('../src/services/install-app.js');const app=service.useInstallApp(),event={preventDefault:vi.fn(),prompt:vi.fn(async()=>{}),userChoice:Promise.resolve({outcome:'accepted'})}
