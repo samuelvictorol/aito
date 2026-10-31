@@ -42,7 +42,6 @@
           <q-icon name="mdi-account-star-outline" size="18px" />
           Quero me tornar afiliado
         </button>
-        <q-btn v-if="showProjectLogin && !isAffiliate" outline no-caps class="auth-dialog__project full-width q-mt-sm" icon="mdi-briefcase-outline" label="Acompanhar projeto" @click="goToCustomerLogin" />
       </q-card-section>
     </q-card>
   </q-dialog>

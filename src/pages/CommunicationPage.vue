@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {finishScreen,beginScreen} from '../services/screen-loading'
 const route = useRoute(), router = useRouter(), frame = ref(null), error = ref(''), loading = ref(true), version = ref(0)
 const demo = computed(() => route.meta.communicationDemo === true)
 const section = computed(() => Array.isArray(route.params.section) ? route.params.section.join('/') : String(route.params.section || ''))
@@ -16,7 +17,8 @@ async function receive(event) {
     document.querySelector('link[rel="manifest"]')?.setAttribute('href', '/comunicacao/api/settings/app.webmanifest')
     return
   }
-  if (event.data?.type === 'aito.communication.mounted') { loading.value = false; return }
+  if(event.data?.type==='aito.communication.screen-ready'){loading.value=false;finishScreen();return}
+  if (event.data?.type === 'aito.communication.mounted') return
   if (event.data?.type !== 'aito.communication.ready' || demo.value) return
   const requestId = event.data.requestId
   if (!/^[a-f\d-]{36}$/i.test(requestId || '')) return
@@ -31,17 +33,18 @@ async function receive(event) {
     if (event.source !== frame.value?.contentWindow) return
     event.source.postMessage({ type: 'aito.communication.session', requestId, data: envelope.data || envelope }, location.origin)
     error.value = ''
-  } catch (cause) { error.value = cause.message; loading.value = false }
+  } catch (cause) { error.value = cause.message; loading.value = false; finishScreen() }
 }
-function retry() { error.value = ''; loading.value = true; version.value++ }
-onMounted(() => window.addEventListener('message', receive))
-onBeforeUnmount(() => window.removeEventListener('message', receive))
+function retry() { beginScreen(); error.value = ''; loading.value = true; version.value++ }
+let startupTimeout
+onMounted(() => {window.addEventListener('message',receive);startupTimeout=setTimeout(()=>{if(loading.value){error.value='A comunicação demorou para responder. Tente novamente ou confira Sistema.';finishScreen()}},30000)})
+onBeforeUnmount(() => {clearTimeout(startupTimeout);window.removeEventListener('message',receive)})
 </script>
 <template>
   <div class="communication-host">
     <header class="communication-host__bar"><router-link :to="demo?'/whatsapp-solucoes':'/admin'"><q-icon name="mdi-arrow-left"/>{{demo?'Conhecer o kit':'Painel AitoSoftwares'}}</router-link><strong>{{demo?'Demonstração gratuita':'Comunicação'}}</strong><router-link v-if="!demo" to="/admin/comunicacao/sistema"><q-icon name="mdi-cog-outline"/>Sistema</router-link><a v-else href="https://aitosoftwares.com/whatsapp-solucoes#planos">Ver planos <q-icon name="mdi-arrow-top-right"/></a></header>
     <main class="communication-host__main"><iframe ref="frame" :key="version" :src="frameUrl" :title="demo?'Demonstração do ecossistema de comunicação':'Painel de comunicação AitoSoftwares'" allow="microphone; camera; clipboard-write; fullscreen; autoplay; geolocation" referrerpolicy="same-origin"/>
-      <div v-if="loading || error" class="communication-host__status" role="status"><q-spinner v-if="loading" color="teal-4" size="40px"/><q-icon v-else name="mdi-cloud-alert-outline" size="38px"/><strong>{{loading?'Abrindo sua central de comunicação':error}}</strong><span v-if="loading">Preparando seus canais e ferramentas.</span><div v-else><q-btn outline no-caps color="teal-3" label="Tentar novamente" @click="retry"/><q-btn v-if="!demo" flat no-caps color="teal-2" label="Abrir Sistema" to="/admin/comunicacao/sistema"/></div></div>
+      <div v-if="error" class="communication-host__status" role="status"><q-spinner v-if="loading" color="teal-4" size="40px"/><q-icon v-else name="mdi-cloud-alert-outline" size="38px"/><strong>{{loading?'Abrindo sua central de comunicação':error}}</strong><span v-if="loading">Preparando seus canais e ferramentas.</span><div v-else><q-btn outline no-caps color="teal-3" label="Tentar novamente" @click="retry"/><q-btn v-if="!demo" flat no-caps color="teal-2" label="Abrir Sistema" to="/admin/comunicacao/sistema"/></div></div>
     </main>
   </div>
 </template>

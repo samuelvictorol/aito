@@ -2,6 +2,7 @@ import { installLeadAttribution } from '../services/lead-attribution'
 import { defineRouter } from '#q-app/wrappers'
 import { createRouter, createMemoryHistory, createWebHistory, createWebHashHistory } from 'vue-router'
 import routes from './routes'
+import {installScreenLoading} from '../services/screen-loading'
 
 /*
  * If not building with SSR mode, you can
@@ -70,5 +71,6 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     return true
   })
 
+  installScreenLoading(Router)
   return Router
 })

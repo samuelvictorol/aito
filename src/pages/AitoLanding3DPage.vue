@@ -209,7 +209,7 @@
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="accessDialogOpen"><q-card class="landing-3d__dialog-card landing-3d__access-dialog"><q-card-section><h3>Seu acesso AitoSoftwares</h3><q-btn unelevated no-caps color="teal" icon="mdi-account" label="Área do cliente · produto e licença" @click="openAuth('login', 'user')"/><q-btn flat no-caps icon="mdi-shield-account" label="Administração" @click="router.push('/admin/login'); accessDialogOpen = false"/></q-card-section></q-card></q-dialog>
+
 
     <AuthDialog v-model="authDialogOpen" :initial-mode="authMode" :audience="authAudience" @authenticated="handleAuthSuccess" />
 
@@ -369,7 +369,7 @@ function openAccessChooser() {
   if (session?.role === 'customer') return router.push('/customer')
   if (session?.role === 'affiliate') return router.push('/affiliate')
   if (session?.role === 'user') return router.push('/app')
-  accessDialogOpen.value = true
+  openAuth('login')
 }
 
 function openAuthFromQuery() {

@@ -16,6 +16,7 @@ import { stopAppSounds } from './services/sounds.js'
 
 const route = useRoute()
 const screenLoading = useRouteLoading()
+watch(screenLoading.visible,visible=>{if(!visible&&window.parent!==window)window.parent.postMessage({type:'aito.communication.screen-ready'},location.origin)},{immediate:true})
 const whiteLabel = useWhiteLabel()
 const productLicense = useProductLicense()
 const licenseProtected = computed(() => Boolean(route.meta.requiresAuth) && !isPrototypePath(route.path))

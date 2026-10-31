@@ -1,7 +1,7 @@
 // Public, anonymized captures only. Never point these slots to raw customer screenshots.
 export const solutionsMedia = Object.freeze({
   overview: '/whatsapp-solutions/central-canais.webp',
-  review: '/whatsapp-solutions/revisao-envio.webp',
+  review: '/whatsapp-solutions/experience/campaign-review-v2.webp',
   delivery: '/whatsapp-solutions/status-entregas.webp',
   mobile: '/whatsapp-solutions/canais-mobile.webp',
   assistant: '/whatsapp-solutions/assistente-mobile.webp',
