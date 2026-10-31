@@ -71,7 +71,7 @@ const emailRule = (value) => {
   return (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || 'Informe um e-mail valido.'
 }
 const codeRule = (value) => /^\d{6}$/.test(String(value || '').trim()) || 'Digite o codigo de 6 digitos.'
-const passwordRule = (value) => String(value || '').length >= 6 || 'Use pelo menos 6 caracteres.'
+const passwordRule = (value) => String(value || '').length >= 8 || 'Use pelo menos 8 caracteres.'
 const confirmationRule = (value) => String(value || '') === form.password || 'As senhas precisam ser iguais.'
 
 function endpoint(action) {

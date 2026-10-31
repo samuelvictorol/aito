@@ -12,6 +12,7 @@ import SolutionsInteractiveShowcase from 'components/SolutionsInteractiveShowcas
 import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
 import { solutionsMedia, solutionDemos } from 'src/data/whatsappSolutionsMedia'
 import { botBuilderHeroVideo } from 'src/data/landingHeroVideo'
+import { trackJourney, attribution as leadAttribution } from 'src/services/lead-attribution'
 const router = useRouter(), route = useRoute(), $q = useQuasar()
 useMeta({ title: 'Kit AitoNotify + WhatsApp BotBuilder | AitoSoftwares', meta: { description: { name: 'description', content: 'Campanhas, notificações e atendimento com BotBuilder, IA e equipe no mesmo AitoNotify + WhatsApp BotBuilder. Código-fonte com licença ou plano mensal.' } }, link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/whatsapp-solucoes' } } })
 const assistantOpen = ref(false)
@@ -76,12 +77,13 @@ async function refreshPurchase() {
 }
 async function buy() {
   if (buying.value) return
+  trackJourney('/whatsapp-solucoes', 'checkout_start')
   if (!localStorage.getItem('aito_user_token')) { loginOpen.value = true; return }
   checkoutOpen.value = true; buying.value = true; paymentMessage.value = ''; connect()
   clearInterval(timer); timer = setInterval(() => { if (checkoutOpen.value) refreshPurchase() }, 15000)
   try {
     await refreshPurchase()
-    if (!purchased.value) order.value = (await api.post('/products/aitonotify/checkout', {}, headers())).data.data
+    if (!purchased.value) order.value = (await api.post('/products/aitonotify/checkout', { attribution: leadAttribution() }, headers())).data.data
   } catch (error) { paymentMessage.value = error.response?.data?.message || 'Não foi possível abrir o checkout. Tente novamente.' }
   finally { buying.value = false }
 }
@@ -148,6 +150,6 @@ onBeforeUnmount(() => { socket?.disconnect(); clearInterval(timer) })
 @media(max-width:600px){.solutions-product{padding-top:115px}.solutions-product .solutions-navbar{padding:10px 16px;flex-wrap:wrap;gap:8px}.solutions-product .solutions-navbar .solutions-brand{min-height:30px}.solutions-product .solutions-navbar nav{display:flex;justify-content:space-between;width:100%;gap:8px;overflow-x:auto}.solutions-product .solutions-navbar nav>a{display:inline-flex!important;font-size:11px}.solutions-product .solutions-navbar nav>a[href="#equipe"]{display:none!important}.solutions-navbar .nav-trial{padding:8px 10px;font-size:10px!important}.solutions-product h1{font-size:34px;line-height:1.15}.solutions-product section[id],.solutions-product :deep(.kit-team){scroll-margin-top:122px}.solutions-product .hero-actions{display:grid;grid-template-columns:1fr;width:100%}.trial-cta{min-height:65px;width:100%;font-size:17px}.solutions-product .solutions-carousel{height:600px}.solutions-product .solution-slide{padding:10px 22px 48px}.solutions-product .slide-copy h3{font-size:27px;line-height:1.2;margin:10px 0}.solutions-product .slide-copy p{font-size:12px;line-height:1.7}.prototype-strip{padding:24px;flex-direction:column;align-items:stretch;gap:20px}.prototype-strip strong{font-size:21px}.solutions-product .mobile-frames{gap:30px;grid-template-columns:1fr}.mobile-frames>div{max-width:290px;margin:auto}.solutions-product .kit-label{font-size:9px;letter-spacing:.04em}.solutions-product .section-heading h2,.solutions-product .solution-mobile h2{font-size:34px}}
 </style>
 
-<style scoped>.floating-prototype{position:fixed;right:20px;bottom:24px;z-index:1200;display:flex;align-items:center;gap:10px;padding:15px 20px;border-radius:999px;background:#bcf5e0;color:#063e33;font-weight:800;text-decoration:none;box-shadow:0 8px 28px #001e2540}.notifications-cta{background:#e8f2ff!important;color:#153c6a!important}.distribution-section{padding:80px max(5vw,20px);background:#0a231e;color:#effffb;border:1px solid #234a3e;border-radius:24px}.distribution-section>p{max-width:820px;line-height:1.8}.distribution-section h2{font-size:clamp(28px,4vw,46px)}#chatbots,#notificacoes{scroll-margin-top:90px}.solutions-hero .hero-actions{align-items:stretch}.solutions-hero .hero-actions>a{flex:1;min-width:200px}@media(max-width:600px){.floating-prototype{bottom:max(16px,env(safe-area-inset-bottom));right:12px;font-size:13px;padding:12px 16px}.distribution-section{padding:48px 20px}}</style>
+<style scoped>.solutions-product .floating-prototype{position:fixed;right:20px;bottom:24px;z-index:1200;display:flex;align-items:center;gap:10px;padding:15px 20px;border-radius:999px;background:#bcf5e0;color:#063e33!important;font-weight:800;text-decoration:none;box-shadow:0 8px 28px #001e2540;border:1px solid #7acbae}.notifications-cta{background:#e8f2ff!important;color:#153c6a!important}.distribution-section{padding:80px max(5vw,20px);background:#0a231e;color:#effffb;border:1px solid #234a3e;border-radius:24px}.distribution-section>p{max-width:820px;line-height:1.8}.distribution-section h2{font-size:clamp(28px,4vw,46px)}#chatbots,#notificacoes{scroll-margin-top:90px}.solutions-hero .hero-actions{align-items:stretch}.solutions-hero .hero-actions>a{flex:1;min-width:200px}@media(max-width:600px){.floating-prototype{bottom:max(16px,env(safe-area-inset-bottom));right:12px;font-size:13px;padding:12px 16px}.distribution-section{padding:48px 20px}}</style>
 
 <style scoped>.product-reveal{opacity:1!important;transform:none!important;transition:none!important}</style>

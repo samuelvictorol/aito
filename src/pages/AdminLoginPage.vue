@@ -19,17 +19,22 @@
         </q-form>
       </q-page>
     </q-page-container>
+    <LoginMfaDialog v-model="mfaOpen" :challenge="mfaChallenge" @verified="completeLogin" />
   </q-layout>
 </template>
 
 <script>
 import { api } from 'boot/axios'
+import LoginMfaDialog from 'components/LoginMfaDialog.vue'
 
 export default {
   name: 'AdminLoginPage',
+  components: {LoginMfaDialog},
   data () {
     return {
       loading: false,
+      mfaOpen:false,
+      mfaChallenge:null,
       form: {
         email: '',
         password: ''
@@ -37,10 +42,7 @@ export default {
     }
   },
   methods: {
-    async login () {
-      this.loading = true
-      try {
-        const { data } = await api.post('/admin/auth/login', this.form)
+    completeLogin(data) {
         localStorage.removeItem('aito_user_token')
         localStorage.removeItem('aito_user')
         localStorage.removeItem('aito_seller_token')
@@ -48,6 +50,13 @@ export default {
         localStorage.setItem('aito_admin_token', data.token)
         localStorage.setItem('aito_admin_user', JSON.stringify({ ...data.user, role: 'admin' }))
         this.$router.push('/admin')
+    },
+    async login () {
+      this.loading = true
+      try {
+        const { data } = await api.post('/admin/auth/login', this.form)
+        if(data.requiresMfa){this.mfaChallenge=data;this.mfaOpen=true;return}
+        this.completeLogin(data)
       } catch (error) {
         this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel entrar.' })
       } finally {

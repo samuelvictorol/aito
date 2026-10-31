@@ -9,6 +9,7 @@
         </div>
       </q-page>
     </q-page-container>
+    <LoginMfaDialog v-model="mfaOpen" :challenge="mfaChallenge" @verified="finish" />
   </q-layout>
 </template>
 
@@ -16,61 +17,12 @@
 import { onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
-
-const $q = useQuasar()
-const router = useRouter()
-const message = ref('Validando a conta Google...')
-
-function goHomeWithError(text) {
-  sessionStorage.removeItem('aito_auth_return_path')
-  $q.notify({ type: 'negative', message: text })
-  router.replace('/')
-}
-
-onMounted(() => {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-  const error = params.get('error')
-
-  if (error) {
-    goHomeWithError(error)
-    return
-  }
-
-  const token = params.get('token')
-  const rawUser = params.get('user')
-
-  if (!token || !rawUser) {
-    goHomeWithError('Nao foi possivel recuperar a sessao do Google.')
-    return
-  }
-
-  try {
-    const user = JSON.parse(rawUser)
-    const role = ['admin', 'affiliate'].includes(user.role) ? user.role : 'user'
-    localStorage.removeItem('aito_admin_token')
-    localStorage.removeItem('aito_admin_user')
-    localStorage.removeItem('aito_user_token')
-    localStorage.removeItem('aito_user')
-    localStorage.removeItem('aito_affiliate_token')
-    localStorage.removeItem('aito_affiliate_user')
-    localStorage.removeItem('aito_seller_token')
-    localStorage.removeItem('aito_seller_user')
-    const tokenKey = role === 'admin' ? 'aito_admin_token' : role === 'affiliate' ? 'aito_affiliate_token' : 'aito_user_token'
-    const userKey = role === 'admin' ? 'aito_admin_user' : role === 'affiliate' ? 'aito_affiliate_user' : 'aito_user'
-
-    localStorage.setItem(tokenKey, token)
-    localStorage.setItem(userKey, JSON.stringify({ ...user, role }))
-
-    window.history.replaceState({}, document.title, '/auth/google/callback')
-    const returnPath = sessionStorage.getItem('aito_auth_return_path')
-    sessionStorage.removeItem('aito_auth_return_path')
-    const safeReturnPath = returnPath && returnPath.startsWith('/') && !returnPath.startsWith('//') ? returnPath : ''
-    message.value = 'Acesso confirmado. Redirecionando...'
-    router.replace(safeReturnPath || (role === 'admin' ? '/admin' : role === 'affiliate' ? '/affiliate' : '/app'))
-  } catch (error) {
-    goHomeWithError('A resposta do Google estava invalida.')
-  }
-})
+import { api } from 'boot/axios'
+import LoginMfaDialog from 'components/LoginMfaDialog.vue'
+const $q=useQuasar(),router=useRouter(),message=ref('Validando sua conta Google…'),mfaOpen=ref(false),mfaChallenge=ref(null)
+function goHomeWithError(text){sessionStorage.removeItem('aito_auth_return_path');$q.notify({type:'negative',message:text});router.replace('/')}
+function finish(data){const user=data.user,role=user.role==='customer'?'customer':'user';for(const key of ['aito_admin_token','aito_admin_user','aito_user_token','aito_user','aito_affiliate_token','aito_affiliate_user','aito_seller_token','aito_seller_user'])localStorage.removeItem(key);localStorage.setItem('aito_user_token',data.token);localStorage.setItem('aito_user',JSON.stringify({...user,role}));const target=sessionStorage.getItem('aito_auth_return_path');sessionStorage.removeItem('aito_auth_return_path');message.value='Acesso confirmado. Redirecionando…';router.replace(target&&target.startsWith('/')&&!target.startsWith('//')?target:role==='customer'?'/customer':'/app')}
+onMounted(async()=>{const params=new URLSearchParams(window.location.hash.replace(/^#/,''));window.history.replaceState({},document.title,'/auth/google/callback');if(params.get('error'))return goHomeWithError(params.get('error'));try{if(params.get('mfa')){const challenge=JSON.parse(params.get('mfa'));if(!challenge.requiresMfa||!challenge.challengeId)throw Error();mfaChallenge.value=challenge;mfaOpen.value=true;message.value='Confirme o código enviado por e-mail. Confira também o lixo eletrônico.';return}if(params.get('session')==='1'){finish((await api.post('/auth/session')).data);return}throw Error()}catch{goHomeWithError('Não foi possível concluir seu acesso. Entre novamente.')}})
 </script>
 
 <style scoped>

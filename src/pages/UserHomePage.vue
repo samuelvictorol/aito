@@ -32,7 +32,7 @@ const firstName = computed(() => String(sessionUser.value.name || 'Usuario Aito'
 onMounted(async () => { if(sessionStorage.getItem('aito.productClaim')){router.replace('/produto/acesso');return} try { const response=await api.get('/products/aitonotify/profile',{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});localStorage.setItem('aito_user',JSON.stringify(response.data.data)); sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
 async function saveProfile () { saving.value = true; try { const response=await api.patch('/products/aitonotify/profile',{name:profile.name.trim()},{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});sessionUser.value=response.data.data;localStorage.setItem('aito_user',JSON.stringify(sessionUser.value));$q.notify({type:'positive',message:'Perfil salvo.'}) }catch(error){$q.notify({type:'negative',message:error.response?.data?.message || 'Não foi possível salvar.'})}finally{saving.value=false} }
 
-function logout () { localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/') }
+async function logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')},withCredentials:true}); localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/') } catch { $q.notify({type:'negative',message:'Não foi possível encerrar o acesso neste dispositivo. Tente novamente.'}) } }
 </script>
 
 <style scoped>

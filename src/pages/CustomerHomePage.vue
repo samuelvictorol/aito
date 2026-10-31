@@ -19,6 +19,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
+import { api } from 'boot/axios'
 import FinanceDashboard from 'components/FinanceDashboard.vue'
 import SupportTicketsPanel from 'components/SupportTicketsPanel.vue'
 import ContractManager from 'components/ContractManager.vue'
@@ -31,7 +32,7 @@ const menu = [{ id: 'projects', label: 'Projetos', icon: 'mdi-folder-star-outlin
 const firstName = computed(() => String(sessionUser.value.name || 'Cliente Aito').trim().split(/\s+/)[0])
 onMounted(() => { try { sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
 function saveProfile () { saving.value = true; const next = { ...sessionUser.value, name: profile.name.trim() }; localStorage.setItem('aito_user', JSON.stringify(next)); sessionUser.value = next; saving.value = false; $q.notify({ type: 'positive', message: 'Perfil atualizado.' }) }
-function logout () { localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/customer/login') }
+async function logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}}) } catch { $q.notify({type:'negative',message:'Não foi possível encerrar a sessão. Tente novamente.'}); return } localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/customer/login') }
 </script>
 
 <style scoped>

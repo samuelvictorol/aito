@@ -6,7 +6,7 @@
           <q-img src="/aito-logo-restored.png" width="42px" height="42px" fit="contain" />
           <div>
             <span class="auth-dialog__eyebrow">AitoSoftwares</span>
-            <h3>{{ authMode === 'login' ? 'Entrar na AitoLearn' : 'Criar acesso' }}</h3>
+            <h3>{{ authMode === 'login' ? 'Entrar na AitoSoftwares' : 'Criar acesso' }}</h3>
           </div>
         </div>
         <q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="isOpen = false" />
@@ -46,6 +46,7 @@
     </q-card>
   </q-dialog>
 
+  <LoginMfaDialog v-model="mfaOpen" :challenge="mfaChallenge" @verified="completeLogin" />
   <PasswordResetDialog v-if="!isAffiliate" v-model="passwordResetOpen" audience="user" :initial-email="form.identifier.includes('@') ? form.identifier : ''" @completed="handlePasswordResetCompleted" />
   <AffiliateApplicationDialog v-if="isAffiliate" v-model="affiliateApplicationOpen" />
 </template>
@@ -56,6 +57,7 @@ import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import { api, apiBaseURL } from 'boot/axios'
 import PasswordResetDialog from 'components/PasswordResetDialog.vue'
+import LoginMfaDialog from 'components/LoginMfaDialog.vue'
 import AffiliateApplicationDialog from 'components/AffiliateApplicationDialog.vue'
 
 const props = defineProps({
@@ -70,7 +72,7 @@ const emit = defineEmits(['update:modelValue', 'authenticated'])
 const $q = useQuasar()
 const router = useRouter()
 const authMode = ref(props.initialMode === 'register' ? 'register' : 'login')
-const loading = ref(false)
+const loading = ref(false), mfaOpen=ref(false), mfaChallenge=ref(null)
 const passwordResetOpen = ref(false)
 const affiliateApplicationOpen = ref(false)
 const form = reactive({ identifier: '', name: '', email: '', phone: '', password: '' })
@@ -79,7 +81,7 @@ const isAffiliate = computed(() => props.audience === 'affiliate')
 const requiredRule = (value) => Boolean(String(value || '').trim()) || 'Preencha este campo.'
 
 function persistSession(data) {
-  const role = isAffiliate.value ? 'affiliate' : 'user'
+  const role = isAffiliate.value ? 'affiliate' : data.user?.role==='customer'?'customer':'user'
   ;['aito_admin_token', 'aito_admin_user', 'aito_user_token', 'aito_user', 'aito_affiliate_token', 'aito_affiliate_user', 'aito_seller_token', 'aito_seller_user'].forEach((key) => localStorage.removeItem(key))
   const tokenKey = role === 'affiliate' ? 'aito_affiliate_token' : 'aito_user_token'
   const userKey = role === 'affiliate' ? 'aito_affiliate_user' : 'aito_user'
@@ -88,16 +90,21 @@ function persistSession(data) {
   return { ...data, user: { ...data.user, role } }
 }
 
+function completeLogin(response) {
+    const data = persistSession(response)
+    isOpen.value = false
+    $q.notify({ type: 'positive', icon: 'mdi-login', message: 'Acesso realizado.' })
+    emit('authenticated', data)
+}
+
 async function submitAuth() {
   loading.value = true
   try {
     const response = authMode.value === 'register'
       ? await api.post('/auth/register', { name: form.name, email: form.email, phone: form.phone, password: form.password })
       : await api.post(isAffiliate.value ? '/auth/affiliate/login' : '/auth/login', { identifier: form.identifier, password: form.password })
-    const data = persistSession(response.data)
-    isOpen.value = false
-    $q.notify({ type: 'positive', icon: 'mdi-login', message: 'Acesso realizado.' })
-    emit('authenticated', data)
+    if(response.data.requiresMfa){mfaChallenge.value=response.data;mfaOpen.value=true;return}
+    completeLogin(response.data)
   } catch (error) {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel concluir o acesso.' })
   } finally {

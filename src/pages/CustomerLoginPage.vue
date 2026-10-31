@@ -20,6 +20,7 @@
         </q-form>
       </q-page>
     </q-page-container>
+    <LoginMfaDialog v-model="mfaOpen" :challenge="mfaChallenge" @verified="completeLogin" />
     <PasswordResetDialog v-model="forgotOpen" audience="customer" :initial-email="form.identifier.includes('@') ? form.identifier : ''" @completed="handlePasswordResetCompleted" />
   </q-layout>
 </template>
@@ -27,13 +28,16 @@
 <script>
 import { api } from 'boot/axios'
 import PasswordResetDialog from 'components/PasswordResetDialog.vue'
+import LoginMfaDialog from 'components/LoginMfaDialog.vue'
 
 export default {
   name: 'CustomerLoginPage',
-  components: { PasswordResetDialog },
+  components: { PasswordResetDialog, LoginMfaDialog },
   data () {
     return {
       loading: false,
+      mfaOpen:false,
+      mfaChallenge:null,
       forgotOpen: false,
       form: { identifier: '', password: '' }
     }
@@ -42,15 +46,19 @@ export default {
     requiredRule (value) {
       return Boolean(String(value || '').trim()) || 'Preencha este campo.'
     },
-    async login () {
-      this.loading = true
-      try {
-        const { data } = await api.post('/auth/customer/login', this.form)
+    completeLogin(data) {
         ;['aito_admin_token', 'aito_admin_user', 'aito_user_token', 'aito_user', 'aito_seller_token', 'aito_seller_user'].forEach((key) => localStorage.removeItem(key))
         localStorage.setItem('aito_user_token', data.token)
         localStorage.setItem('aito_user', JSON.stringify({ ...data.user, role: 'customer' }))
         this.$q.notify({ type: 'positive', message: 'Acesso do cliente confirmado.' })
         this.$router.push('/customer')
+    },
+    async login () {
+      this.loading = true
+      try {
+        const { data } = await api.post('/auth/customer/login', this.form)
+        if(data.requiresMfa){this.mfaChallenge=data;this.mfaOpen=true;return}
+        this.completeLogin(data)
       } catch (error) {
         this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel entrar no portal.' })
       } finally {

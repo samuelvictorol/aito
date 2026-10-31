@@ -18,12 +18,14 @@
             <q-tab name="overview" icon="mdi-finance" label="Dashboard" />
             <q-tab name="detail" icon="mdi-view-grid-outline" label="Detalhar" />
             <q-tab name="botbuilder-licenses" icon="mdi-shield-key-outline" label="Kit · planos e licenças" />
+            <q-tab name="access-security" icon="mdi-email-lock-outline" label="Segurança de acesso" />
             <q-tab name="site-assistant" icon="mdi-message-text-outline" label="Assistente do site" />
             <q-tab name="lgpd" icon="mdi-shield-lock-outline" label="LGPD" />
           </q-tabs>
 
           <q-tab-panels v-model="tab" class="admin-app__panels">
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
+            <q-tab-panel name="access-security"><AuthenticationIntegrationCard /></q-tab-panel>
             <q-tab-panel name="site-assistant"><SiteAssistantHistoryManager /></q-tab-panel>
             <q-tab-panel name="overview"><FinanceDashboard admin title="" /></q-tab-panel>
 
@@ -74,13 +76,14 @@
     <q-dialog v-model="leadDialog"><q-card class="admin-app__dialog"><q-card-section class="admin-app__dialog-head"><h3>{{ leadForm._id ? 'Editar lead' : 'Cadastrar lead' }}</h3><q-btn flat round dense icon="mdi-close" @click="leadDialog = false" /></q-card-section><q-card-section><q-form @submit.prevent="saveLead"><q-input v-model="leadForm.name" outlined label="Nome" :rules="[requiredRule]" /><q-input v-model="leadForm.email" outlined label="E-mail" class="q-mt-sm" /><q-input v-model="leadForm.phone" outlined label="Telefone" class="q-mt-sm" /><q-input v-model="leadForm.company" outlined label="Empresa" class="q-mt-sm" /><q-input v-model="leadForm.flowType" outlined label="Tipo do fluxo" class="q-mt-sm" /><q-input v-model="leadForm.message" outlined type="textarea" autogrow label="Mensagem" class="q-mt-sm" /><q-select v-model="leadForm.status" outlined label="Status" :options="leadStatuses" emit-value map-options class="q-mt-sm" /><q-btn unelevated no-caps type="submit" class="admin-app__primary full-width q-mt-md" label="Salvar lead" :loading="loading.save" /></q-form></q-card-section></q-card></q-dialog>
 
     <q-dialog v-model="personDialog"><q-card class="admin-app__dialog"><q-card-section class="admin-app__dialog-head"><h3>{{ personForm._id ? 'Editar cadastro' : personForm.role === 'customer' ? 'Cadastrar cliente' : 'Cadastrar usuario' }}</h3><q-btn flat round dense icon="mdi-close" @click="personDialog = false" /></q-card-section><q-card-section><q-form @submit.prevent="savePerson"><q-input v-model="personForm.name" outlined label="Nome" :rules="[requiredRule]" /><q-input v-model="personForm.email" outlined label="E-mail" type="email" class="q-mt-sm" :rules="[requiredRule]" /><q-input v-model="personForm.phone" outlined label="Telefone" class="q-mt-sm" :rules="[requiredRule]" /><q-input v-if="!personForm._id" v-model="personForm.password" outlined label="Senha inicial" type="password" class="q-mt-sm" :rules="[requiredRule]" /><q-toggle v-model="personForm.active" label="Acesso ativo" color="positive" class="q-mt-sm" /><q-btn unelevated no-caps type="submit" class="admin-app__primary full-width q-mt-md" label="Salvar cadastro" :loading="loading.save" /></q-form></q-card-section></q-card></q-dialog>
-    <q-dialog v-model="detailDialog"><q-card class="admin-app__dialog"><q-card-section class="admin-app__dialog-head"><div><p class="admin-app__eyebrow">Detalhes do lead</p><h3>{{ selectedDetail.name || 'Lead' }}</h3></div><q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="detailDialog = false" /></q-card-section><q-card-section class="admin-app__detail-body"><p>{{ selectedDetail.message || 'Sem mensagem cadastrada.' }}</p><div><span>Contato</span><strong>{{ selectedDetail.email || selectedDetail.phone || '-' }}</strong></div><div><span>Visitas / rede observada pelo servidor</span><strong>{{ selectedDetail.visitCount || 0 }} · {{ selectedDetail.lastNetwork || 'Não disponível' }}</strong></div><div><span>Primeira campanha</span><pre>{{ selectedDetail.firstCampaign || {} }}</pre></div><div><span>Campanha recente</span><pre>{{ selectedDetail.lastCampaign || {} }}</pre></div><q-timeline color="teal"><q-timeline-entry v-for="(event,index) in [...(selectedDetail.journey || [])].reverse()" :key="index" :title="event.path" :subtitle="formatDate(event.at)"><span>{{ event.source }} · {{ event.event }}</span></q-timeline-entry></q-timeline></q-card-section></q-card></q-dialog>
+    <q-dialog v-model="detailDialog"><q-card class="admin-app__dialog"><q-card-section class="admin-app__dialog-head"><div><p class="admin-app__eyebrow">Detalhes do lead</p><h3>{{ selectedDetail.name || 'Lead' }}</h3></div><q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="detailDialog = false" /></q-card-section><q-card-section class="admin-app__detail-body"><p>{{ selectedDetail.message || 'Sem mensagem cadastrada.' }}</p><div><span>Contato</span><strong>{{ selectedDetail.email || selectedDetail.phone || '-' }}</strong></div><div><span>Visitas / rede observada pelo servidor</span><strong>{{ selectedDetail.visitCount || 0 }} · {{ selectedDetail.lastNetwork || 'Não disponível' }}</strong></div><div><span>Primeira campanha</span><pre>{{ selectedDetail.firstCampaign || {} }}</pre></div><div><span>Campanha recente</span><pre>{{ selectedDetail.lastCampaign || {} }}</pre></div><q-timeline color="teal"><q-timeline-entry v-for="(event,index) in [...(selectedDetail.journey || [])].reverse()" :key="index" :title="event.path" :subtitle="formatDate(event.at)"><span>{{ event.source }} · {{ journeyEventLabel(event.event) }}</span></q-timeline-entry></q-timeline></q-card-section></q-card></q-dialog>
     <GeneratedCredentialsDialog v-model="credentialsDialogOpen" :customer="generatedCredentials.customer" :password="generatedCredentials.password" />
   </q-layout>
 </template>
 
 <script>
 import { api } from 'boot/axios'
+import AuthenticationIntegrationCard from 'components/AuthenticationIntegrationCard.vue'
 import LicenseTokenList from 'components/LicenseTokenList.vue'
 import FinanceDashboard from 'components/FinanceDashboard.vue'
 import AdminCostManager from 'components/AdminCostManager.vue'
@@ -103,7 +106,7 @@ import SiteAssistantHistoryManager from 'components/SiteAssistantHistoryManager.
 
 export default {
   name: 'AdminPanelPage',
-  components: { LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  components: { AuthenticationIntegrationCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   data () {
     return {
       tab: 'projects', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
@@ -118,7 +121,7 @@ export default {
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
     navigationTab: {
-      get () { return ['projects', 'overview', 'detail', 'lgpd', 'botbuilder-licenses', 'site-assistant'].includes(this.tab) ? this.tab : 'detail' },
+      get () { return ['projects', 'overview', 'detail', 'lgpd', 'botbuilder-licenses', 'site-assistant', 'access-security'].includes(this.tab) ? this.tab : 'detail' },
       set (value) { this.tab = value }
     }
   },
@@ -127,6 +130,7 @@ export default {
     this.loadAll()
   },
   methods: {
+    journeyEventLabel(event) { return ({page_view:'Página visitada',interest_chatbots:'Interesse em chatbots e IA',interest_notifications:'Interesse em disparos oficiais',demo_open:'Abriu a demonstração',whatsapp_open:'Abriu o WhatsApp',offer_open:'Consultou a oferta',checkout_start:'Iniciou a compra',checkout_created:'Checkout gerado',payment_verified:'Pagamento confirmado pelo provedor',purchase_access_issued:'Link pessoal entregue',desktop_download_requested:'Solicitou o instalador',desktop_download_completed:'Download concluído',product_portal_opened:'Acessou a compra'})[event] || event },
     emptyLead () { return { name: '', email: '', phone: '', company: '', message: '', flowType: '', status: 'new', tags: [] } },
     emptyPerson (role) { return { name: '', email: '', phone: '', password: '', active: true, role } },
     requiredRule (value) { return Boolean(String(value || '').trim()) || 'Preencha este campo.' },
@@ -150,7 +154,7 @@ export default {
     async savePolicy () { this.loading.policy = true; try { const { data } = await api.put(`/admin/policies/${this.policyDraft.type}`, this.policyDraft, this.headers); this.policyDraft = data.data; this.policies = this.policies.map(item => item.type === data.data.type ? data.data : item); this.$q.notify({ type: 'positive', message: 'Documento atualizado.' }) } catch (error) { this.notifyError(error) } finally { this.loading.policy = false } },
     deletePolicy () { this.$q.dialog({ title: 'Excluir documento', message: 'A rota publica usara o texto padrao.', cancel: true, persistent: true }).onOk(async () => { try { await api.delete(`/admin/policies/${this.policyDraft.type}`, this.headers); await this.loadPolicies(); this.$q.notify({ type: 'positive', message: 'Documento excluido.' }) } catch (error) { this.notifyError(error) } }) },
     notifyError (error) { this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel concluir a operacao.' }) },
-    logout () { localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
+    async logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_admin_token')}}) } catch { this.$q.notify({type:'negative',message:'Não foi possível encerrar a sessão. Tente novamente.'}); return } localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
   }
 }
 </script>

@@ -8,7 +8,7 @@ import axios from 'axios'
 // "export default () => {}" function below (which runs individually
 // for each client)
 const apiBaseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-const api = axios.create({ baseURL: apiBaseURL })
+const api = axios.create({ baseURL: apiBaseURL, withCredentials: true })
 
 const sessionEntries = [
   { tokenKey: 'aito_user_token', userKey: 'aito_user', defaultPath: '/?auth=login' },
