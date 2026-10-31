@@ -2,6 +2,7 @@
 // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file
 
 import { defineConfig } from '#q-app/wrappers'
+import localizationPlugin from './build/localization-plugin.mjs'
 
 export default defineConfig((/* ctx */) => {
   return {
@@ -13,7 +14,8 @@ export default defineConfig((/* ctx */) => {
     // https://v2.quasar.dev/quasar-cli-vite/boot-files
     boot: [
       'axios',
-      'notify'
+      'notify',
+      'localization'
     ],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#css
@@ -57,7 +59,7 @@ export default defineConfig((/* ctx */) => {
       // polyfillModulePreload: true,
       // distDir
 
-      // extendViteConf (viteConf) {},
+      extendViteConf (viteConf) { viteConf.plugins.push(localizationPlugin({include:file=>file.endsWith('/src/pages/CommunicationSystemPage.vue')||file.endsWith('/src/components/CommunicationEventsConsole.vue')})) },
       // viteVuePluginOptions: {},
       
       // vitePlugins: [

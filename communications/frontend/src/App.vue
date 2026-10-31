@@ -1,4 +1,5 @@
 <script setup>
+import LanguageSwitcher from './components/LanguageSwitcher.vue'
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { isPrototypePath } from './services/prototype-mode.js'
@@ -38,13 +39,14 @@ watch(() => route.fullPath, () => {
 <template>
   <div :class="['app-root', { 'app-root--public': !layoutOwnsFooter }]">
     <div class="app-route" :aria-busy="screenLoading.active.value" :inert="screenLoading.active.value || licenseBlocked || undefined"><router-view /></div>
-    <ProductLicenseGate v-if="licenseBlocked" />
+    <LanguageSwitcher v-if="!route.meta.requiresAuth" class="public-language-switcher"/><ProductLicenseGate v-if="licenseBlocked" />
     <WhiteLabelFooter v-if="!layoutOwnsFooter" />
     <Transition name="spa-loading-fade"><ScreenLoading v-if="screenLoading.visible.value" :label="screenLoading.label.value" /></Transition>
   </div>
 </template>
 
 <style>
+.public-language-switcher{position:fixed;right:16px;top:16px;z-index:5000;background:#f5fffc!important;color:#164c40!important;box-shadow:0 3px 16px #123c3520}
 .app-root {
   min-height: 100dvh;
 }

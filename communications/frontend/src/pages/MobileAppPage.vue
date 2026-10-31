@@ -1,4 +1,5 @@
 <script setup>
+import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ScreenPrivacyToggle from "../components/ScreenPrivacyToggle.vue"
 import RouterLink from '../components/PrototypeAwareRouterLink.vue'
 import { defineAsyncComponent, onMounted, onBeforeUnmount, ref } from 'vue'
@@ -32,7 +33,7 @@ onBeforeUnmount(() => { unread.stop(); window.removeEventListener('resize', fitV
   <section ref="frame" :class="['mobile-app', { 'mobile-app--inbox': channel }]">
     <header class="mobile-app-header">
       <RouterLink :to="channel ? '/app-mobile' : auth.isCollaborator ? '/colaborador' : '/'" class="mobile-app-brand" :aria-label="channel ? 'Escolher canal' : 'Abrir painel completo'"><img :src="branding.logoUrl || '/comunicacao/app/icons/aito-v2-180.png'" alt=""><span><strong :title="branding.appName">{{ branding.appName }}</strong><small>{{ channel ? 'Seu atendimento em tempo real' : 'Escolha seu canal de atendimento' }}</small></span></RouterLink>
-      <ScreenPrivacyToggle />
+      <LanguageSwitcher/><ScreenPrivacyToggle />
       <nav v-if="channel" aria-label="Alternar canal"><RouterLink v-if="canChannel(auth.user,'whatsapp_web')" to="/app-mobile/web" :class="{ active: channel === 'web' }" :aria-label="unreadLabel('whatsapp_web')">🟢 Web<span v-if="unread.counts.whatsapp_web" class="channel-unread channel-unread--web" aria-hidden="true">{{ badge(unread.counts.whatsapp_web) }}</span></RouterLink><RouterLink v-if="canChannel(auth.user,'whatsapp_cloud')" to="/app-mobile/cloud" :class="{ active: channel === 'cloud' }" :aria-label="unreadLabel('whatsapp_cloud')">🔵 Cloud<span v-if="unread.counts.whatsapp_cloud" class="channel-unread channel-unread--cloud" aria-hidden="true">{{ badge(unread.counts.whatsapp_cloud) }}</span></RouterLink></nav>
       <RouterLink v-else :to="auth.isCollaborator ? '/colaborador' : '/'" class="mobile-dashboard-link"><q-icon name="space_dashboard" size="22px"/><span>Painel completo</span></RouterLink>
       <AddToHomeButton/>

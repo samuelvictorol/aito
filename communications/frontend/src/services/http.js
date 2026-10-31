@@ -1,3 +1,4 @@
+import { currentLocale, uiText } from '../i18n/index.js'
 import axios from 'axios'
 import { communicationPayload } from './communication-urls.js'
 import { isPrototypePath } from './prototype-mode.js'
@@ -16,6 +17,8 @@ export const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
+  config.headers ||= {}
+  config.headers['Accept-Language']=currentLocale()
   if (isPrototypePath(globalThis.location?.pathname)) {
     // Replace the adapter before credentials are attached. Unknown requests never fall through.
     delete config.headers.Authorization
@@ -88,11 +91,12 @@ export function errorMessage(error, fallback = 'Não foi possível concluir a op
   const envelope = response?.error && typeof response.error === 'object'
     ? response.error
     : response
-  const message = envelope?.message
+  const originalMessage = envelope?.message
     || response?.message
     || (typeof response?.error === 'string' ? response.error : '')
     || error?.message
     || fallback
+  const message = uiText(originalMessage)
   const validation = envelope?.details || response?.details
   const detailMessages = []
   const append = (value) => {
@@ -108,7 +112,7 @@ export function errorMessage(error, fallback = 'Não foi possível concluir a op
     Object.values(validation.fieldErrors).forEach(append)
   }
 
-  const uniqueDetails = [...new Set(detailMessages)]
+  const uniqueDetails = [...new Set(detailMessages)].map(value=>uiText(value))
     .filter((detail) => !String(message).includes(detail))
 
   return uniqueDetails.length

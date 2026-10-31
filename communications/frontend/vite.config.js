@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import localizationPlugin from './build/localization-plugin.mjs'
 import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
 import { fileURLToPath } from 'node:url'
 
@@ -9,7 +10,7 @@ export default defineConfig({
     'import.meta.env.VITE_API_BASE_URL': JSON.stringify('/comunicacao/api'),
     'import.meta.env.VITE_SOCKET_URL': JSON.stringify('https://api.aitosoftwares.com'),
   },
-  plugins: [
+  plugins: [localizationPlugin(),
     vue({ template: { transformAssetUrls } }),
     quasar({ sassVariables: fileURLToPath(new URL('./src/css/quasar-variables.sass', import.meta.url)) }),
   ],

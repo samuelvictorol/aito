@@ -1,4 +1,5 @@
 <script setup>
+import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ScreenPrivacyToggle from "../components/ScreenPrivacyToggle.vue"
 import { startScreenPrivacy, stopScreenPrivacy } from "../services/screen-privacy.js"
 import { createAppNavigation } from '../services/app-navigation.js'
@@ -448,10 +449,7 @@ onBeforeUnmount(() => {
         <q-btn flat round dense icon="menu" aria-label="Abrir menu" @click="drawer = !drawer" />
         <WhiteLabelBrand compact class="brand--compact" />
         <q-space />
-        <div class="connection-indicator gt-xs">
-          <span :class="['status-dot', app.statusLoaded && 'status-dot--online']" />
-          {{ app.statusLoaded ? 'Central sincronizada' : 'Sincronizando' }}
-        </div>
+        <LanguageSwitcher />
         <ScreenPrivacyToggle />
         <q-btn v-if="!auth.isCollaborator" flat round icon="notifications" aria-label="Notificações do administrador" class="admin-bell">
           <q-badge v-if="unreadAdminNotifications" floating rounded color="negative" :label="unreadAdminNotifications > 99 ? '99+' : unreadAdminNotifications" />
