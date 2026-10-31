@@ -28,7 +28,7 @@
     </div>
 
     <q-table flat bordered wrap-cells row-key="_id" class="portal-module__table" :rows="tickets" :columns="columns" :loading="loading" no-data-label="Nenhum chamado encontrado">
-      <template #body-cell-targetUser="props"><q-td :props="props">{{ props.row.targetUser?.name || 'Meu chamado' }}</q-td></template>
+      <template #body-cell-targetUser="props"><q-td :props="props">{{ props.row.requesterAffiliate?.name || props.row.targetUser?.name || 'Meu chamado' }}<small v-if="props.row.requesterAffiliate"> · Afiliado</small></q-td></template>
       <template #body-cell-project="props"><q-td :props="props">{{ props.row.project?.title || '-' }}</q-td></template>
       <template #body-cell-description="props"><q-td :props="props"><span class="portal-module__description">{{ preview(props.row.description) }}</span></q-td></template>
       <template #body-cell-status="props"><q-td :props="props"><span class="portal-module__tag">{{ statusLabel(props.row.status) }}</span></q-td></template>
@@ -42,11 +42,11 @@
         <q-card-section class="portal-module__dialog-head"><div><span class="portal-module__eyebrow">{{ admin ? 'Chamado interno' : 'Atendimento' }}</span><h3>{{ form._id ? 'Editar chamado' : 'Abrir chamado' }}</h3></div><q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="dialog = false" /></q-card-section>
         <q-card-section>
           <q-form @submit.prevent="save">
-            <q-select v-if="admin" v-model="form.targetUserId" outlined label="Vincular a usuario ou cliente" :options="targetOptions" emit-value map-options :rules="[requiredRule]" />
+            <q-select v-if="admin && !form._id" v-model="form.targetUserId" outlined label="Vincular a cliente ou afiliado" :options="targetOptions" emit-value map-options :rules="[requiredRule]" />
             <q-select v-if="admin && !projectId && selectedTarget?.role === 'customer'" v-model="form.projectId" outlined clearable label="Projeto" :options="projectOptions" emit-value map-options class="q-mt-sm" />
             <q-input v-model="form.title" outlined label="Titulo" class="q-mt-sm" :rules="[requiredRule]" />
             <q-select v-if="admin" v-model="form.status" outlined label="Status" class="q-mt-sm" :options="statusOptions" emit-value map-options />
-            <q-select v-model="form.type" outlined label="Tipo" class="q-mt-sm" :options="typeOptions" emit-value map-options />
+            <q-select v-model="form.type" outlined label="Tipo" class="q-mt-sm" :options="admin?typeOptions:typeOptions.filter(t=>['support','bug','access','financial','other'].includes(t.value))" emit-value map-options />
             <q-input v-model="form.description" outlined type="textarea" autogrow label="Descricao" class="q-mt-sm" :rules="[requiredRule]" />
             <q-file v-if="admin && form.type === 'withdrawal'" v-model="proofFile" outlined label="Comprovante de pagamento" accept="image/*,.pdf" class="q-mt-sm" />
             <q-btn unelevated no-caps class="portal-module__primary full-width q-mt-md" type="submit" label="Salvar chamado" :loading="saving" />
@@ -58,7 +58,7 @@
     <q-dialog v-model="detailDialog">
       <q-card class="portal-module__dialog">
         <q-card-section class="portal-module__dialog-head"><div><span class="portal-module__eyebrow">Detalhes do chamado</span><h3>{{ selectedDetail.title || 'Chamado' }}</h3></div><q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="detailDialog = false" /></q-card-section>
-        <q-card-section class="tickets-panel__detail-body"><p>{{ selectedDetail.description || 'Sem descricao cadastrada.' }}</p><div><span>Status</span><strong>{{ statusLabel(selectedDetail.status) }}</strong></div><a v-if="selectedDetail.attachment?.publicId" :href="`${apiBaseURL}/files/${selectedDetail.attachment.publicId}`" target="_blank" rel="noopener noreferrer">Abrir comprovante</a></q-card-section>
+        <q-card-section class="tickets-panel__detail-body"><p>{{ selectedDetail.description || 'Sem descricao cadastrada.' }}</p><section class="ticket-thread"><article v-for="(message,index) in selectedDetail.messages||[]" :key="index" :class="{'ticket-thread-admin':message.authorRole==='admin'}"><strong>{{message.authorRole==='admin'?'Equipe AitoSoftwares':message.authorName}}</strong><p>{{message.body}}</p><small>{{new Date(message.at).toLocaleString('pt-BR')}}</small></article><q-form @submit.prevent="sendReply"><q-input v-model.trim="reply" outlined type="textarea" autogrow maxlength="10000" label="Adicionar uma mensagem" :rules="[v=>Boolean(v?.trim())||'Escreva uma mensagem.']"/><q-btn unelevated no-caps color="teal-8" type="submit" icon="mdi-send" label="Enviar mensagem" :loading="replying"/></q-form></section><div><span>Status</span><strong>{{ statusLabel(selectedDetail.status) }}</strong></div><a v-if="selectedDetail.attachment?.publicId" :href="`${apiBaseURL}/files/${selectedDetail.attachment.publicId}`" target="_blank" rel="noopener noreferrer">Abrir comprovante</a></q-card-section>
       </q-card>
     </q-dialog>
   </section>
@@ -69,10 +69,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { api, apiBaseURL } from 'boot/axios'
 
-const props = defineProps({ admin: { type: Boolean, default: false }, projectId: { type: String, default: '' }, project: { type: Object, default: null } })
+const props = defineProps({ admin: { type: Boolean, default: false }, affiliate: Boolean, projectId: { type: String, default: '' }, project: { type: Object, default: null } })
 const projectId = props.projectId
 const $q = useQuasar()
-const token = localStorage.getItem(props.admin ? 'aito_admin_token' : 'aito_user_token')
+const token = localStorage.getItem(props.admin ? 'aito_admin_token' : props.affiliate ? 'aito_affiliate_token' : 'aito_user_token')
 const headers = { headers: { Authorization: `Bearer ${token}` } }
 const tickets = ref([])
 const notifications = ref([])
@@ -82,6 +82,7 @@ const loading = ref(false)
 const saving = ref(false)
 const dialog = ref(false)
 const detailDialog = ref(false)
+const reply = ref(''), replying = ref(false)
 const form = ref(emptyForm())
 const selectedDetail = ref({})
 const proofFile = ref(null)
@@ -109,7 +110,7 @@ const typeOptions = [
   { label: 'Outro', value: 'other' },
 ]
 const projectClientIds = computed(() => (props.project?.clients || []).map((item) => item.id || item._id || item))
-const targetOptions = computed(() => targets.value.filter((item) => !projectId || item.role !== 'customer' || !projectClientIds.value.length || projectClientIds.value.includes(item._id)).map((item) => ({ label: `${item.name} - ${item.role === 'customer' ? 'cliente' : 'usuario'}`, value: item._id })))
+const targetOptions = computed(() => targets.value.filter((item) => !projectId || item.role !== 'customer' || !projectClientIds.value.length || projectClientIds.value.includes(item._id)).map((item) => ({ label: `${item.name} - ${item.role === 'affiliate' ? 'afiliado' : item.role === 'customer' ? 'cliente' : 'usuário'}`, value: item._id })))
 const selectedTarget = computed(() => targets.value.find((item) => item._id === form.value.targetUserId) || null)
 const projectOptions = computed(() => projects.value.filter((item) => !form.value.targetUserId || item.client?.id === form.value.targetUserId).map((item) => ({ label: item.title, value: item._id })))
 const activeCount = computed(() => tickets.value.filter((item) => ['open', 'in_progress'].includes(item.status)).length)
@@ -142,7 +143,8 @@ function statusLabel(value) { return statusOptions.find((item) => item.value ===
 function typeLabel(value) { return typeOptions.find((item) => item.value === value)?.label || value || '-' }
 function openCreate() { form.value = emptyForm(); proofFile.value = null; if (!props.admin) form.value.targetUserId = undefined; dialog.value = true }
 function openEdit(ticket) { form.value = { ...emptyForm(), ...ticket, targetUserId: ticket.targetUser?._id || ticket.targetUser?.id || '', projectId: projectId || ticket.project?.id || ticket.project?._id || '' }; proofFile.value = null; dialog.value = true }
-function openDetails(ticket) { selectedDetail.value = ticket; detailDialog.value = true }
+function openDetails(ticket) { selectedDetail.value = ticket; reply.value=''; detailDialog.value = true }
+async function sendReply(){replying.value=true;try{const result=(await api.post((props.admin?'/admin/tickets/':'/tickets/')+selectedDetail.value._id+'/replies',{body:reply.value},headers)).data.data;selectedDetail.value=result;tickets.value=tickets.value.map(t=>t._id===result._id?result:t);reply.value=''}catch(error){notifyError(error)}finally{replying.value=false}}
 async function load() {
   if (!token) return
   loading.value = true
@@ -150,8 +152,8 @@ async function load() {
     const response = await api.get(props.admin ? '/admin/tickets' : '/tickets', { ...headers, params: { ...(props.admin ? { q: search.value, status: filterStatus.value, type: filterType.value } : {}), projectId: projectId || undefined } })
     tickets.value = response.data.data || []
     if (props.admin) {
-      const [users, customers, projectResponse] = await Promise.all([api.get('/admin/users', headers), api.get('/admin/customers', headers), api.get('/admin/projects', headers)])
-      targets.value = [...(users.data.data || []), ...(customers.data.data || [])]
+      const [users, customers, projectResponse, affiliates] = await Promise.all([api.get('/admin/users', headers), api.get('/admin/customers', headers), api.get('/admin/projects', headers),api.get('/admin/affiliates',headers)])
+      targets.value = [...(users.data.data || []), ...(customers.data.data || []),...(affiliates.data.data||[]).map(a=>({...a,role:'affiliate'}))]
       projects.value = projectResponse.data.data || []
     }
     if (!props.admin) await loadNotifications()
@@ -170,8 +172,8 @@ async function save() {
   try {
     const endpoint = props.admin ? '/admin/tickets' : '/tickets'
     const response = form.value._id
-      ? await api.put(`${endpoint}/${form.value._id}`, form.value, headers)
-      : await api.post(endpoint, props.admin ? form.value : { title: form.value.title, type: form.value.type, description: form.value.description, projectId: form.value.projectId }, headers)
+      ? await api.put(`${endpoint}/${form.value._id}`, {title:form.value.title,description:form.value.description,type:form.value.type,...(props.admin?{status:form.value.status}:{})}, headers)
+      : await api.post(endpoint, props.admin ? {title:form.value.title,description:form.value.description,type:form.value.type,status:form.value.status,...(selectedTarget.value?.role==='affiliate'?{targetAffiliateId:form.value.targetUserId}:{targetUserId:form.value.targetUserId,projectId:form.value.projectId})} : { title: form.value.title, type: form.value.type, description: form.value.description, projectId: form.value.projectId }, headers)
     if (form.value._id) tickets.value = tickets.value.map((item) => item._id === form.value._id ? response.data.data : item)
     else tickets.value.unshift(response.data.data)
     if (props.admin && proofFile.value && response.data.data?._id) {
@@ -231,3 +233,5 @@ onMounted(load)
 @media (max-width: 700px) { .portal-module__head { align-items: flex-start; flex-direction: column; } .portal-module__primary { width: 100%; } .portal-module__table { max-width: calc(100vw - 2rem); overflow: auto; } }
 @media (max-width: 760px) { .tickets-panel__filters { grid-template-columns: 1fr; } }
 </style>
+
+<style scoped>.ticket-thread{display:grid;gap:12px}.ticket-thread article{background:#e6f4eb;color:#28513a;border-radius:12px;padding:15px}.ticket-thread article.ticket-thread-admin{background:#d2eade}.ticket-thread article strong{font-size:12px}.ticket-thread article p{font-size:13px;margin:10px 0;white-space:pre-wrap}.ticket-thread small{font-size:10px;color:#759883}.ticket-thread form{display:grid;gap:12px}.ticket-thread form>.q-btn{justify-self:end}</style>

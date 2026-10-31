@@ -59,11 +59,11 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return { name: 'admin-login', query: { redirect: to.fullPath } }
     }
 
-    if (to.meta?.requiresAuth === 'affiliate' && !affiliateToken) return '/'
+    if (to.meta?.requiresAuth === 'affiliate' && !affiliateToken) return '/affiliate/login'
     if (to.meta?.requiresAuth === 'affiliate') {
       try {
         const affiliate = JSON.parse(localStorage.getItem('aito_affiliate_user') || '{}')
-        if (affiliate.role !== 'affiliate') return '/'
+        if (affiliate.role !== 'affiliate') return '/affiliate/login'
       } catch (error) { return '/' }
     }
 

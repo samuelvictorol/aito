@@ -16,6 +16,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Chart } from 'chart.js/auto'
 
 const props = defineProps({
+  light: Boolean,
   title: { type: String, required: true },
   type: { type: String, default: 'doughnut' },
   labels: { type: Array, default: () => [] },
@@ -45,7 +46,7 @@ async function renderChart() {
         label: 'Valor',
         data: props.values,
         backgroundColor: props.colors,
-        borderColor: '#061819',
+        borderColor: props.light?'#ffffff':'#061819',
         borderWidth: 2,
         borderRadius: props.type === 'bar' ? 6 : 0,
       }],
@@ -57,7 +58,7 @@ async function renderChart() {
       plugins: {
         legend: {
           display: props.type !== 'bar',
-          labels: { color: '#bffaf0', boxWidth: 12, usePointStyle: true },
+          labels: { color: props.light?'#557463':'#bffaf0', boxWidth: 12, usePointStyle: true },
         },
         tooltip: { callbacks: { label: (context) => `${context.label}: ${formatMoney(context.raw)}` } },
         onClick: (_event, elements) => {
@@ -67,8 +68,8 @@ async function renderChart() {
       },
       scales: props.type === 'bar'
         ? {
-            x: { ticks: { color: '#9cefe0' }, grid: { color: 'rgba(143,255,238,.08)' } },
-            y: { ticks: { color: '#9cefe0', callback: (value) => formatMoney(value) }, grid: { color: 'rgba(143,255,238,.08)' } },
+            x: { ticks: { color: props.light?'#557463':'#9cefe0' }, grid: { color: props.light?'#cfe5d8':'rgba(143,255,238,.08)' } },
+            y: { ticks: { color: props.light?'#557463':'#9cefe0', callback: (value) => formatMoney(value) }, grid: { color: props.light?'#cfe5d8':'rgba(143,255,238,.08)' } },
           }
         : undefined,
     },

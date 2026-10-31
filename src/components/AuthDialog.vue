@@ -19,19 +19,20 @@
 
       <q-card-section class="auth-dialog__body">
         <q-form @submit.prevent="submitAuth">
-          <q-input v-if="authMode === 'login'" v-model="form.identifier" outlined dense lazy-rules label="E-mail ou telefone" autocomplete="username" :rules="[requiredRule]" />
+          <q-input v-if="authMode === 'login'" v-model="form.identifier" outlined dense lazy-rules :label="isAffiliate?'E-mail do afiliado':'E-mail ou telefone'" :type="isAffiliate?'email':'text'" autocomplete="username" :rules="[requiredRule]" />
           <q-input v-if="authMode === 'register'" v-model="form.name" outlined dense lazy-rules label="Nome" autocomplete="name" :rules="[requiredRule]" />
           <q-input v-if="authMode === 'register'" v-model="form.email" outlined dense lazy-rules label="E-mail" type="email" autocomplete="email" class="q-mt-sm" :rules="[requiredRule]" />
           <q-input v-if="authMode === 'register'" v-model="form.phone" outlined dense lazy-rules label="Telefone unico" autocomplete="tel" class="q-mt-sm" :rules="[requiredRule]" />
-          <q-input v-model="form.password" outlined dense lazy-rules label="Senha" type="password" autocomplete="current-password" class="q-mt-sm" :rules="[requiredRule]" />
+          <q-input v-if="!isAffiliate" v-model="form.password" outlined dense lazy-rules label="Senha" type="password" autocomplete="current-password" class="q-mt-sm" :rules="[requiredRule]" />
+          <p v-if="isAffiliate" class="text-caption">Seu acesso usa um código enviado ao e-mail cadastrado pela equipe. Não é necessário criar senha.</p>
           <button type="submit" class="auth-dialog__action full-width q-mt-md" :disabled="loading">
             <q-spinner v-if="loading" size="18px" />
             <q-icon v-else name="mdi-login" size="18px" />
-            {{ authMode === 'login' ? 'Entrar' : 'Cadastrar' }}
+            {{ isAffiliate ? 'Receber código por e-mail' : authMode === 'login' ? 'Entrar' : 'Cadastrar' }}
           </button>
         </q-form>
 
-        <q-btn v-if="authMode === 'login'" flat no-caps class="auth-dialog__forgot full-width q-mt-sm" icon="mdi-lock-reset" label="Esqueci minha senha" @click="passwordResetOpen = true" />
+        <q-btn v-if="authMode === 'login' && !isAffiliate" flat no-caps class="auth-dialog__forgot full-width q-mt-sm" icon="mdi-lock-reset" label="Esqueci minha senha" @click="passwordResetOpen = true" />
         <div v-if="!isAffiliate" class="auth-dialog__separator"><span>ou</span></div>
         <button v-if="!isAffiliate" type="button" class="auth-dialog__action full-width" @click="continueWithGoogle">
           <q-icon name="mdi-google" size="18px" />
@@ -104,6 +105,7 @@ async function submitAuth() {
       ? await api.post('/auth/register', { name: form.name, email: form.email, phone: form.phone, password: form.password })
       : await api.post(isAffiliate.value ? '/auth/affiliate/login' : '/auth/login', { identifier: form.identifier, password: form.password })
     if(response.data.requiresMfa){mfaChallenge.value=response.data;mfaOpen.value=true;return}
+    if(!response.data.token){$q.notify({type:'info',message:response.data.message||'Confira seu e-mail e o lixo eletrônico.'});return}
     completeLogin(response.data)
   } catch (error) {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel concluir o acesso.' })

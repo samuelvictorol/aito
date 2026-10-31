@@ -64,6 +64,7 @@ const routes = [
     meta: { requiresAuth: 'affiliate' },
     component: () => import('pages/AffiliateHomePage.vue'),
   },
+  { path:'/affiliate/login',name:'affiliate-login',component:()=>import('pages/AffiliateLoginPage.vue') },
   {
     path: '/customer',
     name: 'customer-app',

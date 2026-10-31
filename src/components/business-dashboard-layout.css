@@ -1,0 +1,10 @@
+.business { min-width: 0; max-width: 100%; }
+.business > * { min-width: 0; max-width: 100%; }
+.business-stats article, .business-charts > * { min-width: 0; max-width: 100%; }
+.business-stats strong { overflow-wrap: anywhere; }
+.business :deep(.q-tabs__content) { min-width: 0; }
+.business :deep(.q-table__middle) { max-width: 100%; overflow-x: auto; }
+@media (max-width: 700px) {
+  .business-filters > .q-field { min-width: 135px; }
+  .business-filters > .q-btn { min-height: 40px; }
+}
