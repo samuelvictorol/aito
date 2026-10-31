@@ -1,3 +1,4 @@
+import { installLeadAttribution } from '../services/lead-attribution'
 import { defineRouter } from '#q-app/wrappers'
 import { createRouter, createMemoryHistory, createWebHistory, createWebHashHistory } from 'vue-router'
 import routes from './routes'
@@ -26,6 +27,8 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     history: createHistory(process.env.VUE_ROUTER_BASE)
   })
 
+  if (!process.env.SERVER) installLeadAttribution(Router)
+
   Router.beforeEach((to) => {
     if (process.env.SERVER) return true
 
@@ -42,9 +45,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return '/'
     }
 
-    if (to.meta?.requiresAuth === 'user' && sessionUser.role === 'customer') {
-      return '/customer'
-    }
+
 
     if (to.meta?.requiresAuth === 'customer' && !token) {
       return '/customer/login'

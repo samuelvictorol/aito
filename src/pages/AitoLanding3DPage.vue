@@ -209,30 +209,11 @@
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="accessDialogOpen">
-      <q-card class="landing-3d__dialog-card landing-3d__access-dialog">
-        <q-card-section class="landing-3d__dialog-head"><div><span class="landing-3d__dialog-kicker">Acesso AitoSoftwares</span><h3>Escolha seu espaço</h3></div><q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="accessDialogOpen = false" /></q-card-section>
-        <q-card-section class="landing-3d__dialog-body landing-3d__access-options">
-          <button type="button" @click="openAuth('login', 'user')"><q-icon name="mdi-school-outline" /><span><strong>Área de estudo</strong><small>Entrar na AitoLearn</small></span><q-icon name="mdi-chevron-right" /></button>
-          <button type="button" @click="router.push('/customer/login'); accessDialogOpen = false"><q-icon name="mdi-briefcase-outline" /><span><strong>Acompanhar meu projeto</strong><small>Portal privado do cliente</small></span><q-icon name="mdi-chevron-right" /></button>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+    <q-dialog v-model="accessDialogOpen"><q-card class="landing-3d__dialog-card landing-3d__access-dialog"><q-card-section><h3>Seu acesso AitoSoftwares</h3><q-btn unelevated no-caps color="teal" icon="mdi-account" label="Área do cliente · produto e licença" @click="openAuth('login', 'user')"/><q-btn flat no-caps icon="mdi-shield-account" label="Administração" @click="router.push('/admin/login'); accessDialogOpen = false"/></q-card-section></q-card></q-dialog>
 
     <AuthDialog v-model="authDialogOpen" :initial-mode="authMode" :audience="authAudience" @authenticated="handleAuthSuccess" />
 
-    <q-dialog v-model="coursePromptOpen">
-      <q-card class="landing-3d__dialog-card landing-3d__course-prompt">
-        <q-card-section class="landing-3d__dialog-head">
-          <div><span class="landing-3d__dialog-kicker">AitoLearn / Fullstack Developer</span><h3>Seu proximo nivel pode virar um produto.</h3></div>
-          <q-btn flat round dense icon="mdi-close" aria-label="Fechar" @click="coursePromptOpen = false" />
-        </q-card-section>
-        <q-card-section class="landing-3d__dialog-body">
-          <p>Aprenda a construir e vender sistemas high ticket com frontend, backend, pagamentos, cloud, IA e 3D.</p>
-          <q-btn unelevated no-caps class="landing-3d__auth-submit q-mt-md full-width" icon="mdi-lightbulb-on-outline" label="Conhecer a AitoLearn" @click="router.push('/aitolearn'); coursePromptOpen = false" />
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+
 
     <q-dialog v-model="referralDialogOpen">
       <q-card class="landing-3d__dialog-card">

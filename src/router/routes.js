@@ -1,4 +1,5 @@
 const routes = [
+  { path: '/produto/acesso', component: () => import('pages/ProductAccessPage.vue') },
   {
     path: '/',
     name: 'landing-3d',
@@ -62,7 +63,7 @@ const routes = [
     path: '/customer',
     name: 'customer-app',
     meta: { requiresAuth: 'customer' },
-    component: () => import('pages/CustomerHomePage.vue'),
+    redirect: '/app',
   },
   {
     path: '/customer/login',

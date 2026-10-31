@@ -15,6 +15,7 @@
 </template>
 
 <script setup>
+import { api } from 'boot/axios'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
@@ -25,11 +26,12 @@ import UserCertificatesPanel from 'components/UserCertificatesPanel.vue'
 import UserProductsPanel from 'components/UserProductsPanel.vue'
 import NotificationBell from 'components/NotificationBell.vue'
 
-const router = useRouter(); const $q = useQuasar(); const sessionUser = ref({}); const activeMenu = ref(new URLSearchParams(window.location.search).get('tab') === 'products' ? 'products' : 'courses'); const saving = ref(false); const profile = reactive({ name: '', email: '', phone: '' })
-const menu = [{ id: 'courses', label: 'Meus cursos', icon: 'mdi-school-outline' }, { id: 'products', label: 'Meus produtos', icon: 'mdi-package-variant-closed' }, { id: 'certificates', label: 'Certificados', icon: 'mdi-certificate-outline' }, { id: 'profile', label: 'Meu perfil', icon: 'mdi-account-outline' }, { id: 'finance', label: 'Financeiro', icon: 'mdi-cash-multiple' }, { id: 'tickets', label: 'Meus chamados', icon: 'mdi-lifebuoy' }]
+const router = useRouter(); const $q = useQuasar(); const sessionUser = ref({}); const activeMenu = ref('products'); const saving = ref(false); const profile = reactive({ name: '', email: '', phone: '' })
+const menu = [{ id: 'products', label: 'Meu produto e licença', icon: 'mdi-shield-key-outline' }, { id: 'profile', label: 'Meus dados', icon: 'mdi-account-outline' }]
 const firstName = computed(() => String(sessionUser.value.name || 'Usuario Aito').trim().split(/\s+/)[0])
-onMounted(() => { try { sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
-function saveProfile () { saving.value = true; const next = { ...sessionUser.value, name: profile.name.trim() }; localStorage.setItem('aito_user', JSON.stringify(next)); sessionUser.value = next; saving.value = false; $q.notify({ type: 'positive', message: 'Perfil atualizado.' }) }
+onMounted(async () => { if(sessionStorage.getItem('aito.productClaim')){router.replace('/produto/acesso');return} try { const response=await api.get('/products/aitonotify/profile',{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});localStorage.setItem('aito_user',JSON.stringify(response.data.data)); sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
+async function saveProfile () { saving.value = true; try { const response=await api.patch('/products/aitonotify/profile',{name:profile.name.trim()},{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});sessionUser.value=response.data.data;localStorage.setItem('aito_user',JSON.stringify(sessionUser.value));$q.notify({type:'positive',message:'Perfil salvo.'}) }catch(error){$q.notify({type:'negative',message:error.response?.data?.message || 'Não foi possível salvar.'})}finally{saving.value=false} }
+
 function logout () { localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/') }
 </script>
 
