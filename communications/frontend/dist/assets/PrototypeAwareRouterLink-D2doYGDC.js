@@ -1,1 +1,0 @@
-import{bh as i,bo as e,B as u,A as f,ax as h,y as m,P as c,R as l}from"./index-CriaOZWP.js";const y=i({inheritAttrs:!1,props:e.props,setup(t,{attrs:o,slots:s}){const r=u(),a=f(),n=m(()=>!c(r.path)||typeof t.to=="string"&&/^(?:https?:|mailto:|tel:|\/\/)/i.test(t.to)?t.to:l(a.resolve(t.to)));return()=>h(e,{...o,...t,to:n.value},s)}});export{y as _};

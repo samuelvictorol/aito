@@ -1,1 +1,0 @@
-const o="/notify-me";function i(n={}){return n?.data?.data??n?.data??n??{}}function m(n={}){const a=i(n),t=a.configuration||a.settings||a,s=t.whatsappPermission?.command||t.whatsapp_permission?.command||t.whatsappCloud?.permissionCommand||t.whatsapp_cloud?.permissionCommand;return String(s||o).trim()||o}export{o as D,m as w};

@@ -1,2 +1,0 @@
-Arquivo fictício de demonstração.
-O assistente orienta sobre o atendimento, tira dúvidas e encaminha para um colaborador.
