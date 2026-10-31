@@ -1,15 +1,16 @@
 <template>
   <div class="notification-bell">
-    <q-btn flat round icon="mdi-bell-outline" aria-label="Abrir notificacoes" @click="open">
+    <q-btn flat round icon="mdi-bell-outline" aria-label="Abrir notificações" :aria-expanded="menuOpen" @click="open">
       <q-badge v-if="unread" floating rounded color="teal-3" text-color="dark" :label="unread > 9 ? '9+' : unread" />
-      <q-tooltip>Notificacoes</q-tooltip>
-    </q-btn>
-    <q-menu v-model="menuOpen" anchor="bottom right" self="top right" class="notification-bell__menu">
-      <div class="notification-bell__head"><strong>Notificacoes</strong><q-btn v-if="unread" flat dense no-caps label="Marcar lidas" @click="markAllRead" /></div>
+      <q-tooltip>Notificações</q-tooltip>
+    <q-menu v-model="menuOpen" no-parent-event anchor="bottom right" self="top right" class="notification-bell__menu">
+      <div class="notification-bell__head"><strong>Notificações</strong><q-btn v-if="unread" flat dense no-caps label="Marcar lidas" @click="markAllRead" /></div>
       <div v-if="loading" class="notification-bell__empty"><q-spinner color="teal-3" /></div>
       <div v-else-if="!notifications.length" class="notification-bell__empty"><q-icon name="mdi-bell-sleep-outline" size="28px" /><span>Nenhuma novidade por aqui.</span></div>
       <button v-for="notification in notifications" :key="notification._id" type="button" class="notification-bell__item" :class="{ 'is-unread': !notification.read }" @click="openNotification(notification)"><q-icon :name="notification.type === 'course-new' ? 'mdi-school-outline' : 'mdi-information-outline'" /><span><strong>{{ notification.title }}</strong><small>{{ notification.message }}</small><em>{{ formatDate(notification.createdAt) }}</em></span></button>
     </q-menu>
+    </q-btn>
+    <q-dialog v-model="detailOpen"><q-card class="notification-detail"><q-card-section class="notification-detail__head"><h2>{{selected?.title}}</h2><q-btn flat round dense icon="mdi-close" aria-label="Fechar notificação" v-close-popup/></q-card-section><q-card-section class="notification-detail__message">{{selected?.message}}</q-card-section><q-card-actions align="right"><q-btn flat no-caps label="Fechar" v-close-popup/><q-btn v-if="safeTarget(selected)" unelevated color="teal-7" no-caps label="Abrir link" icon="mdi-arrow-top-right" @click="navigate(selected)"/></q-card-actions></q-card></q-dialog>
   </div>
 </template>
 
@@ -18,18 +19,22 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 
-const router = useRouter(); const menuOpen = ref(false); const notifications = ref([]); const unread = computed(() => notifications.value.filter((item) => !item.read).length); const loading = ref(false); const token = localStorage.getItem('aito_user_token'); let pollTimer
-function headers () { return { headers: { Authorization: `Bearer ${token}` } } }
+const selected=ref(null),detailOpen=ref(false)
+const router = useRouter(); const menuOpen = ref(false); const notifications = ref([]); const unread = computed(() => notifications.value.filter((item) => !item.read).length); const loading = ref(false); let pollTimer
+function headers () { return { headers: { Authorization: `Bearer ${localStorage.getItem('aito_user_token')||''}` } } }
 function formatDate (value) { return value ? new Date(value).toLocaleDateString('pt-BR') : '-' }
-async function load () { if (!token) return; loading.value = true; try { const response = await api.get('/notifications', headers()); notifications.value = response.data.data || [] } catch (error) { /* Notification center is optional. */ } finally { loading.value = false } }
+async function load () { if (!localStorage.getItem('aito_user_token')) return; loading.value = true; try { const response = await api.get('/notifications', headers()); notifications.value = response.data.data || [] } catch (error) { /* Notification center is optional. */ } finally { loading.value = false } }
 async function markRead (notification) { if (notification.read) return; try { await api.patch(`/notifications/${notification._id}/read`, {}, headers()); notification.read = true } catch (error) { /* Keep the item visible if the API is unavailable. */ } }
-async function openNotification (notification) { await markRead(notification); menuOpen.value = false; const target = notification.actionUrl || (notification.relatedSlug ? `/cursos/${notification.relatedSlug}` : ''); if (target) router.push(target) }
+function safeTarget(notification) { const value=notification?.actionUrl || (notification?.relatedSlug ? `/cursos/${encodeURIComponent(notification.relatedSlug)}` : ''); if(!value)return ''; try { const url=new URL(value,window.location.origin); return ['https:','http:'].includes(url.protocol) && !url.username && !url.password ? url : '' } catch { return '' } }
+function navigate(notification) { const url=safeTarget(notification); if(!url)return; detailOpen.value=false; if(url.origin===window.location.origin)router.push(url.pathname+url.search+url.hash); else window.open(url.href,'_blank','noopener,noreferrer') }
+async function openNotification (notification) { await markRead(notification); selected.value=notification; menuOpen.value = false; detailOpen.value=true }
 async function markAllRead () { await Promise.all(notifications.value.filter((item) => !item.read).map(markRead)) }
-function open () { menuOpen.value = true; load() }
+function open () { menuOpen.value = !menuOpen.value; if(menuOpen.value)load() }
 onMounted(() => { load(); pollTimer = window.setInterval(load, 60000) })
 onBeforeUnmount(() => window.clearInterval(pollTimer))
 </script>
 
 <style scoped>
-.notification-bell{position:relative}.notification-bell :deep(.q-btn){color:#8fffee}.notification-bell__menu{width:min(380px,calc(100vw - 2rem));padding:.45rem;color:#effffb;background:#061819;border:1px solid rgba(19,188,157,.3)}.notification-bell__head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.55rem .6rem;border-bottom:1px solid rgba(19,188,157,.15)}.notification-bell__head strong{font-size:.8rem}.notification-bell__head .q-btn{color:#8fffee;font-size:.68rem}.notification-bell__item{display:flex;width:100%;gap:.6rem;padding:.7rem .6rem;border:0;border-bottom:1px solid rgba(19,188,157,.1);color:rgba(239,255,251,.62);background:transparent;text-align:left;cursor:pointer;font:inherit}.notification-bell__item.is-unread{color:#effffb;background:rgba(19,188,157,.08)}.notification-bell__item>.q-icon{flex:none;color:#50dcc4}.notification-bell__item span{display:grid;gap:.2rem}.notification-bell__item strong{font-size:.72rem}.notification-bell__item small{font-size:.67rem;line-height:1.4}.notification-bell__item em{color:rgba(239,255,251,.4);font-size:.6rem;font-style:normal}.notification-bell__empty{display:grid;justify-items:center;gap:.4rem;padding:1.5rem;color:rgba(239,255,251,.55);font-size:.7rem;text-align:center}
+.notification-bell{position:relative}.notification-bell :deep(.q-btn){color:#8fffee}.notification-bell__menu{max-height:min(65vh,560px);overflow-y:auto;width:min(380px,calc(100vw - 2rem));padding:.45rem;color:#effffb;background:#061819;border:1px solid rgba(19,188,157,.3)}.notification-bell__head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.55rem .6rem;border-bottom:1px solid rgba(19,188,157,.15)}.notification-bell__head strong{font-size:.8rem}.notification-bell__head .q-btn{color:#8fffee;font-size:.68rem}.notification-bell__item{display:flex;width:100%;gap:.6rem;padding:.7rem .6rem;border:0;border-bottom:1px solid rgba(19,188,157,.1);color:rgba(239,255,251,.62);background:transparent;text-align:left;cursor:pointer;font:inherit}.notification-bell__item.is-unread{color:#effffb;background:rgba(19,188,157,.08)}.notification-bell__item>.q-icon{flex:none;color:#50dcc4}.notification-bell__item span{display:grid;gap:.2rem}.notification-bell__item strong{font-size:.72rem}.notification-bell__item small{font-size:.67rem;line-height:1.4}.notification-bell__item em{color:rgba(239,255,251,.4);font-size:.6rem;font-style:normal}.notification-bell__empty{display:grid;justify-items:center;gap:.4rem;padding:1.5rem;color:rgba(239,255,251,.55);font-size:.7rem;text-align:center}
+.notification-detail{width:560px;max-width:calc(100vw - 24px);background:#071e1f;color:#edfff8;border:1px solid #3b7560;border-radius:15px;max-height:85dvh;overflow-y:auto}.notification-detail__head{display:flex;align-items:flex-start;gap:15px}.notification-detail__head h2{flex:1;font-size:21px;line-height:1.5;margin:0}.notification-detail__message{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.9;color:#c2dbcd}
 </style>
