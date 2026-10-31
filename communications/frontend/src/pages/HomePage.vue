@@ -391,20 +391,6 @@ async function refreshTelegramIdentity() {
   }
 }
 
-async function loadLogs() {
-  if (auth.isCollaborator) return
-  logLoading.value = true
-  try {
-    const payload = unwrap(await http.get('/logs', { params: { page: logPage.value, limit: 12 } }))
-    logItems.value = asList(payload, 'logs')
-    const pagination = paginationOf(payload, { page: logPage.value, rowsPerPage: 12, rowsNumber: logItems.value.length })
-    logPages.value = Math.max(1, Math.ceil(pagination.rowsNumber / pagination.rowsPerPage))
-  } catch (error) {
-    $q.notify({ type: 'warning', message: errorMessage(error, 'Não foi possível carregar os logs.') })
-  } finally {
-    logLoading.value = false
-  }
-}
 
 async function loadDashboard() {
   loading.value = true
@@ -428,7 +414,6 @@ async function loadDashboard() {
     const contactItems = asList(payload, 'contacts')
     stats.contacts = paginationOf(payload, { page: 1, rowsPerPage: 1, rowsNumber: contactItems.length }).rowsNumber || contactItems.length
   }
-  await loadLogs()
   loading.value = false
 }
 
@@ -507,14 +492,7 @@ function removeWebhookNotificationEmail() {
   })
 }
 
-function addRealtimeLog(log) {
-  if (!log || logPage.value !== 1) return
-  logItems.value = [log, ...logItems.value].slice(0, 12)
-}
 
-function severityColor(level = '') {
-  return { error: 'negative', warn: 'warning', warning: 'warning', info: 'info', success: 'positive' }[level.toLowerCase()] || 'grey-7'
-}
 
 function formatDate(value) {
   if (!value) return 'agora'
@@ -524,19 +502,11 @@ function formatDate(value) {
 onMounted(() => {
   loadDashboard()
   const socket = connectSocket()
-  socket.on('log', addRealtimeLog)
-  socket.on('log:new', addRealtimeLog)
-  socket.on('logs:new', addRealtimeLog)
-  socket.on('log:created', addRealtimeLog)
   socket.on('channels:status', () => app.fetchStatus(true))
 })
 
 onBeforeUnmount(() => {
   const socket = getSocket()
-  socket.off('log', addRealtimeLog)
-  socket.off('log:new', addRealtimeLog)
-  socket.off('logs:new', addRealtimeLog)
-  socket.off('log:created', addRealtimeLog)
   socket.off('channels:status')
 })
 </script>
@@ -590,154 +560,6 @@ onBeforeUnmount(() => {
     </section>
 
     <div class="settings-priority-stack">
-      <q-card flat class="glass-card section-card settings-collapse-card useful-links-card q-mb-lg" data-testid="useful-links-panel">
-        <q-expansion-item
-          icon="mdi-link-variant"
-          label="Links úteis"
-          :caption="`Cadastre até ${MAX_USEFUL_LINKS} atalhos para aparecerem abaixo de Ajuda no menu lateral.`"
-          header-class="settings-collapse-header text-weight-bold"
-        >
-          <div class="settings-collapse-body settings-collapse-body--links">
-            <div class="toolbar-row useful-links-card__header">
-              <div class="text-overline useful-links-eyebrow">Navegação personalizada</div>
-              <q-btn
-                outline
-                color="primary"
-                no-caps
-                icon="add_link"
-                label="Adicionar link"
-                :disable="settings.usefulLinks.length >= MAX_USEFUL_LINKS"
-                @click="addUsefulLink"
-              >
-                <q-tooltip v-if="settings.usefulLinks.length >= MAX_USEFUL_LINKS">
-                  Limite de {{ MAX_USEFUL_LINKS }} links atingido
-                </q-tooltip>
-              </q-btn>
-            </div>
-
-            <div v-if="settings.usefulLinks.length" class="useful-link-list">
-              <article
-                v-for="(link, index) in settings.usefulLinks"
-                :key="`useful-link-${index}`"
-                class="useful-link-editor"
-              >
-                <div class="useful-link-editor__order" aria-hidden="true">{{ index + 1 }}</div>
-                <div class="useful-link-editor__fields">
-                  <q-input
-                    v-model="link.title"
-                    outlined
-                    label="Título"
-                    maxlength="80"
-                    counter
-                    :aria-label="`Título do link útil ${index + 1}`"
-                  />
-                  <q-input
-                    v-model="link.caption"
-                    outlined
-                    label="Descrição (opcional)"
-                    maxlength="240"
-                    counter
-                    :aria-label="`Descrição do link útil ${index + 1}`"
-                  />
-                  <q-select
-                    v-model="link.iconName"
-                    outlined
-                    emit-value
-                    map-options
-                    use-input
-                    fill-input
-                    hide-selected
-                    input-debounce="0"
-                    new-value-mode="add-unique"
-                    :options="USEFUL_LINK_ICON_OPTIONS"
-                    label="Nome do ícone MDI"
-                    hint="Escolha uma opção ou informe, por exemplo, mdi-web."
-                    :aria-label="`Ícone do link útil ${index + 1}`"
-                  >
-                    <template #prepend><q-icon :name="link.iconName || 'mdi-link-variant'" /></template>
-                    <template #option="scope">
-                      <q-item v-bind="scope.itemProps">
-                        <q-item-section avatar><q-icon :name="scope.opt.value" /></q-item-section>
-                        <q-item-section>
-                          <q-item-label>{{ scope.opt.label }}</q-item-label>
-                          <q-item-label caption>{{ scope.opt.value }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </template>
-                  </q-select>
-                  <q-input
-                    v-model="link.url"
-                    outlined
-                    type="url"
-                    label="URL"
-                    placeholder="https://exemplo.com/guia"
-                    hint="Somente endereços HTTP ou HTTPS são aceitos."
-                    :aria-label="`URL do link útil ${index + 1}`"
-                  >
-                    <template #prepend><q-icon name="mdi-open-in-new" /></template>
-                  </q-input>
-                </div>
-                <div class="useful-link-editor__actions">
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    icon="keyboard_arrow_up"
-                    :disable="index === 0"
-                    :aria-label="`Mover ${link.title || `link ${index + 1}`} para cima`"
-                    @click="moveUsefulLink(index, -1)"
-                  >
-                    <q-tooltip>Mover para cima</q-tooltip>
-                  </q-btn>
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    icon="keyboard_arrow_down"
-                    :disable="index === settings.usefulLinks.length - 1"
-                    :aria-label="`Mover ${link.title || `link ${index + 1}`} para baixo`"
-                    @click="moveUsefulLink(index, 1)"
-                  >
-                    <q-tooltip>Mover para baixo</q-tooltip>
-                  </q-btn>
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    color="negative"
-                    icon="delete_outline"
-                    :aria-label="`Remover ${link.title || `link ${index + 1}`}`"
-                    @click="removeUsefulLink(index)"
-                  >
-                    <q-tooltip>Remover link</q-tooltip>
-                  </q-btn>
-                </div>
-              </article>
-            </div>
-            <div v-else class="useful-links-empty">
-              <q-icon name="mdi-link-plus" />
-              <div>
-                <strong>Nenhum atalho personalizado</strong>
-                <span>Ajuda continuará disponível; seus links aparecerão logo abaixo dela.</span>
-              </div>
-            </div>
-
-            <div class="useful-links-card__footer">
-              <span>{{ settings.usefulLinks.length }}/{{ MAX_USEFUL_LINKS }} links cadastrados</span>
-              <q-btn
-                unelevated
-                color="primary"
-                no-caps
-                icon="save"
-                label="Salvar links úteis"
-                :loading="savingUsefulLinks"
-                @click="saveUsefulLinks"
-              :disable="!canConfigureSettings" />
-            </div>
-          </div>
-        </q-expansion-item>
-      </q-card>
-
     <section class="credentials-panel q-mb-lg" data-testid="credentials-panel">
       <q-card flat class="glass-card section-card">
         <div class="toolbar-row credentials-panel__header">
@@ -1002,6 +824,155 @@ onBeforeUnmount(() => {
     </section>
     </div>
 
+    <q-card flat class="glass-card section-card q-mb-lg"><q-expansion-item label="Outras Configurações" icon="tune" header-class="settings-collapse-header text-weight-bold"><div class="q-pa-sm">
+      <q-card flat class="glass-card section-card settings-collapse-card useful-links-card q-mb-lg" data-testid="useful-links-panel">
+        <q-expansion-item
+          icon="mdi-link-variant"
+          label="Links úteis"
+          :caption="`Cadastre até ${MAX_USEFUL_LINKS} atalhos para aparecerem abaixo de Ajuda no menu lateral.`"
+          header-class="settings-collapse-header text-weight-bold"
+        >
+          <div class="settings-collapse-body settings-collapse-body--links">
+            <div class="toolbar-row useful-links-card__header">
+              <div class="text-overline useful-links-eyebrow">Navegação personalizada</div>
+              <q-btn
+                outline
+                color="primary"
+                no-caps
+                icon="add_link"
+                label="Adicionar link"
+                :disable="settings.usefulLinks.length >= MAX_USEFUL_LINKS"
+                @click="addUsefulLink"
+              >
+                <q-tooltip v-if="settings.usefulLinks.length >= MAX_USEFUL_LINKS">
+                  Limite de {{ MAX_USEFUL_LINKS }} links atingido
+                </q-tooltip>
+              </q-btn>
+            </div>
+
+            <div v-if="settings.usefulLinks.length" class="useful-link-list">
+              <article
+                v-for="(link, index) in settings.usefulLinks"
+                :key="`useful-link-${index}`"
+                class="useful-link-editor"
+              >
+                <div class="useful-link-editor__order" aria-hidden="true">{{ index + 1 }}</div>
+                <div class="useful-link-editor__fields">
+                  <q-input
+                    v-model="link.title"
+                    outlined
+                    label="Título"
+                    maxlength="80"
+                    counter
+                    :aria-label="`Título do link útil ${index + 1}`"
+                  />
+                  <q-input
+                    v-model="link.caption"
+                    outlined
+                    label="Descrição (opcional)"
+                    maxlength="240"
+                    counter
+                    :aria-label="`Descrição do link útil ${index + 1}`"
+                  />
+                  <q-select
+                    v-model="link.iconName"
+                    outlined
+                    emit-value
+                    map-options
+                    use-input
+                    fill-input
+                    hide-selected
+                    input-debounce="0"
+                    new-value-mode="add-unique"
+                    :options="USEFUL_LINK_ICON_OPTIONS"
+                    label="Nome do ícone MDI"
+                    hint="Escolha uma opção ou informe, por exemplo, mdi-web."
+                    :aria-label="`Ícone do link útil ${index + 1}`"
+                  >
+                    <template #prepend><q-icon :name="link.iconName || 'mdi-link-variant'" /></template>
+                    <template #option="scope">
+                      <q-item v-bind="scope.itemProps">
+                        <q-item-section avatar><q-icon :name="scope.opt.value" /></q-item-section>
+                        <q-item-section>
+                          <q-item-label>{{ scope.opt.label }}</q-item-label>
+                          <q-item-label caption>{{ scope.opt.value }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                    </template>
+                  </q-select>
+                  <q-input
+                    v-model="link.url"
+                    outlined
+                    type="url"
+                    label="URL"
+                    placeholder="https://exemplo.com/guia"
+                    hint="Somente endereços HTTP ou HTTPS são aceitos."
+                    :aria-label="`URL do link útil ${index + 1}`"
+                  >
+                    <template #prepend><q-icon name="mdi-open-in-new" /></template>
+                  </q-input>
+                </div>
+                <div class="useful-link-editor__actions">
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="keyboard_arrow_up"
+                    :disable="index === 0"
+                    :aria-label="`Mover ${link.title || `link ${index + 1}`} para cima`"
+                    @click="moveUsefulLink(index, -1)"
+                  >
+                    <q-tooltip>Mover para cima</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="keyboard_arrow_down"
+                    :disable="index === settings.usefulLinks.length - 1"
+                    :aria-label="`Mover ${link.title || `link ${index + 1}`} para baixo`"
+                    @click="moveUsefulLink(index, 1)"
+                  >
+                    <q-tooltip>Mover para baixo</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="negative"
+                    icon="delete_outline"
+                    :aria-label="`Remover ${link.title || `link ${index + 1}`}`"
+                    @click="removeUsefulLink(index)"
+                  >
+                    <q-tooltip>Remover link</q-tooltip>
+                  </q-btn>
+                </div>
+              </article>
+            </div>
+            <div v-else class="useful-links-empty">
+              <q-icon name="mdi-link-plus" />
+              <div>
+                <strong>Nenhum atalho personalizado</strong>
+                <span>Ajuda continuará disponível; seus links aparecerão logo abaixo dela.</span>
+              </div>
+            </div>
+
+            <div class="useful-links-card__footer">
+              <span>{{ settings.usefulLinks.length }}/{{ MAX_USEFUL_LINKS }} links cadastrados</span>
+              <q-btn
+                unelevated
+                color="primary"
+                no-caps
+                icon="save"
+                label="Salvar links úteis"
+                :loading="savingUsefulLinks"
+                @click="saveUsefulLinks"
+              :disable="!canConfigureSettings" />
+            </div>
+          </div>
+        </q-expansion-item>
+      </q-card>
+
     <q-card flat class="glass-card section-card settings-collapse-card q-mb-lg" data-testid="telegram-onboarding-panel">
       <q-expansion-item
         icon="bi-telegram"
@@ -1187,30 +1158,7 @@ onBeforeUnmount(() => {
       </q-expansion-item>
     </q-card>
 
-    <q-card v-if="!auth.isCollaborator" flat class="glass-card section-card">
-      <div class="toolbar-row">
-        <div>
-          <h2 class="section-title">Console de eventos</h2>
-          <p class="section-copy"><span class="status-dot status-dot--online q-mr-xs" /> Atualizações recebidas em tempo real e dados sensíveis ocultados pela API.</p>
-        </div>
-        <q-btn flat round icon="refresh" aria-label="Atualizar logs" :loading="logLoading" @click="loadLogs" />
-      </div>
-      <q-inner-loading :showing="logLoading" label="Carregando eventos..." />
-      <EmptyState v-if="!logLoading && !visibleLogItems.length" icon="terminal" title="Nenhum evento registrado" description="Novos eventos da API aparecerão aqui em tempo real." />
-      <div v-else class="log-list">
-        <div v-for="(log, index) in visibleLogItems" :key="log.id || log._id || index" class="log-row">
-          <q-badge :color="severityColor(log.level || log.severity)" :label="(log.level || log.severity || 'info').toUpperCase()" />
-          <div class="log-main">
-            <strong>{{ log.event || log.title || log.message || 'Evento da aplicação' }}</strong>
-            <span v-if="log.message && log.message !== log.title">{{ log.message }}</span>
-          </div>
-          <time>{{ formatDate(log.createdAt || log.timestamp || log.date) }}</time>
-        </div>
-      </div>
-      <div v-if="logPages > 1" class="row justify-center q-mt-lg">
-        <CompactPagination v-model="logPage" :max="logPages" aria-label="Páginas do console de eventos" @update:model-value="loadLogs()" />
-      </div>
-    </q-card>
+    </div></q-expansion-item></q-card>
   </q-page>
 </template>
 

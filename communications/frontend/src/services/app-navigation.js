@@ -22,12 +22,13 @@ export function createAppNavigation({invitesAvailable=true,inviteAccessExplanati
     {separator:true,label: 'Úteis'},
     {label: 'Ajuda',caption: 'Guias e primeiros passos',icon: 'help_center',to: '/help',available:true},
     ...usefulLinks,
-    {separator:true,label: 'Governança'},
-    {label: 'Administradores',icon: 'admin_panel_settings',to: '/administrators',available:true},
-    {label: 'Whitelabel',caption: 'Marca e aparência',icon: 'palette',to: '/whitelabel',available:true},
-    {label: 'Backup e armazenamento',icon: 'backup',to: '/whitelabel#storage',available:true},
-    {label: 'Integrações',icon: 'hub',to: '/integrations',available:true},
-    {label: 'Termos e LGPD',icon: 'verified_user',to: '/terms',available:true},
-    {label: 'Logins',caption: 'Acesso seguro dos contatos',icon: 'login',to: '/logins',available:true},
+    {key:'governance',label:'Governança',icon:'account_balance',children:[
+      {label: 'Administradores',icon: 'admin_panel_settings',to: '/administrators',available:true},
+      {label: 'Whitelabel',caption: 'Marca e aparência',icon: 'palette',to: '/whitelabel',available:true},
+      {label: 'Backup e armazenamento',icon: 'backup',to: '/whitelabel#storage',available:true},
+      {label: 'Integrações',icon: 'hub',to: '/integrations',available:true},
+      {label: 'Termos e LGPD',icon: 'verified_user',to: '/terms',available:true},
+      {label: 'Logins',caption: 'Acesso seguro dos contatos',icon: 'login',to: '/logins',available:true},
+    ]},
   ]
 }

@@ -38,12 +38,14 @@ const route = useRoute()
 const isMobileApp = computed(() => route.meta.appMobile === true)
 const app = useAppStore()
 const auth = useAuthStore()
-const migrationStaged = computed(() => !auth.isCollaborator && sessionStorage.getItem('aito.communication.deliveryMode') !== 'active')
+const migrationPaused = ref(false)
+const migrationStaged = computed(() => !auth.isCollaborator && migrationPaused.value)
+async function loadRuntimeMode(){if(auth.isCollaborator)return;try{const result=unwrap(await http.get('/system/runtime-mode'));migrationPaused.value=result?.deliveryPaused===true;sessionStorage.setItem('aito.communication.deliveryMode',migrationPaused.value?'staged':'active')}catch{ /* An unknown tab value is never evidence of paused delivery. */ }}
 watch(() => auth.user, user => { if (user) startScreenPrivacy(user); else stopScreenPrivacy() }, { immediate: true })
 onBeforeUnmount(stopScreenPrivacy)
 const readOnlyArea = computed(() => auth.isCollaborator && canArea(auth.user, routeArea(route.fullPath)) && !canArea(auth.user, routeArea(route.fullPath), true))
 const drawer = ref($q.screen.gt.sm)
-const expandedNavigation = ref({ home: false, whatsapp: route.path.startsWith('/whatsapp') })
+const expandedNavigation = ref({ home: false, governance: false, whatsapp: route.path.startsWith('/whatsapp') })
 watch(() => route.path, path => { if (path.startsWith('/whatsapp')) expandedNavigation.value.whatsapp = true })
 const appHeader = ref(null)
 const headerHeight = ref(68)
@@ -297,6 +299,7 @@ function onAdminNotification(notification) {
 }
 
 function onSocketReady() {
+  void loadRuntimeMode()
   void loadChatAlerts().catch(() => {})
   void loadAdminNotifications()
   if (notificationHistoryDialog.value) void loadNotificationHistory()
@@ -400,6 +403,7 @@ function restoreBrowserPush() { if (auth.isCollaborator) return; void startAdmin
 onMounted(() => {
   setAdminMessageAlertsActive(!auth.isCollaborator)
   restoreBrowserPush()
+  void loadRuntimeMode()
   void loadChatAlerts().catch(() => {})
   window.addEventListener(AUTH_REFRESHED_EVENT, restoreBrowserPush)
   measureHeader()
@@ -753,7 +757,7 @@ onBeforeUnmount(() => {
         <q-list class="nav-list">
           <template v-for="(item, index) in navigation" :key="item.key || item.label || index">
             <div v-if="item.separator" class="nav-section-label">{{ item.label }}</div>
-            <q-expansion-item v-else-if="item.children" :label="item.label" :icon="item.icon" v-model="expandedNavigation[item.key]" :class="{ 'whatsapp-channel-menu': item.key === 'whatsapp', 'home-navigation-menu': item.key === 'home' }" :header-class="item.key === 'whatsapp' ? 'whatsapp-channel-heading' : 'home-navigation-heading'">
+            <q-expansion-item v-else-if="item.children" :label="item.label" :icon="item.icon" v-model="expandedNavigation[item.key]" :class="{ 'whatsapp-channel-menu': item.key === 'whatsapp', 'home-navigation-menu': item.key === 'home', 'governance-navigation-menu': item.key === 'governance' }" :header-class="item.key === 'whatsapp' ? 'whatsapp-channel-heading' : item.key === 'governance' ? 'governance-navigation-heading' : 'home-navigation-heading'">
               <q-item v-for="child in item.children" :key="child.to" clickable :active="isNavigationActive(child)" active-class="nav-item--active" class="nav-item" @click="goTo(child)"><q-item-section avatar><q-icon :name="child.icon" /></q-item-section><q-item-section><q-item-label>{{ child.label }}</q-item-label></q-item-section><q-item-section v-if="!child.available" side><q-icon name="lock" size="16px"/></q-item-section><q-tooltip v-if="child.tooltip">{{ child.tooltip }}</q-tooltip></q-item>
             </q-expansion-item>
             <q-item
@@ -812,7 +816,7 @@ onBeforeUnmount(() => {
     </q-drawer>
 
     <q-page-container :class="{ 'web-chat-page-container': isWhatsappWebChat }">
-      <q-banner v-if="migrationStaged" dense class="communication-migration-banner"><template #avatar><q-icon name="pause_circle_outline"/></template>Migração em validação — envios pausados. Ative novamente os alertas neste domínio e adicione o novo app à tela inicial. <a href="/admin/comunicacao/sistema" target="_top">Revisar Sistema</a></q-banner>
+      <q-banner v-if="migrationStaged" dense class="communication-migration-banner"><template #avatar><q-icon name="pause_circle_outline"/></template>Envios pausados para validação desta instalação. Revise o estado real e a ativação no Sistema. <a href="/admin/comunicacao/sistema" target="_top">Revisar Sistema</a></q-banner>
       <q-banner v-if="readOnlyArea" dense class="bg-teal-1 text-teal-10">Este perfil tem acesso somente à visualização nesta área.</q-banner>
       <router-view />
     </q-page-container>
@@ -824,6 +828,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.governance-navigation-menu{border-radius:14px;background:linear-gradient(120deg,#fff6d9aa,#f9edc966);margin-top:16px}.governance-navigation-menu :deep(.q-icon){color:#9b741b}.governance-navigation-menu :deep(.q-expansion-item__content){background:#fff9e9aa;border-radius:0 0 14px 14px}
+
 .home-navigation-menu :deep(.q-expansion-item__content) { background: color-mix(in srgb, var(--brand) 7%, transparent); border-radius: 0 0 16px 16px; padding: 4px; }
 .home-navigation-menu :deep(.q-expansion-item__content .q-item__section--avatar) { min-width: 38px; }
 .home-navigation-menu :deep(.q-expansion-item__content .q-icon) { font-size: 20px; }

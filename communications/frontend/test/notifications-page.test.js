@@ -386,7 +386,7 @@ describe('compositor amigável de notificações', () => {
     expect(source).toContain('@click="confirmSend"')
     expect(source).toContain('v-html="safeReviewHtml(item.preview.html)"')
     expect(source).toContain('item.preview.mediaUrl')
-    expect(source).not.toContain('$q.dialog({')
+    expect(source.slice(source.indexOf('async function send()'),source.indexOf('async function confirmSend()'))).not.toContain('$q.dialog({')
   })
 
   it('explica sucesso, erro e itens ignorados sem ocultar o motivo do provedor', () => {

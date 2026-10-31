@@ -514,6 +514,7 @@ export function normalizeMetaDeliveryBlocks(payload = {}) {
 
 <script setup>
 import { vCanAction } from '../services/permission-directives.js'
+import { searchRecipientOptions } from '../services/recipient-search.js'
 import { canChannel } from '../services/access.js'
 import LinkedSitesPreview from '../components/LinkedSitesPreview.vue'
 import EmailDeliveryPreview from '../components/EmailDeliveryPreview.vue'
@@ -540,6 +541,32 @@ const canGlobal = ['whatsapp_web', 'whatsapp_cloud', 'telegram', 'email'].every(
 if (!canGlobal) tab.value = 'template'
 const loading = ref(false)
 const sending = ref(false)
+const contactSearch = ref(''), groupSearch = ref(''), webRiskAccepted = ref(false), clearingHistory = ref(false)
+const metaTable = ref(null), activityTable = ref(null)
+const metaPagination = ref({page:1, rowsPerPage:5}), activityPagination = ref({page:1, rowsPerPage:10})
+const mayClearHistory = computed(() => getStoredUser()?.role === 'admin')
+const reviewUsesWeb = computed(() => reviewItems.value.some(item => item.value === 'whatsapp_web'))
+const filteredContactOptions = computed(() => searchRecipientOptions(contactOptions.value, contactSearch.value))
+const filteredGroupOptions = computed(() => searchRecipientOptions(groupOptions.value, groupSearch.value))
+function filterContacts(value, update) { update(() => { contactSearch.value = value }) }
+function filterGroups(value, update) { update(() => { groupSearch.value = value }) }
+function currentHistoryRows(kind) {
+  const table = kind === 'meta' ? metaTable.value : activityTable.value
+  const rows = table?.filteredSortedRows || (kind === 'meta' ? metaBlocks.value : deliveries.value)
+  const pagination = kind === 'meta' ? metaPagination.value : activityPagination.value
+  const size = pagination.rowsPerPage || rows.length
+  return rows.slice((pagination.page - 1) * size, pagination.page * size)
+}
+function clearHistory(kind, rows) {
+  const selected = [...rows]
+  if (!selected.length || clearingHistory.value) return
+  const body = kind === 'meta' ? { blocks: selected.map(row => ({code:row.code, before:row.updatedAt})) } : { ids: selected.map(row => row.id || row._id) }
+  $q.dialog({title:'Remover registros do histórico?',message:`Remover ${selected.length} registro(s) selecionado(s) desta lista? Entregas, tentativas automáticas e dados de contatos serão preservados.`,cancel:true,persistent:true,ok:{label:'Remover',color:'negative'}}).onOk(async () => {
+    clearingHistory.value = true
+    try { await http.post(kind === 'meta' ? '/notifications/meta-delivery-blocks/clear' : '/notifications/history/clear', {...body,confirmation:'REMOVER HISTORICO SELECIONADO'});await loadData();$q.notify({type:'positive',message:'Histórico atualizado.'}) }
+    catch(error) { $q.notify({type:'negative',message:errorMessage(error)}) } finally { clearingHistory.value=false }
+  })
+}
 const reviewDialog = ref(false)
 const pendingPayload = ref(null)
 const contacts = ref([])
@@ -599,6 +626,7 @@ const dispatchChannelOptions = computed(() => tab.value === 'quick'
 const contactOptions = computed(() => contacts.value.map((item) => ({
   label: item.displayName || item.name || item.email || item.phone || item.telegramUsername || 'Contato sem nome',
   value: item.id || item._id,
+  searchText: [item.displayName,item.name,item.email,item.phone,item.telegramUsername].filter(Boolean).join(' '),
 })))
 const groupOptions = computed(() => groups.value.map((item) => ({ label: item.name, value: item.id || item._id })))
 const templateSetOptions = computed(() => templateSets.value.map((set) => ({
@@ -1126,11 +1154,14 @@ async function send() {
   }
 
   pendingPayload.value = payload
+  webRiskAccepted.value = false
   reviewDialog.value = true
 }
 
 async function confirmSend() {
   if (!pendingPayload.value || sending.value) return
+  if (reviewUsesWeb.value && !webRiskAccepted.value) return
+  pendingPayload.value.whatsappWebRiskConfirmed = reviewUsesWeb.value && webRiskAccepted.value
   sending.value = true
   try {
     const result = unwrap(await http.post('/notifications', pendingPayload.value)) || {}
@@ -1185,6 +1216,7 @@ onMounted(loadData)
       </template>
     </PageHeader>
 
+    <q-banner v-if="reviewUsesWeb" rounded class="bg-orange-1 text-brown-10 q-mb-lg"><template #avatar><q-icon name="warning_amber"/></template>WhatsApp Web pode sofrer bloqueios ao iniciar conversas com pessoas que não entraram em contato ou ao fazer disparos em massa. Para campanhas, prefira o WhatsApp Cloud pela API oficial, respeitando suas políticas. Você pode continuar pelo Web após confirmar o risco na revisão.</q-banner>
     <section class="page-grid notification-layout">
       <q-card flat class="glass-card section-card composer-card">
         <q-tabs v-model="tab" no-caps inline-label active-color="primary" indicator-color="transparent" class="composer-tabs">
@@ -1205,7 +1237,7 @@ onMounted(loadData)
                 use-input
                 emit-value
                 map-options
-                :options="contactOptions"
+                :options="filteredContactOptions" :input-debounce="0" @filter="filterContacts"
                 label="Contatos"
                 class="full-span"
               />
@@ -1217,7 +1249,7 @@ onMounted(loadData)
                 use-input
                 emit-value
                 map-options
-                :options="groupOptions"
+                :options="filteredGroupOptions" :input-debounce="0" @filter="filterGroups"
                 label="Grupos"
                 class="full-span"
               />
@@ -1386,8 +1418,8 @@ onMounted(loadData)
       </aside>
     </section>
 
-    <q-card flat class="glass-card section-card q-mt-lg meta-blocks-card">
-      <div class="toolbar-row meta-blocks-toolbar">
+    <q-card flat class="glass-card section-card q-mt-lg meta-blocks-card"><q-expansion-item label="Bloqueios temporários da Meta" icon="policy">
+      <div class="toolbar-row meta-blocks-toolbar"><q-btn v-if="mayClearHistory" flat no-caps color="negative" icon="delete_sweep" label="Limpar página atual" :disable="!metaBlocks.length" :loading="clearingHistory" @click="clearHistory('meta', currentHistoryRows('meta'))"/>
         <div>
           <div class="meta-blocks-title-row">
             <span class="meta-blocks-icon"><q-icon name="policy" /></span>
@@ -1419,7 +1451,7 @@ onMounted(loadData)
         title="Nenhum bloqueio externo da Meta"
         description="Quando a Meta recusar temporariamente uma entrega, o agrupamento e o retry aparecerão aqui."
       />
-      <q-table
+      <q-table ref="metaTable" v-model:pagination="metaPagination"
         v-else
         flat
         :rows="metaBlocks"
@@ -1445,7 +1477,7 @@ onMounted(loadData)
         </template>
         <template #body-cell-updatedAt="props"><q-td :props="props">{{ formatDate(props.row.updatedAt) }}</q-td></template>
         <template #body-cell-actions="props">
-          <q-td :props="props" class="meta-block-actions">
+          <q-td :props="props" class="meta-block-actions"><q-btn v-if="mayClearHistory" flat round dense color="negative" icon="delete_outline" aria-label="Remover registro do histórico" @click.stop="clearHistory('meta', [props.row])"/>
             <q-btn flat round dense icon="manage_search" color="primary" aria-label="Ver detalhes do bloqueio" @click="openMetaBlockDetails(props.row)">
               <q-tooltip>Ver usuários e entregas afetadas</q-tooltip>
             </q-btn>
@@ -1477,7 +1509,7 @@ onMounted(loadData)
                 <span><strong>{{ props.row.contactCount }}</strong> usuário(s)</span>
               </div>
               <q-badge outline :color="automaticRetryColor(props.row)" :label="automaticRetryLabel(props.row)" />
-              <footer>
+              <footer><q-btn v-if="mayClearHistory" flat color="negative" icon="delete_outline" label="Remover" @click.stop="clearHistory('meta', [props.row])"/>
                 <q-btn flat no-caps color="primary" icon="manage_search" label="Detalhes" @click="openMetaBlockDetails(props.row)" />
                 <q-btn
                   outline
@@ -1494,14 +1526,14 @@ onMounted(loadData)
           </div>
         </template>
       </q-table>
-    </q-card>
+    </q-expansion-item></q-card>
 
-    <q-card flat class="glass-card section-card q-mt-lg">
+    <q-card flat class="glass-card section-card q-mt-lg"><q-expansion-item label="Atividade recente" icon="history">
       <div class="toolbar-row">
-        <div><h2 class="section-title">Atividade recente</h2><p class="section-copy">Últimos lotes e entregas registrados pela API.</p></div>
+        <q-btn v-if="mayClearHistory" flat no-caps color="negative" icon="delete_sweep" label="Limpar página atual" :disable="!deliveries.length" :loading="clearingHistory" @click="clearHistory('activity', currentHistoryRows('activity'))"/><div><h2 class="section-title">Atividade recente</h2><p class="section-copy">Últimos lotes e entregas registrados pela API.</p></div>
       </div>
       <EmptyState v-if="!loading && !deliveries.length" icon="outbox" title="Nenhum envio registrado" description="Seu primeiro disparo aparecerá aqui com status por canal." />
-      <q-table
+      <q-table ref="activityTable" v-model:pagination="activityPagination"
         v-else
         flat
         :rows="deliveries"
@@ -1519,7 +1551,7 @@ onMounted(loadData)
         <template #body-cell-contentName="props"><q-td :props="props">{{ activityName(props.row) }}</q-td></template>
         <template #body-cell-status="props"><q-td :props="props"><q-badge :color="statusColor(props.row.status)" :label="props.row.status || 'queued'" /></q-td></template>
         <template #body-cell-actions="props">
-          <q-td :props="props">
+          <q-td :props="props"><q-btn v-if="mayClearHistory" flat round dense color="negative" icon="delete_outline" aria-label="Remover registro do histórico" @click.stop="clearHistory('activity', [props.row])"/>
             <q-btn
               flat
               round
@@ -1547,7 +1579,7 @@ onMounted(loadData)
                 <span><q-icon name="lan" />{{ channelLabel(props.row.channel) }}</span>
                 <span><q-icon name="description" />{{ activityName(props.row) }}</span>
               </div>
-              <footer>
+              <footer><q-btn v-if="mayClearHistory" flat color="negative" icon="delete_outline" label="Remover" @click.stop="clearHistory('activity', [props.row])"/>
                 <span>Ver contatos, canais e motivos</span>
                 <q-icon name="chevron_right" />
               </footer>
@@ -1555,7 +1587,7 @@ onMounted(loadData)
           </div>
         </template>
       </q-table>
-    </q-card>
+    </q-expansion-item></q-card>
 
     <q-dialog v-model="metaBlockDetailDialog" :maximized="$q.screen.lt.sm">
       <q-card class="meta-block-dialog">
@@ -1806,6 +1838,7 @@ onMounted(loadData)
 
         <q-separator />
         <q-card-section class="review-dialog-content scroll">
+          <q-banner v-if="reviewUsesWeb" rounded class="bg-orange-1 text-brown-10 q-mb-md"><strong>WhatsApp Web: risco de bloqueio</strong><p>Disparos em massa ou novas conversas com quem não entrou em contato podem causar banimento. Prefira o WhatsApp Cloud pela API oficial e siga as políticas do canal.</p><q-checkbox v-model="webRiskAccepted" label="Entendo o risco e confirmo este envio pelo WhatsApp Web"/></q-banner>
           <q-banner rounded class="review-consent-note">
             <template #avatar><q-icon name="verified_user" color="primary" /></template>
             A fila validará configuração e consentimento separadamente em cada canal. Uma falha não interrompe as demais entregas.
@@ -1872,7 +1905,7 @@ onMounted(loadData)
         <q-separator />
         <q-card-actions align="right" class="review-dialog-actions">
           <q-btn flat no-caps label="Voltar e editar" :disable="sending" @click="reviewDialog = false" />
-          <q-btn v-can-action="'notifications.send'" color="primary" unelevated no-caps icon-right="send" label="Confirmar e colocar na fila" :loading="sending" @click="confirmSend" />
+          <q-btn v-can-action="'notifications.send'" color="primary" unelevated no-caps icon-right="send" label="Confirmar e colocar na fila" :disable="reviewUsesWeb && !webRiskAccepted" :loading="sending" @click="confirmSend" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -2578,9 +2611,10 @@ onMounted(loadData)
 
 .review-dialog-card {
   display: flex;
-  width: min(900px, calc(100vw - 32px));
-  max-width: 900px;
-  max-height: min(86vh, 900px);
+  width: min(1540px, calc(100vw - 24px));
+  max-width: 96vw !important;
+  height: 94dvh;
+  max-height: 94dvh;
   flex-direction: column;
   border-radius: 22px;
 }

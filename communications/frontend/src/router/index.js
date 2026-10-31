@@ -7,6 +7,7 @@ import { installRouteLoading } from '../services/route-loading.js'
 import { prototypeDestination } from '../services/prototype-mode.js'
 
 const routes = [
+  {path:'/system-events',name:'system-events',component:()=>import('../components/SystemEventsConsole.vue'),meta:{requiresAuth:true}},
   { path: '/prototype/login', name: 'prototype-login', component: () => import('../pages/LoginPage.vue'), meta: { public: true, prototype: true } },
   { path: '/prototype/colaboradores', alias: '/prototype/whatsapp-web/atendente', name: 'prototype-team-login', component: () => import('../pages/LoginPage.vue'), props: { collaboratorOnly: true }, meta: { public: true, prototype: true } },
   { path: '/prototype/:section(.*)*', name: 'prototype', component: () => import('../pages/PrototypePage.vue'), meta: { public: true, prototype: true } },

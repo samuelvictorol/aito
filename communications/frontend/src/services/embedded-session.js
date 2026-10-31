@@ -19,7 +19,8 @@ export async function initializeEmbeddedSession() {
       if (result?.accessToken && (result.user || result.admin)?.role === 'admin') {
         setAccessToken(result.accessToken)
         setStoredUser(result.user || result.admin)
-        sessionStorage.setItem('aito.communication.deliveryMode', result.mode === 'active' ? 'active' : 'staged')
+        if(['active','staged'].includes(result.mode))sessionStorage.setItem('aito.communication.deliveryMode',result.mode)
+        else sessionStorage.removeItem('aito.communication.deliveryMode')
       }
       finish()
     }

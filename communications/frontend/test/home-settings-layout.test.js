@@ -8,7 +8,7 @@ const source = readFileSync(
 ).replace(/\r\n/g, '\n')
 
 describe('hierarquia dos painéis de configuração no Início', () => {
-  it('posiciona credenciais antes dos links úteis sem recolher credenciais ou console', () => {
+  it('mantém credenciais em destaque e move o console para Sistema', () => {
     expect(source).toContain('class="settings-priority-stack"')
     expect(source).toContain('.credentials-panel {\n  order: -1;')
     expect(source).toContain('data-testid="credentials-panel"')
@@ -16,15 +16,15 @@ describe('hierarquia dos painéis de configuração no Início', () => {
 
     const credentialsPanel = source.slice(
       source.indexOf('data-testid="credentials-panel"'),
-      source.indexOf('data-testid="telegram-onboarding-panel"'),
+      source.indexOf('Outras Configurações'),
     )
     expect(credentialsPanel).not.toContain('settings-collapse-header')
 
-    const consolePanel = source.slice(source.indexOf('Console de eventos'))
-    expect(consolePanel).not.toContain('<q-expansion-item')
+    expect(source).not.toContain('Console de eventos')
+    expect(source).toContain('Outras Configurações')
   })
 
-  it('mantém quatro painéis de edição recolhíveis e inicialmente fechados', () => {
+  it('agrupa os quatro painéis em Outras Configurações inicialmente fechado', () => {
     for (const testId of [
       'useful-links-panel',
       'telegram-onboarding-panel',
@@ -34,7 +34,7 @@ describe('hierarquia dos painéis de configuração no Início', () => {
       expect(source).toContain(`data-testid="${testId}"`)
     }
 
-    expect(source.match(/header-class="settings-collapse-header text-weight-bold"/g)).toHaveLength(4)
+    expect(source.match(/header-class="settings-collapse-header text-weight-bold"/g)).toHaveLength(5)
     expect(source).not.toContain('default-opened')
   })
 
