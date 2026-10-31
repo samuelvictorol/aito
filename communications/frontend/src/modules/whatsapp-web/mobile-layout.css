@@ -1,0 +1,73 @@
+@media(max-width:850px){
+  .whatsapp-web-workspace .workspace-content .card{max-width:100%}
+  .whatsapp-web-workspace .workspace-content h1,.whatsapp-web-workspace .workspace-content h2,.whatsapp-web-workspace .workspace-content h3,.whatsapp-web-workspace .workspace-content p,.whatsapp-web-workspace .workspace-content code{overflow-wrap:anywhere}
+  .whatsapp-web-workspace .workspace-content .modal-backdrop{z-index:3200}
+  .whatsapp-web-workspace .workspace-content .panel-head{flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .panel-head>div{min-width:0}
+  .whatsapp-web-workspace .workspace-content .panel{padding:18px 14px}
+  .whatsapp-web-workspace .workspace-content .toolbar{padding:12px}
+  .whatsapp-web-workspace .workspace-content .toolbar .search{min-width:0}
+  .whatsapp-web-workspace .workspace-content .flows-grid{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .flow-card{padding:18px 14px}
+  .whatsapp-web-workspace .workspace-content .flow-card footer .icon-button{min-width:44px;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .flow-card footer .btn{min-height:44px}
+  .whatsapp-web-workspace .workspace-content .flow-meta{font-size:12px}
+  .whatsapp-web-workspace .workspace-content .contacts-grid,.whatsapp-web-workspace .workspace-content .integration-grid,.whatsapp-web-workspace .workspace-content .settings-grid,.whatsapp-web-workspace .workspace-content .accounts{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .contact-row>div:first-child{flex:1;min-width:0}
+  .whatsapp-web-workspace .workspace-content .contact-row .btn{min-height:44px;min-width:84px}
+  .whatsapp-web-workspace .workspace-content .group-row strong,.whatsapp-web-workspace .workspace-content .contact-row strong{font-size:14px}
+  .whatsapp-web-workspace .workspace-content .catalog-grid,.whatsapp-web-workspace .workspace-content .asset-grid{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .catalog-bar{padding:12px;margin-bottom:16px;gap:12px}
+  .whatsapp-web-workspace .workspace-content .catalog-bar>select{min-width:0;width:100%;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .catalog-tabs{display:flex;flex:1 0 100%;gap:6px;width:100%;min-width:0}
+  .whatsapp-web-workspace .workspace-content .catalog-tabs .btn{flex:1;min-width:0;min-height:44px;padding:8px;font-size:12px}
+  .whatsapp-web-workspace .workspace-content .catalog-bar>a{margin-left:0;flex:1 0 100%;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .item-card>div:last-child,.whatsapp-web-workspace .workspace-content .order-card{padding:16px}
+  .whatsapp-web-workspace .workspace-content .item-card p,.whatsapp-web-workspace .workspace-content .item-card small,.whatsapp-web-workspace .workspace-content .order-card small{color:var(--muted);line-height:1.5}
+  .whatsapp-web-workspace .workspace-content .item-code{color:var(--primary-dark)}
+  .whatsapp-web-workspace .workspace-content .item-card footer{flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .item-card footer .btn{flex:1;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .catalog-settings{padding:18px 14px;gap:16px}
+  .whatsapp-web-workspace .workspace-content .two-fields{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .catalog-orders>header{flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .catalog-orders>header select{width:100%;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .catalog-notice{color:var(--primary-dark);background:#e6f7f0}
+  .whatsapp-web-workspace .workspace-content .catalog-overlay{padding:8px;align-items:end;z-index:3200}
+  .whatsapp-web-workspace .catalog-overlay .catalog-modal{width:100%;max-height:92dvh;padding:18px 14px calc(18px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0}
+  .whatsapp-web-workspace .catalog-modal .two-fields{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .catalog-modal small{color:var(--muted)}
+  .whatsapp-web-workspace .catalog-modal header .icon-button{min-width:44px;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .asset-toolbar{gap:10px;flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .asset-toolbar .search{width:100%;flex-basis:100%;min-width:0}
+  .whatsapp-web-workspace .workspace-content .upload-card,.whatsapp-web-workspace .workspace-content .upload-fields{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .upload-card{padding:14px;gap:14px}
+  .whatsapp-web-workspace .workspace-content .asset-copy h2{font-size:17px;overflow-wrap:anywhere}
+  .whatsapp-web-workspace .workspace-content .asset-copy p,.whatsapp-web-workspace .workspace-content .asset-copy>small{font-size:12px;line-height:1.5}
+  .whatsapp-web-workspace .workspace-content .asset-card footer{flex-wrap:wrap;padding:0 14px 14px;gap:8px}
+  .whatsapp-web-workspace .workspace-content .asset-card footer .btn{flex:1;min-height:44px;padding:8px 12px;font-size:12px}
+  .whatsapp-web-workspace .workspace-content .asset-card footer .icon-button{min-width:44px;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .credentials-layout,.whatsapp-web-workspace .workspace-content .fields.two{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .settings-card,.whatsapp-web-workspace .workspace-content .credentials-card,.whatsapp-web-workspace .workspace-content .persistence-card{padding:18px 14px}
+  .whatsapp-web-workspace .workspace-content .secret-form{min-width:0;padding:12px}
+  .whatsapp-web-workspace .workspace-content .secret-list article{min-width:0;flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .secret-list article>div{flex-basis:calc(100% - 34px)}
+  .whatsapp-web-workspace .workspace-content .secret-list .icon-button{min-width:44px;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .persistence-card>div{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .persistence-card small,.whatsapp-web-workspace .workspace-content .encryption-note{font-size:12px;line-height:1.6}
+  .whatsapp-web-workspace .workspace-content .log-toolbar{grid-template-columns:minmax(0,1fr);padding:12px}
+  .whatsapp-web-workspace .workspace-content .log-toolbar select{min-width:0;min-height:44px}
+  .whatsapp-web-workspace .workspace-content .log-console{height:55dvh;min-height:250px;padding:8px}
+  .whatsapp-web-workspace .workspace-content .log-line{grid-template-columns:minmax(0,1fr) auto;padding:10px 6px;font-size:12px}
+  .whatsapp-web-workspace .workspace-content .log-line p{grid-column:1/-1;min-width:0}
+  .whatsapp-web-workspace .workspace-content .log-line time,.whatsapp-web-workspace .workspace-content .log-line .scope{display:none}
+  .whatsapp-web-workspace .workspace-content .payment-monitor{min-width:0;padding:14px}
+  .whatsapp-web-workspace .workspace-content .payment-monitor__head{flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .payment-monitor__items{grid-template-columns:minmax(0,1fr)}
+  .whatsapp-web-workspace .workspace-content .usage-filters{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+  .whatsapp-web-workspace .workspace-content .usage-details{min-width:0;max-width:100%;padding:16px 12px}
+  .whatsapp-web-workspace .workspace-content .usage-table{min-width:0;max-width:100%;overscroll-behavior:contain}
+  .whatsapp-web-workspace .workspace-content .usage-table article{grid-template-columns:minmax(0,1fr) auto;gap:10px}
+  .whatsapp-web-workspace .workspace-content .usage-details footer{flex-wrap:wrap}
+  .whatsapp-web-workspace .workspace-content .native-list button{min-height:72px;min-width:200px}
+  .whatsapp-web-workspace .workspace-content .native-diagram .vue-flow{height:60dvh;min-height:300px}
+}

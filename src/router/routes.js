@@ -1,4 +1,9 @@
 const routes = [
+  { path: '/admin/comunicacao/sistema', name: 'communication-system', meta: {requiresAuth:'admin'}, component: () => import('pages/CommunicationSystemPage.vue') },
+  { path: '/admin/comunicacao/:section(.*)*', name: 'communication-admin', meta: {requiresAuth:'admin'}, component: () => import('pages/CommunicationPage.vue') },
+  { path: '/whatsapp-solucoes/teste-gratis/:section(.*)*', name: 'communication-demo', meta: {communicationDemo:true}, component: () => import('pages/CommunicationPage.vue') },
+  { path: '/prototype/:section(.*)*', redirect: to => ({path:'/whatsapp-solucoes/teste-gratis/'+(Array.isArray(to.params.section)?to.params.section.join('/'):to.params.section||''),query:to.query,hash:to.hash}) },
+  ...['/colaboradores', '/colaboradores/login', '/whatsapp-web/atendente', '/whatsapp-web/catalogo/:slug', '/invite/:slug', '/notificacao/:slug', '/meu-perfil'].map(path => ({path,component:()=>import('pages/CommunicationPublicRedirectPage.vue')})),
   { path: '/produto/acesso', component: () => import('pages/ProductAccessPage.vue') },
   {
     path: '/',

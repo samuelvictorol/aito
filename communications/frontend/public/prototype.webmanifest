@@ -1,0 +1,25 @@
+{
+  "id": "/comunicacao/app/prototype/",
+  "name": "AitoNotify · Demonstração",
+  "short_name": "Notify Demo",
+  "start_url": "/comunicacao/app/prototype/app-mobile",
+  "scope": "/comunicacao/app/prototype/",
+  "display": "standalone",
+  "lang": "pt-BR",
+  "background_color": "#f5fbf9",
+  "theme_color": "#35BCA4",
+  "icons": [
+    {
+      "src": "/comunicacao/app/icons/aito-v2-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/comunicacao/app/icons/aito-v2-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+import{y as u}from"./index-CriaOZWP.js";const n={ratio:[String,Number]};function a(o,i){return u(()=>{const t=o.ratio||i?.value;if(typeof t=="string"&&t.trim()==="")return null;const r=Number(t);return Number.isFinite(r)&&r>0?{paddingBottom:`${100/r}%`}:null})}export{a,n as u};

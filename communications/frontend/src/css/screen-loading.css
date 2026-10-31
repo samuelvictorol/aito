@@ -1,0 +1,46 @@
+/* Shared with the initial HTML, so the star field exists before the SPA starts. */
+.spa-loading {
+  --loading-accent: #8debd9;
+  --loading-glow: #b3b0ff;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  background: #030304;
+  background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--loading-accent) 3%, #030304), transparent 65%), #030304;
+  color: #f3f9ff;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  cursor: progress;
+}
+.spa-loading__sky { position: absolute; inset: 0; pointer-events: none; }
+.spa-loading__star {
+  position: absolute;
+  width: var(--star-size, 2px);
+  height: var(--star-size, 2px);
+  border-radius: 50%;
+  background: var(--star-color, #bcecf7);
+  background: color-mix(in srgb, var(--star-color, #bcecf7) 55%, white);
+  box-shadow: 0 0 4px .7px var(--star-color, #bcecf7), 0 0 10px .15px var(--star-color, #bcecf7);
+  opacity: var(--star-opacity, .6);
+  animation: spa-star-twinkle var(--star-duration, 4s) var(--star-delay, 0s) ease-in-out infinite;
+}
+.spa-loading__content { display: grid; justify-items: center; gap: 13px; width: min(82vw, 480px); padding: 24px; text-align: center; position: relative; }
+.spa-loading__title { margin: 0; max-width: 100%; overflow-wrap: anywhere; font-size: clamp(21px, 3.5vw, 29px); font-weight: 600; line-height: 1.35; letter-spacing: -.025em; }
+.spa-loading__logo { display: block; width: clamp(68px, 10vw, 88px); height: clamp(68px, 10vw, 88px); object-fit: contain; margin-bottom: 8px; border-radius: 22%; filter: drop-shadow(0 0 22px color-mix(in srgb, var(--loading-accent) 22%, transparent)); }
+.spa-loading-fade-leave-active { transition: opacity 150ms ease-out; pointer-events: none; }
+.spa-loading-fade-leave-to { opacity: 0; }
+@keyframes spa-star-twinkle {
+  0%, 100% { opacity: calc(var(--star-opacity, .6) * .14); transform: scale(.55); }
+  44% { opacity: var(--star-opacity, .6); transform: scale(1.08); }
+  62% { opacity: calc(var(--star-opacity, .6) * .27); transform: scale(.7); }
+  80% { opacity: calc(var(--star-opacity, .6) * .78); transform: scale(.95); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spa-loading__star { animation: none; opacity: var(--star-opacity, .6); }
+  .spa-loading-fade-leave-active { transition: none; }
+}

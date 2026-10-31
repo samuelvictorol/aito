@@ -9,8 +9,11 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "dev": "quasar dev",
-    "build": "quasar build",
-    "postinstall": "quasar prepare"
+    "build": "quasar build && npm run build:communication && node scripts/assemble-communication.mjs",
+    "postinstall": "quasar prepare",
+    "build:communication": "npm run build --prefix communications/frontend",
+    "dev:communication": "npm run dev --prefix communications/frontend -- --port 9010",
+    "prebuild": "npm ci --prefix communications/frontend --ignore-scripts --no-audit --no-fund"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",

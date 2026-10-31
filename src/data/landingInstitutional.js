@@ -54,7 +54,7 @@ export const institutionalBrands = Object.freeze([
     name: 'NotifyFlow',
     imgUrl: 'notifyflow.png',
     summary: 'Plataforma de disparo de notificações multicanal para WhatsApp Api Oficial, Telegram e Email.',
-    href: 'https://notify-flow.onrender.com/'
+    href: '/whatsapp-solucoes/teste-gratis'
   },
   {
     name: 'GLOBO',

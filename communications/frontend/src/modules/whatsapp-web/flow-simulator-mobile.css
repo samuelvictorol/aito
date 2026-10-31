@@ -1,0 +1,24 @@
+@media(max-width:850px){
+  .sim-overlay{padding:0;align-items:stretch;z-index:4200}
+  .sim-dialog{display:flex;flex-direction:column;width:100%;max-height:var(--web-viewport-height,100dvh);height:var(--web-viewport-height,100dvh);overflow:hidden;background:#f0f2f5}
+  .sim-tools{flex:0 0 auto;min-height:56px;padding:6px 10px;color:#173e33;background:#fff;border-bottom:1px solid #dbe8df}
+  .sim-tools button{min-width:44px;min-height:44px;height:44px}
+  .phone{display:flex;flex:1 1 0;min-height:0;height:auto;border:0;border-radius:0;box-shadow:none}
+  .phone-status{display:none}
+  .chat-header{padding:8px 12px;min-height:58px;flex:0 0 auto}
+  .chat-feed{min-height:0;padding:12px 10px}
+  .fixture-editor{max-height:40dvh;overflow:auto;flex:0 0 auto}
+  .fixture-editor textarea,.fixture-editor select,.fixture-editor input:not([type=checkbox]){font-size:16px}
+  .composer{padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:8px;flex:0 0 auto}
+  .composer input{min-height:44px;font-size:16px}
+  .composer button{min-width:44px;width:44px;min-height:44px;height:44px;flex:0 0 44px}
+  .operator-composer input{font-size:16px}
+  .operator-composer button,.attachment-actions button,.sim-quick-replies button,.sim-payment button,.sim-attachment button{min-height:44px}
+  .sim-attachment{max-height:42dvh;overflow:auto;flex:0 0 auto}
+  .sim-attachment input,.sim-attachment select,.sim-asset{font-size:16px}
+  .sim-quick-replies{flex:0 0 auto;max-height:100px;overflow:auto}
+  .attachment-actions{flex:0 0 auto}
+  .execution{max-height:110px;overflow:auto;margin:0;border-radius:0;flex:0 0 auto}
+  .sim-error{margin:0;border-radius:0;flex:0 0 auto}
+  .sim-dialog .sim-product>button{width:44px;min-width:44px;height:44px}
+}

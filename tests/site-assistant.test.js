@@ -9,7 +9,7 @@ import * as identity from '../src/utils/siteAssistantIdentity.js'
 test('only approved product and commercial destinations become clickable links', () => {
   for (const url of ['javascript:alert(1)', '//evil.test', 'https://wa.me/1234', 'http://notify-flow.onrender.com/', 'https://aitosoftwares.com.evil.test/whatsappbotbuilder', 'https://notify-flow.onrender.com@evil.test/', 'https://notify-flow.onrender.com:444/']) assert.equal(helpers.safeAssistantLink({ url }), null, url)
   assert.equal(helpers.safeAssistantLink({ url: '/whatsappbotbuilder' }).url, '/whatsapp-solucoes')
-  assert.equal(helpers.safeAssistantLink({ url: 'https://notify-flow.onrender.com/' }).url, 'https://notify-flow.onrender.com/')
+  assert.equal(helpers.safeAssistantLink({ url: 'https://notify-flow.onrender.com/' }).url, '/whatsapp-solucoes/teste-gratis')
   assert.equal(new URL(helpers.buildCommercialUrl([{ from: 'user', text: 'Integração com CRM & pedidos' }])).searchParams.get('text').includes('CRM & pedidos'), true)
 })
 

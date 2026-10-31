@@ -1,1 +1,8 @@
-/*    /index.html   200
+/comunicacao/app /comunicacao/app/ 301!
+/comunicacao/session https://api.aitosoftwares.com/comunicacao/session 200!
+/comunicacao/status https://api.aitosoftwares.com/comunicacao/status 200!
+/comunicacao/api/* https://api.aitosoftwares.com/comunicacao/api/:splat 200!
+/comunicacao/socket.io/* https://api.aitosoftwares.com/comunicacao/socket.io/:splat 200!
+/comunicacao/whatsapp-web/socket.io/* https://api.aitosoftwares.com/comunicacao/whatsapp-web/socket.io/:splat 200!
+/comunicacao/app/* /comunicacao/app/index.html 200
+/* /index.html 200

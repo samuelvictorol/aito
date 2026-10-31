@@ -56,7 +56,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     }
 
     if (to.meta?.requiresAuth === 'admin' && !localStorage.getItem('aito_admin_token')) {
-      return '/admin/login'
+      return { name: 'admin-login', query: { redirect: to.fullPath } }
     }
 
     if (to.meta?.requiresAuth === 'affiliate' && !affiliateToken) return '/'

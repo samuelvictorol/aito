@@ -15,7 +15,7 @@ test('product and account routes remain available while legacy chat URLs show mi
   assert.deepEqual(moved.alias, ['/vendedor/login', '/vendedor/chat'])
   assert.match(String(moved.component), /WhatsAppMovedPage/)
   const guidance = read('src/pages/WhatsAppMovedPage.vue')
-  assert.match(guidance, /href="https:\/\/notify-flow\.onrender\.com\/whatsapp-web\/atendente"/)
+  assert.match(guidance, /href="\/comunicacao\/app\/colaboradores"/)
   assert.doesNotMatch(guidance, /localStorage|sessionStorage|Authorization|\$route/)
 })
 

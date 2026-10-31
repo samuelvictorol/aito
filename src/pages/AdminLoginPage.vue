@@ -49,7 +49,9 @@ export default {
         localStorage.removeItem('aito_seller_user')
         localStorage.setItem('aito_admin_token', data.token)
         localStorage.setItem('aito_admin_user', JSON.stringify({ ...data.user, role: 'admin' }))
-        this.$router.push('/admin')
+        const redirect = this.$route.query.redirect
+        const safeRedirect = typeof redirect === 'string' && /^\/admin(?:\/|[?#]|$)/.test(redirect) && !/[\\\r\n]/.test(redirect) && !redirect.startsWith('/admin/login') ? redirect : '/admin'
+        this.$router.push(safeRedirect)
     },
     async login () {
       this.loading = true

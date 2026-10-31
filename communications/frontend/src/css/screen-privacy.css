@@ -1,0 +1,20 @@
+/* Visual privacy only: permissions and original records remain unchanged. */
+html[data-screen-privacy="hidden"] [data-private-text] {
+  color: transparent !important;
+  text-shadow: none !important;
+  background-image: linear-gradient(transparent 25%, color-mix(in srgb, var(--q-primary) 20%, #d5deda) 25% 78%, transparent 78%);
+  border-radius: 4px;
+  user-select: none !important;
+}
+html[data-screen-privacy="hidden"] :is(img,video,audio,canvas,iframe,svg)[data-private-value] {
+  visibility: hidden !important;
+}
+html[data-screen-privacy="hidden"] :is(input,textarea)[data-private-value] {
+  -webkit-text-security: disc !important;
+  color: transparent !important;
+  caret-color: transparent !important;
+  text-shadow: none !important;
+  user-select: none !important;
+}
+/* Tooltips about controls remain readable. Sensitive tooltip values are marked
+   by the same rules as all other text. */

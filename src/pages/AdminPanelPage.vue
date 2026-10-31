@@ -14,6 +14,7 @@
           </section>
 
           <q-tabs v-model="navigationTab" dense align="left" outside-arrows mobile-arrows class="admin-app__tabs" active-color="teal-3" indicator-color="teal-4">
+            <q-route-tab to="/admin/comunicacao" icon="mdi-forum-outline" label="Comunicação" />
             <q-tab name="projects" icon="mdi-folder-star-outline" label="Projetos" />
             <q-tab name="overview" icon="mdi-finance" label="Dashboard" />
             <q-tab name="detail" icon="mdi-view-grid-outline" label="Detalhar" />

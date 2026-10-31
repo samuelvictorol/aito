@@ -1,0 +1,9 @@
+@media(max-width:850px){
+  .public-store input,.public-store select,.public-store textarea{font-size:16px}
+  .public-store button,.public-store a.media-link{min-height:44px}
+  .store-controls nav{overscroll-behavior:contain;padding-bottom:4px}
+  .store-brand{min-width:0;overflow-wrap:anywhere}
+  .store-header{padding:16px}
+  .product-info footer{flex-wrap:wrap}
+  .photo-overlay button{min-width:44px;min-height:44px}
+}

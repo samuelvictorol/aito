@@ -8,12 +8,12 @@ export function safeAssistantLink(link) {
   try {
     const url = new URL(link.url, 'https://aitosoftwares.com')
     const allowed = url.protocol === 'https:' && !url.username && !url.password && !url.port && (
-      url.origin === 'https://aitosoftwares.com' && ['/whatsappbotbuilder', '/whatsapp-solucoes'].includes(url.pathname) ||
+      url.origin === 'https://aitosoftwares.com' && ['/whatsappbotbuilder', '/whatsapp-solucoes', '/whatsapp-solucoes/teste-gratis'].includes(url.pathname) ||
       url.origin === 'https://notify-flow.onrender.com' && url.pathname === '/' ||
       url.origin === 'https://wa.me' && url.pathname === '/5561982637865'
     )
     if (!allowed || /[\u0000-\u0020]/.test(link.url) || link.url.startsWith('//')) return null
-    return { url: url.origin === 'https://aitosoftwares.com' ? '/whatsapp-solucoes' : url.href, label: typeof link.label === 'string' ? link.label.slice(0, 80) : 'Conhecer solução' }
+    return { url: url.origin === 'https://aitosoftwares.com' ? (url.pathname === '/whatsapp-solucoes/teste-gratis' ? url.pathname : '/whatsapp-solucoes') : url.origin === 'https://notify-flow.onrender.com' ? '/whatsapp-solucoes/teste-gratis' : url.href, label: typeof link.label === 'string' ? link.label.slice(0, 80) : 'Conhecer solução' }
   } catch { return null }
 }
 
