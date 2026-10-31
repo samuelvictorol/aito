@@ -53,6 +53,32 @@ describe('sessões isoladas do WhatsApp Web', () => {
     service.stopSessionListeners()
   })
 
+  it('usa prova efêmera do colaborador moderno também no socket Web e renova após expiração', async () => {
+    vi.useFakeTimers()
+    const service = await import('../src/modules/whatsapp-web/services.js')
+    service.startSessionListeners()
+    service.currentUser.value = { id: 'modern-team', role: 'collaborator' }
+    const authenticate = mocks.io.mock.calls[0][1].auth
+    const callback = vi.fn()
+    authenticate(callback)
+    await Promise.resolve()
+    expect(mocks.scoped).toHaveBeenCalledWith('core', 'modern-team')
+    expect(callback).toHaveBeenCalledWith({token:'collaborator-socket-only'})
+    expect(callback).not.toHaveBeenCalledWith({token:'host-session-token'})
+    const disconnected=mocks.socket.on.mock.calls.find(([name])=>name==='disconnect')[1]
+    disconnected('io server disconnect')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(mocks.socket.connect).toHaveBeenCalledTimes(1)
+    expect(mocks.refresh).not.toHaveBeenCalled()
+    const failed=mocks.socket.on.mock.calls.find(([name])=>name==='connect_error')[1]
+    failed({data:{code:'AUTH_EXPIRED'}})
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(mocks.socket.connect).toHaveBeenCalledTimes(2)
+    expect(mocks.clearScoped).toHaveBeenCalled()
+    expect(mocks.refresh).not.toHaveBeenCalled()
+    service.stopSessionListeners()
+  })
+
   it('aplica permissões de envio no transporte por cookie sem promover o colaborador', async () => {
     const service = await import('../src/modules/whatsapp-web/services.js')
     service.currentUser.value = { id: 'team', role: 'collaborator', permissions: { channels: ['whatsapp_web'], whatsapp_web: 'view' } }

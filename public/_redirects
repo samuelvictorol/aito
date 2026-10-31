@@ -1,4 +1,3 @@
-/comunicacao/app /comunicacao/app/ 301!
 /comunicacao/session https://api.aitosoftwares.com/comunicacao/session 200!
 /comunicacao/status https://api.aitosoftwares.com/comunicacao/status 200!
 /comunicacao/api/* https://api.aitosoftwares.com/comunicacao/api/:splat 200!

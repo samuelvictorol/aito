@@ -37,4 +37,7 @@ test('Netlify preserves API/session proxies and independent SPA fallbacks with a
   assert.match(redirects,/\/comunicacao\/session https:\/\/api\.aitosoftwares\.com\/comunicacao\/session 200!/)
   assert.match(JSON.parse(read('package.json')).scripts.prebuild,/npm ci --prefix communications\/frontend/)
   assert.match(read('communications/frontend/vite.config.js'),/VITE_SOCKET_URL.*https:\/\/api\.aitosoftwares\.com/)
+  assert.doesNotMatch(redirects,/^\/comunicacao\/app\s+\/comunicacao\/app\//m)
+  assert.match(read('netlify.toml'),/command = "npm run build"/)
+  assert.match(read('netlify.toml'),/publish = "dist\/spa"/)
 })

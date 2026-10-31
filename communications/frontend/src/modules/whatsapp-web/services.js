@@ -33,15 +33,17 @@ export const api = {
   delete: (url, options) => transport().delete(url, { ...options, baseURL: API_PREFIX, timeout: 120000 }),
 }
 
+const usesCollaboratorCookie = () => collaboratorSession || (currentUser.value || getStoredUser())?.role === 'collaborator'
+
 const liveSocket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
   path: '/comunicacao/whatsapp-web/socket.io',
   autoConnect: false,
   withCredentials: true,
   transports: ['websocket', 'polling'],
   auth: (callback) => {
-    if (!collaboratorSession) { callback({ token: getAccessToken() }); return }
+    if (!usesCollaboratorCookie()) { callback({ token: getAccessToken() }); return }
     const user = currentUser.value || getStoredUser()
-    collaboratorSocketToken('web', user?.id || user?._id || user?.email || '').then(token => callback({ token })).catch(() => callback({}))
+    collaboratorSocketToken(collaboratorSession ? 'web' : 'core', user?.id || user?._id || user?.email || '').then(token => callback({ token })).catch(() => callback({}))
   },
 })
 export const socket = new Proxy(liveSocket,{get(target,key){const source=inPrototype()?prototypeSocket:target;const value=source[key];return typeof value==='function'?value.bind(source):value},set(target,key,value){if(!inPrototype())target[key]=value;return true}})
@@ -55,6 +57,7 @@ function retrySocket() {
   retryTimer = setTimeout(() => { retryTimer = null; if (listenersActive && currentUser.value) socket.connect() }, 5000)
 }
 const refreshSocket = () => {
+  if (usesCollaboratorCookie()) { clearCollaboratorSocketTokens(); retrySocket(); return }
   if (!listenersActive || !currentUser.value || collaboratorSession || !getAccessToken() || refreshPending) return
   refreshPending = refreshAccessToken()
     .then(() => { if (listenersActive && currentUser.value) { socket.disconnect(); socket.connect() } })
@@ -71,7 +74,7 @@ socket.on('connect_error', (error) => {
   else retrySocket()
 })
 socket.on('connect', clearSocketRetry)
-socket.on('disconnect', (reason) => { if (reason === 'io server disconnect') { if (collaboratorSession) retrySocket(); else refreshSocket() } })
+socket.on('disconnect', (reason) => { if (reason === 'io server disconnect') { if (usesCollaboratorCookie()) retrySocket(); else refreshSocket() } })
 socket.on('session:revoked', () => { currentUser.value = null; clearSocketRetry(); socket.disconnect() })
 
 export function startSessionListeners({ collaboratorOnly = false } = {}) {
@@ -93,7 +96,7 @@ export function stopSessionListeners() {
 }
 
 function onHostTokenChanged() {
-  if (collaboratorSession) return
+  if (usesCollaboratorCookie()) return
   socket.disconnect()
   if (currentUser.value) socket.connect()
 }

@@ -64,7 +64,8 @@ requisitos mínimos da migração.
 
 ## Netlify e sockets
 
-O site comercial utiliza Netlify. `public/_redirects` mantém os proxies HTTP
+O site comercial utiliza Netlify. `netlify.toml` fixa `npm run build` e o diretório
+`dist/spa`, incluindo a montagem da SPA incorporada. `public/_redirects` mantém os proxies HTTP
 forçados antes dos fallbacks de cada SPA; `/comunicacao/app/*` usa o index próprio.
 Cookies de sessão permanecem no domínio comercial, sem transportar tokens na URL.
 Os dois sockets usam a API pública diretamente, com autenticação no handshake,
