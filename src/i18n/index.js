@@ -11,13 +11,16 @@ function savedLocale(){try{return localStorage.getItem(LOCALE_KEY)}catch{return 
 async function bootLocale(){const saved=savedLocale();if(saved)return normalizeLocale(saved);if(import.meta.env.MODE!=='test'&&typeof location!=='undefined'&&/^https?:$/.test(location.protocol)&&!location.pathname.includes('/prototype'))try{const response=await fetch((import.meta.env.VITE_API_BASE_URL||'/api')+'/health/locale',{signal:AbortSignal.timeout(1800),cache:'no-store'});if(response.ok)return normalizeLocale((await response.json()).locale)}catch{}return 'pt-BR'}
 async function messagesFor(locale){return locale==='en-US'?(await import('./en.json')).default:locale==='es'?(await import('./es.json')).default:{}}
 const initialLocale=normalizeLocale(savedLocale()),messages=shallowRef({})
+let folded=new Map(Object.keys(messages.value).map(key=>[key.toLocaleLowerCase('pt-BR'),key]))
 let quasarLang
 export const i18n=createI18n({legacy:false,locale:initialLocale,fallbackLocale:'pt-BR',messages:{}})
 export function currentLocale(){return i18n.global.locale.value}
 export function uiText(value,values=[]){
   if(typeof value!=='string')return value
   if(!Array.isArray(values))values=[]
-  const locale=currentLocale(),key=value.trim(),message=locale==='pt-BR'?key:messages.value[key]||key
+  const locale=currentLocale(),key=value.trim(),alias=folded.get(key.toLocaleLowerCase('pt-BR'))
+  let message=locale==='pt-BR'?key:messages.value[key]||messages.value[alias]||key
+  if(locale!=='pt-BR'&&!messages.value[key]&&alias&&key===key.toLocaleUpperCase('pt-BR'))message=message.toLocaleUpperCase(locale)
   const translated=value.slice(0,value.indexOf(key))+message+value.slice(value.indexOf(key)+key.length)
   return translated.replace(/\{(\d+)\}/g,(all,index)=>index in values?String(values[index]??''):all)
 }
@@ -29,12 +32,11 @@ export function applyLocale(value){
 }
 export async function setLocale(value,{reload=false}={}){
   messages.value=await messagesFor(normalizeLocale(value))
+  folded=new Map(Object.keys(messages.value).map(key=>[key.toLocaleLowerCase('pt-BR'),key]))
   const locale=applyLocale(value);try{localStorage.setItem(LOCALE_KEY,locale)}catch{}
   if(reload)window.location.reload()
 }
-export async function initializeLocale(){
-  messages.value=await messagesFor(initialLocale);applyLocale(initialLocale)
-}
+export async function initializeLocale(){await setLocale(initialLocale)}
 export function installLocalization(app,langApi){
   quasarLang=langApi;app.use(i18n);app.config.globalProperties.$ui=uiText;app.config.globalProperties.$locale=currentLocale;applyLocale(currentLocale())
 }

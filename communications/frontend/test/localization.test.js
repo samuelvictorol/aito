@@ -18,9 +18,10 @@ describe('local catalogues and safe product-copy localization',()=>{
     await setLocale('es');expect(uiText('Configurações')).toBe('Configuración');expect(uiText('Nome')).toBe('Nombre');expect(normalizeLocale('malicious')).toBe('pt-BR')
   })
   it('translates product UI at compilation without changing routes, channel identifiers, data bindings or matchers',()=>{
-    const source=`<script setup>const options=[{label:'Contatos',value:'email'}];const payload={confirmation:'REMOVER HISTORICO SELECIONADO'};const url='/api/contacts';const isNarrow=matchMedia('(pointer: coarse)');const isMatch=value.includes('Contatos')</script><template><h1>Configurações</h1><q-input label="Nome" v-model="contact.name"/><p>{{ contact.message }}</p></template>`
+    const source=`<script setup>const options=[{label:'Contatos',value:'email'}];const typeLabels={message:'Mensagem'};function statusLabel(){return 'Enviado'};const payload={confirmation:'REMOVER HISTORICO SELECIONADO'};const url='/api/contacts';const isNarrow=matchMedia('(pointer: coarse)');const isMatch=value.includes('Contatos')</script><template><h1>Configurações</h1><q-input label="Nome" v-model="contact.name"/><p>{{ contact.message }}</p></template>`
     const result=localizeSource(source,'Example.vue',{translate:true,has:key=>Boolean(en[key])}).code
     expect(result).toContain('$ui("Configurações")');expect(result).toContain('value:\'email\'');expect(result).toContain("value.includes('Contatos')");expect(result).toContain("matchMedia('(pointer: coarse)')");expect(result).toContain("'/api/contacts'");expect(result).toContain('contact.message');expect(result).toContain('v-model="contact.name"')
     expect(result).toContain("confirmation:'REMOVER HISTORICO SELECIONADO'")
+    expect(result).toContain('message:__uiTextSetup("Mensagem")');expect(result).toContain('return __uiTextSetup("Enviado")')
   })
 })
