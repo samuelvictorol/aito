@@ -22,19 +22,19 @@ const benefits = [
       <span class="eyebrow">VÁRIOS ACESSOS. UM WHATSAPP COMPARTILHADO.</span>
       <h2 id="kit-team-title">Um QR Code.<br/><em>Uma equipe inteira atendendo.</em></h2>
       <p>Seu WhatsApp não precisa ficar na mão de uma pessoa só. Abra o painel em vários computadores e celulares, com <strong>login próprio e identificação para cada colaborador.</strong></p>
-      <p>Conecte a sessão uma vez no servidor. Depois, cada atendente acessa seu espaço pelo navegador, sem repetir o pareamento por QR Code em cada estação.</p>
+      <p>Conecte a sessão uma vez na instalação. Com o acesso remoto HTTPS configurado, cada atendente entra pelo navegador, sem repetir o pareamento por QR Code em cada estação.</p>
       <a class="team-cta" href="#planos">Leve o kit AitoNotify + WhatsApp BotBuilder <q-icon name="mdi-arrow-right"/></a>
     </div>
     <div class="team-visual">
       <img v-if="image && !imageFailed" class="team-print" :src="image" width="1353" height="1163" loading="lazy" alt="Painel de atendimento compartilhado do kit AitoNotify + WhatsApp BotBuilder" @error="imageFailed = true"/>
       <div v-else class="team-demo" aria-label="Exemplo ilustrativo de uma sessão com três atendentes identificados">
         <div class="team-demo__bar"><span class="team-live"/> Uma conexão. Vários pontos de atendimento.</div>
-        <div class="team-session"><div class="team-session__icon"><q-icon name="mdi-whatsapp"/></div><div><strong>WhatsApp da sua empresa</strong><span>Sessão conectada no servidor</span></div><q-icon name="mdi-shield-check-outline" color="teal-3"/></div>
+        <div class="team-session"><div class="team-session__icon"><q-icon name="mdi-whatsapp"/></div><div><strong>WhatsApp da sua empresa</strong><span>Sessão conectada à instalação</span></div><q-icon name="mdi-shield-check-outline" color="teal-3"/></div>
         <div class="team-connector" aria-hidden="true"><span/><span/><span/></div>
         <div class="team-seats"><article v-for="person in people" :key="person.name"><q-icon :name="person.icon" class="seat-device"/><div class="seat-avatar">{{ person.initials }}</div><strong>{{ person.name }}</strong><span>{{ person.area }}</span><small>{{ person.status }}</small><div class="seat-signature">{{ person.name }}:<br/><span>Vou continuar seu atendimento.</span></div></article></div>
         <small class="team-demo__caption">Demonstração ilustrativa com pessoas e conversas fictícias.</small>
       </div>
-      <div class="team-scale"><q-icon name="mdi-account-multiple-plus-outline"/><p><strong>Expanda os acessos, sem refazer a conexão.</strong><br/>Adicione colaboradores conforme sua operação cresce. Dimensione os acessos simultâneos de acordo com sua infraestrutura e plano.</p></div>
+      <div class="team-scale"><q-icon name="mdi-account-multiple-plus-outline"/><p><strong>Expanda os acessos, sem refazer a conexão.</strong><br/>Adicione colaboradores conforme sua operação cresce. Dimensione os acessos simultâneos de acordo com a capacidade da instalação.</p></div>
     </div>
     <div class="team-benefits"><article v-for="item in benefits" :key="item.title"><q-icon :name="item.icon"/><h3>{{ item.title }}</h3><p>{{ item.text }}</p></article></div>
   </section>

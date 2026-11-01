@@ -8,12 +8,12 @@ export function safeAssistantLink(link) {
   try {
     const url = new URL(link.url, 'https://aitosoftwares.com')
     const allowed = url.protocol === 'https:' && !url.username && !url.password && !url.port && (
-      url.origin === 'https://aitosoftwares.com' && ['/whatsappbotbuilder', '/whatsapp-solucoes', '/whatsapp-solucoes/teste-gratis'].includes(url.pathname) ||
+      url.origin === 'https://aitosoftwares.com' && ['/whatsappbotbuilder', '/whatsapp-solucoes', '/whatsapp-solucoes-whitelabel', '/whatsapp-solucoes/teste-gratis'].includes(url.pathname) ||
       url.origin === 'https://notify-flow.onrender.com' && url.pathname === '/' ||
       url.origin === 'https://wa.me' && url.pathname === '/5561982637865'
     )
     if (!allowed || /[\u0000-\u0020]/.test(link.url) || link.url.startsWith('//')) return null
-    return { url: url.origin === 'https://aitosoftwares.com' ? (url.pathname === '/whatsapp-solucoes/teste-gratis' ? url.pathname : '/whatsapp-solucoes') : url.origin === 'https://notify-flow.onrender.com' ? '/whatsapp-solucoes/teste-gratis' : url.href, label: typeof link.label === 'string' ? link.label.slice(0, 80) : 'Conhecer solução' }
+    return { url: url.origin === 'https://aitosoftwares.com' ? (['/whatsapp-solucoes/teste-gratis','/whatsapp-solucoes-whitelabel'].includes(url.pathname) ? url.pathname : '/whatsapp-solucoes') : url.origin === 'https://notify-flow.onrender.com' ? '/whatsapp-solucoes/teste-gratis' : url.href, label: typeof link.label === 'string' ? link.label.slice(0, 80) : 'Conhecer solução' }
   } catch { return null }
 }
 
@@ -47,7 +47,7 @@ export function offlineReply(text, history = []) {
   const context = hasTopic(current) ? current : sanitizeMessages(history).filter(message => message.from === 'user').reverse().map(message => normalize(message.text)).find(hasTopic) || current
   const campaign = !humanFeature && /notify|dispar|campanh|massa|notific/.test(context)
   const whatsapp = humanFeature || /whatsapp|\bwpp\b|bot|\bia\b/.test(context)
-  const detail = campaign ? 'O AitoNotify + WhatsApp BotBuilder organiza notificações em massa pelo WhatsApp com API oficial da Meta, e-mail via Gmail e Telegram. O mesmo pacote inclui o BotBuilder: compre o código-fonte pelo site ou consulte o plano mensal com a equipe.' : whatsapp ? 'O kit AitoNotify + WhatsApp BotBuilder combina atendimento com fluxos visuais e IA, campanhas pela API oficial e painel de equipe. Compre o código-fonte com licença ou converse sobre a implantação e o plano mensal.' : 'A AITO desenvolve sistemas sob medida e integrações para automatizar processos. Você pode continuar explicando seu cenário ou falar com nossa equipe.'
+  const detail = campaign ? 'O AitoNotify + WhatsApp BotBuilder organiza notificações em massa pelo WhatsApp com API oficial da Meta, e-mail via Gmail e Telegram. O Desktop inclui o aplicativo pronto com token por 1 ano. Código-fonte e Cloud são outro produto, o Whitelabel, com token vitalício.' : whatsapp ? 'O kit AitoNotify + WhatsApp BotBuilder combina atendimento com fluxos visuais e IA, campanhas pela API oficial e painel de equipe. Escolha o Desktop pronto com token de 1 ano ou o código-fonte Whitelabel/Cloud, vendido separadamente com token vitalício.' : 'A AITO desenvolve sistemas sob medida e integrações para automatizar processos. Você pode continuar explicando seu cenário ou falar com nossa equipe.'
   return {
     replies: [`A conexão com o assistente oscilou. ${detail}`],
     link: campaign ? { label: 'Conhecer o AitoNotify + WhatsApp BotBuilder', url: '/whatsapp-solucoes' } : whatsapp ? { label: 'Conhecer o kit AitoNotify + WhatsApp BotBuilder', url: '/whatsapp-solucoes' } : { label: 'Conversar com a equipe AITO', url: buildCommercialUrl([...history, { from: 'user', text }]) },

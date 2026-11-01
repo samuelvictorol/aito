@@ -33,11 +33,13 @@ test('site sources do not import a local WhatsApp runtime or visual editor depen
   const dependencies = JSON.parse(read('package.json')).dependencies
   assert.equal(Object.keys(dependencies).some(name => name.startsWith('@vue-flow/')), false)
   assert.ok(dependencies['socket.io-client'], 'Product payment confirmations still use Socket.IO')
-  for (const path of ['src/pages/WhatsAppBotBuilderProductPage.vue', 'src/components/UserProductsPanel.vue']) {
+  for (const path of ['src/components/KitProductCart.vue', 'src/components/UserProductsPanel.vue']) {
     const source = read(path)
     assert.match(source, /\/products\/(?:whatsappbotbuilder|aitonotify)/)
     assert.match(source, /purchase\.updated/)
   }
+  assert.match(read('src/pages/WhatsAppBotBuilderProductPage.vue'), /KitProductCart/)
+  assert.match(read('src/pages/WhatsAppWhitelabelProductPage.vue'), /KitProductCart/)
 })
 
 test('customer license controls use commercial admin contracts without a WhatsApp contact', async () => {

@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import { licenseProductType, productLabel } from 'src/services/product-catalog'
 import { useQuasar } from 'quasar'
 import LicenseValidity from './LicenseValidity.vue'
 import LicenseTermDialog from './LicenseTermDialog.vue'
@@ -29,7 +30,7 @@ async function toggle(license) { try { const { data } = await api.patch(`/admin/
 <template>
   <div v-if="licenses.length" class="license-list"><LicenseTermDialog v-model="termOpen" :license="selected" :mode="termMode" @saved="termSaved"/>
     <div v-for="license in licenses" :key="license._id" class="license-list__item">
-      <div class="license-list__heading"><strong>AitoNotify + WhatsApp BotBuilder</strong></div>
+      <div class="license-list__heading"><strong>{{productLabel(licenseProductType(license))}}</strong></div>
       <div class="license-list__token"><code>{{ visible[license._id] ? license.token : '••••••••••••••••••••••••' }}</code><q-btn flat round dense size="sm" :icon="visible[license._id] ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" :aria-label="visible[license._id] ? 'Ocultar token' : 'Mostrar token'" @click="visible[license._id] = !visible[license._id]" /><q-btn flat round dense size="sm" icon="mdi-content-copy" aria-label="Copiar token" @click="copy(license.token)" /></div>
       <LicenseValidity :license="license" compact/><small>Instalação: {{ license.installationId || 'Ainda não ativada' }}</small><div class="license-list__actions"><q-btn flat dense no-caps size="sm" label="Validade" icon="mdi-calendar-edit" @click="editTerm(license)"/><q-btn flat dense no-caps size="sm" label="Renovar" @click="editTerm(license,'renew')"/><q-btn flat dense no-caps size="sm" icon="mdi-refresh" label="Novo token" @click="rotate(license)" /><q-btn flat dense no-caps size="sm" :color="(license.enabled??license.active) ? 'red-3' : 'teal-3'" :icon="(license.enabled??license.active) ? 'mdi-close-circle-outline' : 'mdi-check-circle-outline'" :label="(license.enabled??license.active) ? 'Suspender' : 'Reativar'" @click="toggle(license)" /></div>
     </div>

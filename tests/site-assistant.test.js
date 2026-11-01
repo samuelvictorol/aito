@@ -95,18 +95,18 @@ test('resetting during contact submission cancels identification and ignores the
   assert.equal(chat.messages.value.length, 1)
 })
 
-test('offers the complete AitoNotify package through source purchase or monthly service', () => {
+test('offers separate Desktop and Whitelabel products with independent tokens', () => {
   assert.equal(helpers.initialSuggestions.length, 4)
   const comparison = guidedAssistantReply('Soluções para WhatsApp')
-  assert.deepEqual(comparison.suggestions.slice(0, 2), ['Comprar código-fonte', 'Usar mensal'])
+  assert.deepEqual(comparison.suggestions.slice(0, 2), ['Comprar executável Desktop', 'Comprar código-fonte Whitelabel'])
   assert.match(comparison.ia_replies.join(' '), /API oficial da Meta/)
   const source = guidedAssistantReply('Comprar código-fonte')
-  assert.equal(source.link.url, '/whatsapp-solucoes')
-  assert.match(source.ia_replies.join(' '), /token de licença/)
+  assert.equal(source.link.url, '/whatsapp-solucoes-whitelabel')
+  assert.match(source.ia_replies.join(' '), /token é vitalício/)
   const monthly = guidedAssistantReply('Usar mensal')
   const url = new URL(monthly.link.url)
   assert.equal(url.pathname, '/5561982637865')
-  assert.match(url.searchParams.get('text'), /AitoNotify.*plano mensal/)
+  assert.match(url.searchParams.get('text'), /Implantação e orientação de compra/)
   assert.equal(guidedAssistantReply('Comprar pelo site', [{ from: 'user', text: 'WhatsApp BotBuilder' }]).link.url, '/whatsapp-solucoes')
   assert.deepEqual(guidedAssistantReply('Voltar ao início').suggestions, [...assistantMenu])
   assert.equal(helpers.sanitizeReply({ ia_replies: ['Olá'], suggestions: assistantMenu }).suggestions.length, 4)

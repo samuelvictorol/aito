@@ -1,11 +1,13 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { api } from 'boot/axios'
-const props=defineProps({modelValue:{type:String,default:''},dark:Boolean})
-const emit=defineEmits(['update:modelValue']),code=ref(props.modelValue),quote=ref(null),error=ref(''),busy=ref(false)
+const props=defineProps({modelValue:{type:String,default:''},dark:Boolean,productTypes:{type:Array,default:()=>['desktop']}})
+const emit=defineEmits(['update:modelValue','quote']),code=ref(props.modelValue),quote=ref(null),error=ref(''),busy=ref(false)
+let revision=0
 const money=c=>(c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
-function edited(){quote.value=null;sessionStorage.removeItem('aito.kit.coupon');emit('update:modelValue','')}
-async function apply(){busy.value=true;error.value='';quote.value=null;try{const r=(await api.post('/products/aitonotify/coupon',{couponCode:code.value})).data.data;quote.value=r;code.value=r.couponCode;emit('update:modelValue',r.couponCode);sessionStorage.setItem('aito.kit.coupon',r.couponCode)}catch(e){emit('update:modelValue','');sessionStorage.removeItem('aito.kit.coupon');error.value=e.response?.data?.message||'Cupom indisponível.'}finally{busy.value=false}}
+function edited(){revision++;quote.value=null;emit('quote',null);sessionStorage.removeItem('aito.kit.coupon');emit('update:modelValue','')}
+async function apply(){if(!props.productTypes.length)return;const request=++revision;busy.value=true;error.value='';quote.value=null;emit('quote',null);try{const r=(await api.post('/products/aitonotify/coupon',{couponCode:code.value,productTypes:[...props.productTypes]})).data.data;if(request!==revision)return;quote.value=r;emit('quote',r);code.value=r.couponCode;emit('update:modelValue',r.couponCode);sessionStorage.setItem('aito.kit.coupon',r.couponCode)}catch(e){if(request!==revision)return;emit('update:modelValue','');sessionStorage.removeItem('aito.kit.coupon');error.value=e.response?.data?.message||'Cupom indisponível.'}finally{if(request===revision)busy.value=false}}
+watch(()=>JSON.stringify(props.productTypes),()=>{revision++;quote.value=null;emit('quote',null);error.value='';if(code.value&&props.productTypes.length)apply();else busy.value=false})
 onMounted(()=>{code.value=new URLSearchParams(window.location.search).get('cupom')||props.modelValue||sessionStorage.getItem('aito.kit.coupon')||'';if(code.value)apply()})
 </script>
 <template><div class="kit-coupon" :class="{'kit-coupon--dark':dark}"><div class="kit-coupon-field"><q-input v-model.trim="code" outlined dense :dark="dark" maxlength="30" label="Tem um cupom?" :disable="busy" @update:model-value="edited" @keyup.enter.prevent="apply"/><q-btn outline no-caps :color="dark?'teal-3':'teal-8'" label="Aplicar" :loading="busy" @click="apply"/></div><p v-if="quote?.couponCode" role="status"><q-icon name="mdi-check-circle"/> {{quote.couponCode}} · Economize {{money(quote.discountCents)}}<strong>Total: {{money(quote.amountCents)}}</strong></p><p v-if="error" class="text-negative" role="alert">{{error}}</p><small v-if="quote?.couponCode">O preço e a disponibilidade são conferidos novamente ao criar o checkout.</small></div></template>
