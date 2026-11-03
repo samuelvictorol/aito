@@ -1,4 +1,5 @@
 const routes = [
+  { path: '/generate-notifications', alias: '/gn', name: 'notification-generator', component: () => import('pages/NotificationGeneratorPage.vue') },
   { path: '/admin/comunicacao/sistema', name: 'communication-system', meta: {requiresAuth:'admin'}, component: () => import('pages/CommunicationSystemPage.vue') },
   { path: '/admin/comunicacao/:section(.*)*', name: 'communication-admin', meta: {requiresAuth:'admin'}, component: () => import('pages/CommunicationPage.vue') },
   { path: '/whatsapp-solucoes/teste-gratis/:section(.*)*', name: 'communication-demo', meta: {communicationDemo:true}, component: () => import('pages/CommunicationPage.vue') },

@@ -5,7 +5,7 @@ const props = defineProps({
   slides: { type: Array, default: () => [] },
   device: { type: String, default: 'laptop' },
   label: String,
-  interval: { type: Number, default: 6500 },
+  interval: { type: Number, default: 4000 },
   reducedMotion: Boolean,
 })
 const images = computed(() => props.slides.filter(item => item?.src).slice(0, 5))
@@ -22,7 +22,7 @@ onMounted(() => {
   observer.observe(root.value)
   timer = setInterval(() => {
     if (images.value.length > 1 && visible.value && pageVisible.value && !hovering.value && !focused.value && !open.value && !paused.value && !props.reducedMotion) change(1)
-  }, Math.max(props.interval, 4000))
+  }, Math.max(props.interval, 3000))
 })
 onBeforeUnmount(() => { clearInterval(timer); observer?.disconnect(); document.removeEventListener('visibilitychange', visibility) })
 </script>

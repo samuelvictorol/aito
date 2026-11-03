@@ -94,7 +94,7 @@ defineExpose({ openCart, openLogin })
 <template>
   <AuthDialog v-model="loginOpen" audience="user" :show-project-login="false" :return-path="returnPath" @authenticated="authenticated"/>
   <q-dialog v-model="open"><q-card class="kit-cart">
-    <q-card-section class="kit-cart__head"><div><small>ESCOLHA O QUE FAZ SENTIDO PARA VOCÊ</small><h2>{{ paid ? 'Seus produtos estão liberados' : 'Seu carrinho' }}</h2><p v-if="!paid">Compras independentes. Você pode levar um produto ou os dois.</p></div><q-btn flat round icon="mdi-close" aria-label="Fechar carrinho" v-close-popup/></q-card-section>
+    <q-card-section class="kit-cart__head"><div><small>ESCOLHA O QUE FAZ SENTIDO PARA VOCÊ</small><h2>{{ paid ? 'Seus produtos estão liberados' : 'Seu carrinho' }}</h2></div><q-btn flat round icon="mdi-close" aria-label="Fechar carrinho" v-close-popup/></q-card-section>
     <q-card-section v-if="paid" class="kit-cart__success"><q-icon name="mdi-check-decagram" size="54px"/><h3>Pronto para começar.</h3><p>O acesso e o token de cada produto comprado ficam separados em Meus produtos e licenças.</p><q-btn unelevated color="teal-7" no-caps label="Abrir meus produtos" to="/app?tab=products"/></q-card-section>
     <q-card-section v-else class="kit-cart__body">
       <p v-if="loadingCatalog" class="kit-cart__note"><q-spinner/> Consultando os produtos disponíveis…</p>
@@ -106,7 +106,7 @@ defineExpose({ openCart, openLogin })
           <b>{{money(catalog[type].priceCents)}}</b>
         </label>
         <KitCouponInput v-model="couponCode" dark :product-types="cart.selected.value" @quote="value=>couponQuote=value"/>
-        <div class="kit-cart__summary"><span>{{entries.length}} produto(s)<small>Tokens e prazos separados por produto.</small><small v-if="couponQuote?.discountCents">Desconto: {{money(couponQuote.discountCents)}}</small></span><strong>{{money(cartTotal)}}</strong></div>
+        <div class="kit-cart__summary"><span>{{entries.length}} produto(s)<small v-if="couponQuote?.discountCents">Desconto: {{money(couponQuote.discountCents)}}</small></span><strong>{{money(cartTotal)}}</strong></div>
       </template>
       <template v-else><div class="kit-cart__provider"><q-icon name="mdi-lock-check-outline" size="34px"/><div><h3>Checkout InfinitePay</h3><p>{{money(total)}} · {{order.items?.length || entries.length}} produto(s). Revise os itens no provedor antes de pagar.</p></div></div><q-btn v-if="order.checkoutUrl" class="full-width" unelevated color="teal-7" no-caps size="lg" label="Abrir pagamento seguro" :href="order.checkoutUrl" target="_blank" rel="noopener noreferrer"/><p class="kit-cart__note">A liberação acontece após a confirmação do pagamento. Não é necessário pagar novamente ao voltar para esta tela.</p><q-btn flat no-caps label="Consultar pagamento" :loading="confirming" @click="checkoutReturn?confirm():refresh()"/><q-btn flat no-caps label="Voltar ao carrinho" @click="changed"/></template>
       <p v-if="error" class="kit-cart__error" role="alert">{{error}}</p>

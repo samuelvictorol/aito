@@ -10,11 +10,19 @@ import './css/screen-privacy.css'
 
 import { initializeInstallPrompt } from './services/install-app.js'
 import { initializeEmbeddedSession } from './services/embedded-session.js'
+import { communicationHostTarget } from './services/embedded-host.js'
 import { installLocalization, initializeLocale } from './i18n/index.js'
 import App from './App.vue'
 import router from './router/index.js'
 import { useAuthStore } from './stores/auth.js'
 
+const hostTarget = window.parent === window ? communicationHostTarget(location.pathname + location.search + location.hash) : null
+if (hostTarget) {
+  // Existing iOS shortcuts still launch the old child URL. Recover the host
+  // before mounting so its navigation and administrator SSO stay available.
+  window.location.replace(hostTarget)
+  await new Promise(() => {})
+}
 await initializeEmbeddedSession()
 await initializeLocale()
 const app = createApp(App)

@@ -1,6 +1,6 @@
 <template>
   <q-layout view="hHh Lpr fFf" class="admin-app"><CosmicScene backdrop/>
-    <q-header class="business-header"><q-toolbar><q-btn flat round dense icon="mdi-menu" aria-label="Abrir menu" @click="drawerOpen=!drawerOpen"/><q-toolbar-title>{{ sectionTitle }}</q-toolbar-title><q-btn flat no-caps icon="mdi-forum-outline" label="Comunicação" to="/admin/comunicacao" class="header-communication"/><span class="business-admin-name">{{ firstName }}</span><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></q-toolbar></q-header>
+    <q-header class="business-header"><q-toolbar><q-btn flat round dense icon="mdi-menu" aria-label="Abrir menu" @click="drawerOpen=!drawerOpen"/><q-toolbar-title>{{ sectionTitle }}</q-toolbar-title><q-btn flat no-caps icon="mdi-forum-outline" label="Comunicação" to="/admin/comunicacao" class="header-communication"/><q-btn-dropdown flat no-caps icon="mdi-web" label="Site" class="header-landings" aria-label="Abrir páginas do site"><q-list class="admin-landing-menu"><q-item v-close-popup clickable to="/"><q-item-section avatar><q-icon name="mdi-home-outline"/></q-item-section><q-item-section>Site AitoSoftwares</q-item-section></q-item><q-item v-close-popup clickable to="/whatsapp-solucoes"><q-item-section avatar><q-icon name="mdi-microsoft-windows"/></q-item-section><q-item-section>Aplicativo Desktop</q-item-section></q-item><q-item v-close-popup clickable to="/whatsapp-solucoes-whitelabel"><q-item-section avatar><q-icon name="mdi-code-braces"/></q-item-section><q-item-section>Código-fonte Whitelabel</q-item-section></q-item></q-list></q-btn-dropdown><span class="business-admin-name">{{ firstName }}</span><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></q-toolbar></q-header>
     <q-drawer v-model="drawerOpen" show-if-above bordered :width="265" class="business-drawer"><div class="business-brand"><img src="/aito-logo-restored.png" alt="AitoSoftwares"/><strong>AitoSoftwares</strong></div><q-list class="business-nav"><q-item clickable to="/admin/comunicacao"><q-item-section avatar><q-icon name="mdi-forum-outline"/></q-item-section><q-item-section>Comunicação</q-item-section></q-item><q-item clickable :active="tab==='projects'" @click="openDetail('projects')"><q-item-section avatar><q-icon name="mdi-folder-star-outline"/></q-item-section><q-item-section>Projetos</q-item-section></q-item><q-item clickable :active="tab==='overview'" @click="openDetail('overview')"><q-item-section avatar><q-icon name="mdi-finance"/></q-item-section><q-item-section>Dashboard</q-item-section></q-item><q-expansion-item v-model="detailExpanded" icon="mdi-view-grid-outline" label="Detalhar" class="business-detail" @before-show="tab='detail'"><q-item v-for="item in sortedDetailOptions" :key="item.name" clickable :active="tab===item.name" @click="openDetail(item.name)"><q-item-section avatar><q-icon :name="item.icon" size="20px"/></q-item-section><q-item-section>{{item.label}}</q-item-section></q-item></q-expansion-item></q-list><div class="business-drawer-footer">Administração · AitoSoftwares</div></q-drawer>
     <q-page-container>
       <q-page class="admin-app__page">
@@ -65,6 +65,7 @@
 
 <script>
 import { api } from 'boot/axios'
+import 'src/css/admin-overlays.css'
 import AuthenticationIntegrationCard from 'components/AuthenticationIntegrationCard.vue'
 import LicenseTokenList from 'components/LicenseTokenList.vue'
 import LicenseTermDialog from 'components/LicenseTermDialog.vue'
@@ -114,9 +115,11 @@ export default {
     }
   },
   mounted () {
+    document.body.classList.add('aito-admin-dark')
     try { this.admin = JSON.parse(localStorage.getItem('aito_admin_user') || '{}') } catch (error) { this.admin = {} }
     this.loadAll()
   },
+  beforeUnmount () { document.body.classList.remove('aito-admin-dark') },
   methods: {
     journeyEventLabel(event) { return ({page_view:'Página visitada',interest_chatbots:'Interesse em chatbots e IA',interest_notifications:'Interesse em disparos oficiais',demo_open:'Abriu a demonstração',whatsapp_open:'Abriu o WhatsApp',offer_open:'Consultou a oferta',checkout_start:'Iniciou a compra',checkout_created:'Checkout gerado',payment_verified:'Pagamento confirmado pelo provedor',purchase_access_issued:'Link pessoal entregue',desktop_download_requested:'Solicitou o instalador',desktop_download_completed:'Download concluído',product_portal_opened:'Acessou a compra'})[event] || event },
     emptyLead () { return { name: '', email: '', phone: '', company: '', message: '', flowType: '', status: 'new', tags: [] } },

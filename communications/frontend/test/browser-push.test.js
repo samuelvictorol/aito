@@ -157,9 +157,19 @@ function workerFixture() {
   }
   vm.runInNewContext(readFileSync(new URL('../public/notify-sw.js', import.meta.url), 'utf8'), context)
   async function trigger(name, event) { let task; handlers[name]({ ...event, waitUntil: value => { task = value } }); await task }
-  return { trigger, shown, navigated }
+  return { trigger, shown, navigated, context }
 }
 describe('background service worker', () => {
+  it('opens the outer installed application instead of navigating its nested iframe into another host', async () => {
+    const worker = workerFixture(), opened = []
+    worker.context.self.clients.matchAll = async () => [
+      { url: 'https://aito.communication.test/comunicacao/app/app-mobile', frameType: 'nested', navigate: async () => { throw Error('Nested navigation') } },
+      { url: 'https://aito.communication.test/admin/comunicacao/app-mobile', frameType: 'top-level', navigate: async url => opened.push(url), focus: async () => {} },
+    ]
+    await worker.trigger('message', { data: { type: 'ADMIN_ALERTS', enabled: true }, ports: [] })
+    await worker.trigger('notificationclick', { notification: { close() {}, data: { url: '/admin/comunicacao/app-mobile/web?chatId=507f1f77bcf86cd799439013' } } })
+    expect(opened).toEqual(['https://aito.communication.test/admin/comunicacao/app-mobile/web?chatId=507f1f77bcf86cd799439013'])
+  })
   it.each(['[Wpp] Maria', 'Maria 🟢', '🟢 Maria'])('normalizes old and new titles with one leading emoji: %s', async title => {
     const worker = workerFixture()
     await worker.trigger('message', { data: { type: 'ADMIN_ALERTS', enabled: true }, ports: [] })
@@ -173,9 +183,9 @@ describe('background service worker', () => {
     expect(worker.shown).toHaveLength(0)
     await worker.trigger('message', { data: { type: 'ADMIN_ALERTS', enabled: true }, ports: [{ postMessage() {} }] })
     await worker.trigger('push', { data: { json: () => data } })
-    expect(worker.shown[0]).toMatchObject({ title: '🔵 Jorge', body: 'beleza!', tag: 'message-' + data.id, data: { url: '/comunicacao/app/app-mobile' } })
+    expect(worker.shown[0]).toMatchObject({ title: '🔵 Jorge', body: 'beleza!', tag: 'message-' + data.id, data: { url: '/admin/comunicacao/app-mobile' } })
     await worker.trigger('notificationclick', { notification: { close() {}, data: { url: '/whatsapp-web?chatId=507f1f77bcf86cd799439013' } } })
-    expect(worker.navigated).toEqual(['https://aito.communication.test/comunicacao/app/whatsapp-web?chatId=507f1f77bcf86cd799439013'])
+    expect(worker.navigated).toEqual(['https://aito.communication.test/admin/comunicacao/whatsapp-web?chatId=507f1f77bcf86cd799439013'])
     await worker.trigger('push', { data: { json: () => ({ ...data, createdAt: new Date(Date.now() - 310000).toISOString() }) } })
     expect(worker.shown).toHaveLength(1)
     await worker.trigger('message', { data: { type: 'ADMIN_ALERTS', enabled: false }, ports: [] })

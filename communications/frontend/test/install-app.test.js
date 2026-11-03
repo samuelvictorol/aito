@@ -6,8 +6,8 @@ describe('home screen shortcuts',()=>{
   it('keeps the demo and real app identities, scopes and targets separate',async()=>{
     const service=await import('../src/services/install-app.js');service.initializeInstallPrompt()
     expect(manifest.href).toBe('/comunicacao/app/prototype.webmanifest')
-    expect(service.installTarget('/prototype/app-mobile/cloud')).toBe('/comunicacao/app/prototype/app-mobile')
-    expect(service.installTarget('/app-mobile/web')).toBe('/comunicacao/app/app-mobile')
+    expect(service.installTarget('/prototype/app-mobile/cloud')).toBe('/whatsapp-solucoes/teste-gratis/app-mobile')
+    expect(service.installTarget('/app-mobile/web')).toBe('/admin/comunicacao/app-mobile')
     service.configureInstallManifest('/app-mobile');expect(manifest.href).toBe('/comunicacao/api/settings/app.webmanifest')
   })
   it('uses the native prompt when the browser supplies it, once per event',async()=>{

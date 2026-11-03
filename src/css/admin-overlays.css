@@ -1,0 +1,11 @@
+/* Teleported Quasar surfaces inherit the admin palette only while /admin is mounted. */
+body.aito-admin-dark .q-dialog .q-card{background:#141c27;color:#e5ecf5;border-color:#405064}
+body.aito-admin-dark .q-dialog .q-field__control{background:#1b2532;color:#d7e2ee}
+body.aito-admin-dark .q-dialog .q-field__native,body.aito-admin-dark .q-dialog .q-field__label,body.aito-admin-dark .q-dialog .q-field__marginal,body.aito-admin-dark .q-dialog .q-field__messages{color:#c8d5e5}
+body.aito-admin-dark .q-dialog .q-field--outlined .q-field__control:before{border-color:#53647b}
+body.aito-admin-dark .q-dialog .q-card h2,body.aito-admin-dark .q-dialog .q-card h3{color:#eff5fb}
+body.aito-admin-dark .q-dialog .q-card p,body.aito-admin-dark .q-dialog .q-card small{color:#bac9db}
+body.aito-admin-dark .q-dialog .q-card .ticket-thread article{background:#202d3b;color:#d8e3f1}
+body.aito-admin-dark .q-dialog .q-card .ticket-thread article.ticket-thread-admin{background:#293b48}
+body.aito-admin-dark .q-menu{background:#17212d;color:#e1ebf5;border:1px solid #415167}
+body.aito-admin-dark .q-menu .q-item__label,body.aito-admin-dark .q-menu .q-item__section{color:inherit}

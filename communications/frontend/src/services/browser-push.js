@@ -1,5 +1,6 @@
 import { http, unwrap } from './http.js'
 import { inPrototype, prototypeBlocked } from './prototype-runtime.js'
+import { installedAppContext } from './embedded-host.js'
 
 const PREFERENCE = 'aito.communication.browserPush.enabled'
 let adminActive = false
@@ -13,7 +14,7 @@ function publishState(enabled) {
 
 export function browserPushSupport() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
+  const standalone = installedAppContext()
   if (ios && !standalone) return { supported: false, installRequired: true,
     message: 'No iPhone, use Compartilhar → Adicionar à Tela de Início. Abra o app pelo ícone, entre como administrador e ative os alertas aqui.' }
   const supported = window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window

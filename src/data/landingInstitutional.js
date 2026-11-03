@@ -57,6 +57,12 @@ export const institutionalBrands = Object.freeze([
     href: '/whatsapp-solucoes/teste-gratis'
   },
   {
+    name: 'Aito Notification Lab',
+    imgUrl: '/brands/notification-lab.svg',
+    summary: 'Gerador de notificações personalizadas para testar título, texto e imagem no seu próprio dispositivo. Templates ficam no navegador; a exibição depende das permissões e do suporte do sistema.',
+    href: '/generate-notifications'
+  },
+  {
     name: 'GLOBO',
     imgUrl: 'globo.png',
     summary: 'Arquitetura escalavel, automacao de rotinas e performance para ambientes de alto trafego.',

@@ -133,7 +133,7 @@
                 </article>
               </div>
 
-              <div class="landing-3d__device-showcase"><LandingDeviceGallery :slides="landingShowcase.laptop" device="laptop" label="Sistemas e operações no notebook" :reduced-motion="prefersReducedMotion" /><LandingDeviceGallery :slides="landingShowcase.phone" device="phone" label="Atendimento na palma da mão" :interval="7500" :reduced-motion="prefersReducedMotion" /></div>
+              <div class="landing-3d__device-showcase"><LandingDeviceGallery :slides="landingShowcase.laptop" device="laptop" label="Sistemas e operações no notebook" :interval="3500" :reduced-motion="prefersReducedMotion" /><LandingDeviceGallery :slides="landingShowcase.phone" device="phone" label="Atendimento na palma da mão" :interval="4000" :reduced-motion="prefersReducedMotion" /></div>
             </template>
 
             <template v-else-if="section.id === 'satisfacao'">

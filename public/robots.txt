@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /app
+Disallow: /affiliate
+Disallow: /customer
+Disallow: /comunicacao
+Disallow: /produto/acesso
+Disallow: /auth
+
+Sitemap: https://aitosoftwares.com/sitemap.xml
