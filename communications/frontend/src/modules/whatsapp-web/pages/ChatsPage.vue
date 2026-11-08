@@ -1,4 +1,5 @@
 <script setup>
+import { sendAttachmentBatch } from '../../../services/attachment-batch.js'
 import ChatFocusToggle from "../../../components/ChatFocusToggle.vue"
 import { useChatFocus } from "../../../services/chat-focus.js"
 const { chatListCollapsed, toggleChatList } = useChatFocus("whatsapp_web")
@@ -27,6 +28,7 @@ const page = ref(1), pages = ref(1), total = ref(0), messagePage = ref(1), messa
 const search = ref(''), draft = ref(''), file = ref(null), loading = ref(false), sending = ref(false), toast = ref(''), stream = ref(null)
 const customReaction = ref(''), filePreviewUrl = ref('')
 watch(file, value => { if (filePreviewUrl.value) URL.revokeObjectURL(filePreviewUrl.value); filePreviewUrl.value = value ? URL.createObjectURL(value) : '' })
+const pendingFiles = ref([])
 const replyTo = ref(null), forwarding = ref(null), forwardTarget = ref(''), attachmentOpen = ref(false), composerMode = ref('text')
 const sendAsSticker = ref(false), searchOpen = ref(false), messageSearch = ref(''), searchResults = ref([]), searchingMessages = ref(false), searchPage = ref(1), searchPages = ref(1), searchTotal = ref(0)
 let searchRequest = 0
@@ -93,7 +95,7 @@ async function openChat(chat) {
   const chatId = idOf(chat)
   voice.cancel(); searchRequest += 1; searchOpen.value = false; sendAsSticker.value = false
   selected.value = chat; messages.value = []; messagePage.value = 1; messagePages.value = 1
-  replyTo.value = null; composerMode.value = 'text'; draft.value = ''; file.value = null
+  replyTo.value = null; composerMode.value = 'text'; draft.value = ''; file.value = null; pendingFiles.value = []
   attachmentOpen.value = false; chatActionsOpen.value = false; openingChat.value = true
   try {
     const [{ data: detail }, { data: list }] = await Promise.all([api.get(`/chats/${chatId}`), api.get(`/chats/${chatId}/messages`, { params: { page: 1, limit: 50 } })])
@@ -117,7 +119,7 @@ function selectChat(chat) {
 function closeChat() {
   voice.cancel(); searchRequest += 1; searchOpen.value = false
   chatRequest += 1
-  selected.value = null; messages.value = []; replyTo.value = null; file.value = null
+  selected.value = null; messages.value = []; replyTo.value = null; file.value = null; pendingFiles.value = []
   openingChat.value = false; chatActionsOpen.value = false; messageActionsOpen.value = false; attachmentOpen.value = false
   if (route.query.chatId) {
     const query = { ...route.query }
@@ -167,12 +169,17 @@ async function send() { if(!canAction(getStoredUser(),'whatsapp_web','send'))ret
   try { await api.post(`/chats/${chatId}/messages`, { text, quotedMessageId: replyTo.value?._id }); if (selectedId.value === chatId) { draft.value = ''; replyTo.value = null } }
   catch (cause) { show(messageOf(cause)) } finally { sending.value = false }
 }
-async function sendFile() { if(!canAction(getStoredUser(),'whatsapp_web','send'))return;
-  if (!file.value || !selected.value || !assertWindow()) return
-  const data = new FormData(); data.append('file', file.value); data.append('caption', draft.value); data.append('sendAsVoice', sendAsVoice.value); data.append('sendAsDocument', sendAsDocument.value); data.append('sendAsSticker', sendAsSticker.value)
-  sending.value = true
-  try { await api.post(`/chats/${selectedId.value}/media`, data); file.value = null; draft.value = ''; sendAsVoice.value = false; sendAsDocument.value = false; sendAsSticker.value = false; attachmentOpen.value = false; show('Arquivo enviado.') }
-  catch (cause) { show(messageOf(cause)) } finally { sending.value = false }
+async function sendFile() {
+ if (sending.value || !canAction(getStoredUser(),'whatsapp_web','send') || !file.value || !selected.value || !assertWindow()) return
+ const chatId=selectedId.value, queue=[file.value,...pendingFiles.value], caption=draft.value
+ sending.value=true
+ try {
+  await sendAttachmentBatch(queue, { isActive:()=>selectedId.value===chatId, upload:async item=>{
+   const data=new FormData();data.append('file',item);data.append('caption',caption);data.append('sendAsVoice',sendAsVoice.value && item.type.startsWith('audio/'));data.append('sendAsDocument',sendAsDocument.value);data.append('sendAsSticker',sendAsSticker.value && item.type.startsWith('image/'))
+   await api.post(`/chats/${chatId}/media`,data)
+  }, accepted:()=>{ file.value=pendingFiles.value.shift() || null } })
+  if(selectedId.value===chatId && !file.value){draft.value='';attachmentOpen.value=false;show('Arquivos enviados.')}
+ } catch(cause){show(messageOf(cause))} finally{sending.value=false}
 }
 async function sendLocation() { if(!canAction(getStoredUser(),'whatsapp_web','send'))return;
   if (!assertWindow()) return; sending.value = true
@@ -189,7 +196,15 @@ async function sendStoredAsset() { if(!canAction(getStoredUser(),'whatsapp_web',
   try { await api.post(`/chats/${selectedId.value}/assets`, { assetId: assetId.value, caption: draft.value, sendAsVoice: sendAsVoice.value, sendAsDocument: sendAsDocument.value }); assetId.value = ''; draft.value = ''; composerMode.value = 'text'; show('Arquivo da biblioteca enviado.') }
   catch (cause) { show(messageOf(cause)) } finally { sending.value = false }
 }
-function pickFile(event) { sendAsSticker.value = false; file.value = event.target.files?.[0] || null; attachmentOpen.value = false; if (file.value?.type?.startsWith('audio/')) sendAsVoice.value = true }
+function addFiles(files) {
+ if(sending.value || !selectedCanCompose.value || !selected.value) return
+ const list=Array.from(files || []);if(!list.length)return
+ const all=[file.value,...pendingFiles.value,...list].filter(Boolean)
+ file.value=all[0];pendingFiles.value=all.slice(1);sendAsSticker.value=false;sendAsVoice.value=false;attachmentOpen.value=false
+}
+function pickFile(event){addFiles(event.target.files);event.target.value=''}
+function dropFiles(event){event.preventDefault();addFiles(event.dataTransfer?.files)}
+
 async function searchMessages(next = 1) {
   if (!selected.value || messageSearch.value.trim().length < 2) return
   const request = ++searchRequest, chatId = selectedId.value
@@ -326,7 +341,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
 </script>
 
 <template>
-  <section class="chat-page" :class="{ 'chat-page--conversation': selected }">
+  <section @dragover.prevent @drop="dropFiles" class="chat-page" :class="{ 'chat-page--conversation': selected }">
     <header class="chat-page-header"><h1>Conversas</h1><span>{{currentUser?.nick||currentUser?.name}} · {{myStats.total}} atendimentos · {{myStats.completed}} concluídos</span></header>
     <ConversationSignature/><div :class="['chat-shell card',{selected:selected, 'chat-focus-mode': selected && chatListCollapsed}]">
       <aside class="chat-list-panel">
@@ -391,7 +406,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
             <div v-else-if="composerMode==='contact'" class="rich-composer contact-mode"><div class="field"><label>Telefone com DDI e DDD</label><input v-model="contactForm.phone" inputmode="tel" placeholder="5511999999999"></div><button class="btn secondary" @click="composerMode='text'">Cancelar</button><button class="btn" :disabled="sending||!contactForm.phone" @click="sendContactCard">Enviar contato</button></div>
             <div v-else-if="composerMode==='asset'" class="rich-composer asset-mode"><div class="field"><label>Arquivo da biblioteca</label><select v-model="assetId"><option value="">Selecione…</option><option v-for="asset in assets" :key="asset._id" :value="asset._id">{{ asset.name }}</option></select></div><div class="field"><label>Legenda opcional</label><input v-model="draft"></div><label v-if="selectedAsset?.kind==='audio'" class="toggle"><input v-model="sendAsVoice" type="checkbox"> Enviar como voz</label><label class="toggle"><input v-model="sendAsDocument" type="checkbox"> Enviar como documento</label><button class="btn secondary" @click="composerMode='text'">Cancelar</button><button class="btn" :disabled="sending||!assetId" @click="sendStoredAsset">Enviar arquivo</button></div>
             <template v-else>
-              <div v-if="file" class="file-preview"><audio v-if="file.type.startsWith('audio/')" :src="filePreviewUrl" controls preload="metadata" aria-label="Revisar gravação antes de enviar"></audio><img v-else-if="file.type.startsWith('image/')" :src="filePreviewUrl" alt="Prévia do anexo" style="max-width:100px;max-height:90px;object-fit:contain"><b>{{ file.name }}</b><small>{{ Math.ceil(file.size/1024) }} KB</small><label v-if="file.type.startsWith('audio/')"><input v-model="sendAsVoice" type="checkbox">Voz</label><label v-if="file.type.startsWith('image/')"><input v-model="sendAsSticker" type="checkbox" @change="sendAsDocument=false">Figurinha</label><label><input v-model="sendAsDocument" type="checkbox" @change="sendAsSticker=false">Documento</label><button class="icon-button" aria-label="Remover anexo" @click="file=null">×</button></div>
+              <div v-if="file" class="file-preview"><audio v-if="file.type.startsWith('audio/')" :src="filePreviewUrl" controls preload="metadata" aria-label="Revisar gravação antes de enviar"></audio><img v-else-if="file.type.startsWith('image/')" :src="filePreviewUrl" alt="Prévia do anexo" style="max-width:100px;max-height:90px;object-fit:contain"><b>{{ file.name }}</b><span v-if="pendingFiles.length">+ {{ pendingFiles.length }} arquivo(s) aguardando envio</span><small>{{ Math.ceil(file.size/1024) }} KB</small><label v-if="file.type.startsWith('audio/')"><input v-model="sendAsVoice" type="checkbox">Voz</label><label v-if="file.type.startsWith('image/')"><input v-model="sendAsSticker" type="checkbox" @change="sendAsDocument=false">Figurinha</label><label><input v-model="sendAsDocument" type="checkbox" @change="sendAsSticker=false">Documento</label><button class="icon-button" aria-label="Remover anexo" @click="file=pendingFiles.shift() || null">×</button></div>
               <button class="attach" aria-label="Anexar arquivo, localização ou contato" :disabled="!selectedCanCompose || openingChat" @click="attachmentOpen=true"><span class="material-icons" aria-hidden="true">attach_file</span></button>
               <div v-if="recording" class="voice-recording" role="status">● {{ recordingSeconds }}s <button class="btn secondary" @click="voice.cancel">Descartar</button><button class="btn" @click="voice.stop">Concluir gravação</button></div>
               <button v-if="!file && !recording" v-can-action="'whatsapp_web.send'" class="icon-button" aria-label="Gravar mensagem de voz" :disabled="sending || openingChat || !selectedCanCompose || startingRecording" @click="startRecording"><span class="material-icons">mic</span></button>
@@ -405,7 +420,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
     </div>
     <q-dialog v-model="chatActionsOpen" position="bottom"><div v-if="selected" class="whatsapp-web-workspace chat-bottom-sheet"><header><div><h2 data-sensitive>{{ name(selected) }}</h2><p>{{ selected.bot?.paused ? 'Atendimento humano' : selected.bot?.ai?.profileKey ? 'IA ativa' : 'Bot ativo' }}<span v-if="orderStage(selected)"> · {{ orderStage(selected) }}</span></p></div><button class="icon-button" aria-label="Fechar ações da conversa" @click="chatActionsOpen = false">×</button></header><div class="chat-sheet-actions" @click="chatActionsOpen = false"><button v-can-action="'whatsapp_web.assign'" @click="selected.bot?.paused && selected.bot.ownerId===currentUser?.id && selected.bot.origin==='panel'?toggleBot():assumeChat()">{{selected.bot?.paused && selected.bot.ownerId===currentUser?.id && selected.bot.origin==='panel'?'Devolver ao bot':'Assumir atendimento'}}</button><button v-can-action="'whatsapp_web.assign'" @click="toggleBot">{{ selected.bot?.paused ? 'Reativar bot' : 'Pausar bot' }}</button><button v-can-action="'whatsapp_web.assign'" @click="attendanceAction('waiting')">Enviar para a fila da equipe</button><button v-can-action="'whatsapp_web.assign'" @click="openTransfer">Transferir atendimento</button><button v-can-action="'whatsapp_web.assign'" @click="attendanceAction('finish')">Concluir atendimento</button><button v-can-action="'whatsapp_web.assign'" @click="attendanceAction('triage')">Voltar à triagem</button><button v-can-action="'whatsapp_web.edit'" @click="renameContact">Editar nome exibido</button><button v-can-action="'whatsapp_web.assign'" @click="resetContext">Reiniciar contexto</button><button v-if="!selected.isMyContact&&!selected.isGroup" v-can-action="'whatsapp_web.edit'" @click="saveContact">Salvar contato no aparelho</button><button v-can-action="'whatsapp_web.edit'" @click="action(selected.archived?'unarchive':'archive')">{{ selected.archived ? 'Desarquivar' : 'Arquivar' }}</button><button v-can-action="'whatsapp_web.edit'" @click="action(selected.pinned?'unpin':'pin')">{{ selected.pinned ? 'Desafixar' : 'Fixar' }}</button><button v-can-action="'whatsapp_web.edit'" @click="action(selected.mutedUntil?'unmute':'mute',60)">{{ selected.mutedUntil ? 'Remover silêncio' : 'Silenciar por 1 hora' }}</button><button v-can-action="'whatsapp_web.edit'" @click="action('unread')">Marcar como não lida</button><button v-if="canAction(getStoredUser(),'whatsapp_web','delete')" class="delete-action" :disabled="deleting" @click="requestDeleteChat(true)">Limpar histórico do painel</button><button v-if="canAction(getStoredUser(),'whatsapp_web','delete')" class="delete-action" :disabled="deleting" @click="requestDeleteChat(false)">Excluir conversa do painel</button></div></div></q-dialog>
     <q-dialog v-model="searchOpen"><div class="card chat-history-search"><q-card-section class="row items-center"><strong>Buscar na conversa</strong><q-space/><q-btn flat round icon="close" v-close-popup aria-label="Fechar busca"/></q-card-section><q-card-section><form class="row q-gutter-sm" @submit.prevent="searchMessages(1)"><q-input v-model="messageSearch" outlined dense class="col" label="Texto no histórico" maxlength="200"/><q-btn type="submit" color="primary" icon="search" :loading="searchingMessages" :disable="messageSearch.trim().length < 2" aria-label="Buscar"/></form><p class="text-caption">Pesquisa em todas as mensagens armazenadas, inclusive páginas antigas. Não importa backups nem aciona o bot.</p><p aria-live="polite">{{ searchTotal }} resultado(s)</p><div class="search-results"><article v-for="result in searchResults" :key="result._id" class="search-result"><small>{{ result.direction === 'outbound' ? 'Equipe' : name(selected) }} · {{ formatDate(result.timestamp, true) }}</small><p v-html="formatWhatsApp(result.body)"></p></article></div><q-pagination v-if="searchPages > 1" :model-value="searchPage" :max="searchPages" :max-pages="5" :disable="searchingMessages" @update:model-value="searchMessages"/></q-card-section></div></q-dialog>
-    <q-dialog v-model="attachmentOpen" position="bottom"><div class="whatsapp-web-workspace chat-bottom-sheet"><header><h2>Adicionar à mensagem</h2><button class="icon-button" aria-label="Fechar anexos" @click="attachmentOpen = false">×</button></header><div class="chat-sheet-actions"><label class="file-picker">Arquivo do dispositivo<input type="file" @change="pickFile"></label><button @click="openComposer('asset')">Arquivo da biblioteca</button><button @click="openComposer('location')">Localização</button><button @click="openComposer('contact')">Contato</button></div></div></q-dialog>
+    <q-dialog v-model="attachmentOpen" position="bottom"><div class="whatsapp-web-workspace chat-bottom-sheet"><header><h2>Adicionar à mensagem</h2><button class="icon-button" aria-label="Fechar anexos" @click="attachmentOpen = false">×</button></header><div class="chat-sheet-actions"><label class="file-picker">Arquivo do dispositivo<input type="file" multiple @change="pickFile"></label><button @click="openComposer('asset')">Arquivo da biblioteca</button><button @click="openComposer('location')">Localização</button><button @click="openComposer('contact')">Contato</button></div></div></q-dialog>
     <q-dialog v-model="messageActionsOpen" position="bottom"><div v-if="actionMessage" class="whatsapp-web-workspace chat-bottom-sheet"><header><h2>Ações da mensagem</h2><button class="icon-button" aria-label="Fechar ações da mensagem" @click="messageActionsOpen = false">×</button></header><p class="message-excerpt">{{ actionMessage.body || actionMessage.type }}</p><div class="message-reactions"><button v-for="emoji in ['👍','❤️','😂','😮','😢','🙏','🔥','👏','✅','🎉']" :key="emoji" :aria-label="`Reagir ${emoji}`" v-can-action="'whatsapp_web.send'" @click="runMessageAction('reaction', emoji)">{{ emoji }}</button></div><div class="reaction-custom"><label>Outro emoji <input v-model="customReaction" maxlength="32" aria-label="Outro emoji para reagir"></label><button class="btn secondary" v-can-action="'whatsapp_web.send'" :disabled="!customReaction" @click="runMessageAction('reaction', customReaction)">Reagir</button><button class="btn secondary" v-can-action="'whatsapp_web.send'" @click="runMessageAction('reaction', '')">Remover minha reação</button></div><div class="chat-sheet-actions"><button v-can-action="'whatsapp_web.send'" @click="runMessageAction('reply')">Responder</button><button v-can-action="'whatsapp_web.edit'" @click="runMessageAction(actionMessage.starred ? 'unstar' : 'star')">{{ actionMessage.starred ? 'Remover dos favoritos' : 'Favoritar' }}</button><button v-can-action="'whatsapp_web.send'" @click="runMessageAction('forward')">Encaminhar</button><button v-if="canAction(getStoredUser(),'whatsapp_web','delete')" class="delete-action" :disabled="deleting" @click="runMessageAction('remove-local')">Apagar do painel</button><button v-if="actionMessage.direction === 'outbound' && !actionMessage.revoked" v-can-action="'whatsapp_web.edit'" @click="runMessageAction('edit')">Editar mensagem</button><button v-if="actionMessage.direction === 'outbound' && !actionMessage.revoked" v-can-action="'whatsapp_web.delete'" @click="runMessageAction('delete')">Apagar para todos</button></div></div></q-dialog>
     <q-dialog v-model="transferOpen"><div class="whatsapp-web-workspace chat-bottom-sheet"><form @submit.prevent="attendanceAction('transfer')"><header><h2>Transferir atendimento</h2><button type="button" class="icon-button" @click="transferOpen = false" aria-label="Fechar transferência">×</button></header><p>O colaborador escolhido assume esta conversa e a automação fica pausada.</p><div class="field"><label for="transfer-assignee">Colaborador</label><select id="transfer-assignee" v-model="assigneeId" required><option value="">Selecione…</option><option v-for="person in assignees" :key="person._id" :value="person._id">{{ person.name }} · {{ person.nick }}</option></select></div><button class="btn" :disabled="!assigneeId">Transferir</button></form></div></q-dialog>
     <div v-if="forwarding" class="modal-backdrop" @click.self="forwarding=null"><div class="card forward-modal"><span class="eyebrow">Encaminhar mensagem</span><h2>{{ forwarding.body || forwarding.type }}</h2><div class="field"><label>Buscar destinatário</label><form class="row q-gutter-sm" @submit.prevent="findForwardChats"><input v-model="forwardSearch" class="col" placeholder="Nome ou telefone"><button class="btn secondary" type="submit">Buscar</button></form><label>Conversa receptiva de destino</label><select v-model="forwardTarget"><option value="">Selecione…</option><option v-for="chat in forwardChats.filter(item=>item.serviceWindow?.expiresAt&&new Date(item.serviceWindow.expiresAt).getTime()>now&&!item.isGroup)" :key="chat._id" :value="chat._id">{{ name(chat) }}</option></select></div><div><button class="btn secondary" @click="forwarding=null">Cancelar</button><button class="btn" :disabled="!forwardTarget||sending" v-can-action="'whatsapp_web.send'" @click="confirmForward">Encaminhar</button></div></div></div>
