@@ -6978,5 +6978,13 @@
   "Não foi possível abrir a conversa.": "No se pudo abrir la conversación.",
   "Iniciar conversa com este contato": "Iniciar conversación con este contacto",
   "Conversa iniciada pelo administrador": "Conversación iniciada por el administrador",
-  "Abra uma nova conversa com um contato salvo ou aguarde uma mensagem no WhatsApp.": "Abre una nueva conversación o espera mensajes de tus contactos."
+  "Abra uma nova conversa com um contato salvo ou aguarde uma mensagem no WhatsApp.": "Abre una nueva conversación o espera mensajes de tus contactos.",
+  "Anexos para revisar": "Archivos para revisar",
+  "Conferir {0}": "Revisar {0}",
+  "Miniatura do anexo": "Miniatura del archivo",
+  "Miniatura do PDF": "Miniatura del PDF",
+  "KB · Ampliar": "KB · Ampliar",
+  "Fechar prévia": "Cerrar vista previa",
+  "Prévia indisponível neste navegador.": "Vista previa no disponible en este navegador.",
+  "Salvar arquivo para conferir": "Guardar archivo para revisar"
 }

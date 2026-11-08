@@ -1,4 +1,5 @@
 <script setup>
+import PendingAttachments from '../../../components/PendingAttachments.vue'
 import { sendAttachmentBatch } from '../../../services/attachment-batch.js'
 import ChatFocusToggle from "../../../components/ChatFocusToggle.vue"
 import { useChatFocus } from "../../../services/chat-focus.js"
@@ -196,6 +197,7 @@ async function sendStoredAsset() { if(!canAction(getStoredUser(),'whatsapp_web',
   try { await api.post(`/chats/${selectedId.value}/assets`, { assetId: assetId.value, caption: draft.value, sendAsVoice: sendAsVoice.value, sendAsDocument: sendAsDocument.value }); assetId.value = ''; draft.value = ''; composerMode.value = 'text'; show('Arquivo da biblioteca enviado.') }
   catch (cause) { show(messageOf(cause)) } finally { sending.value = false }
 }
+function removePendingFile(index){if(sending.value)return;const files=[file.value,...pendingFiles.value];files.splice(index,1);file.value=files.shift()||null;pendingFiles.value=files}
 function addFiles(files) {
  if(sending.value || !selectedCanCompose.value || !selected.value) return
  const list=Array.from(files || []);if(!list.length)return
@@ -406,7 +408,8 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
             <div v-else-if="composerMode==='contact'" class="rich-composer contact-mode"><div class="field"><label>Telefone com DDI e DDD</label><input v-model="contactForm.phone" inputmode="tel" placeholder="5511999999999"></div><button class="btn secondary" @click="composerMode='text'">Cancelar</button><button class="btn" :disabled="sending||!contactForm.phone" @click="sendContactCard">Enviar contato</button></div>
             <div v-else-if="composerMode==='asset'" class="rich-composer asset-mode"><div class="field"><label>Arquivo da biblioteca</label><select v-model="assetId"><option value="">Selecione…</option><option v-for="asset in assets" :key="asset._id" :value="asset._id">{{ asset.name }}</option></select></div><div class="field"><label>Legenda opcional</label><input v-model="draft"></div><label v-if="selectedAsset?.kind==='audio'" class="toggle"><input v-model="sendAsVoice" type="checkbox"> Enviar como voz</label><label class="toggle"><input v-model="sendAsDocument" type="checkbox"> Enviar como documento</label><button class="btn secondary" @click="composerMode='text'">Cancelar</button><button class="btn" :disabled="sending||!assetId" @click="sendStoredAsset">Enviar arquivo</button></div>
             <template v-else>
-              <div v-if="file" class="file-preview"><audio v-if="file.type.startsWith('audio/')" :src="filePreviewUrl" controls preload="metadata" aria-label="Revisar gravação antes de enviar"></audio><img v-else-if="file.type.startsWith('image/')" :src="filePreviewUrl" alt="Prévia do anexo" style="max-width:100px;max-height:90px;object-fit:contain"><b>{{ file.name }}</b><span v-if="pendingFiles.length">+ {{ pendingFiles.length }} arquivo(s) aguardando envio</span><small>{{ Math.ceil(file.size/1024) }} KB</small><label v-if="file.type.startsWith('audio/')"><input v-model="sendAsVoice" type="checkbox">Voz</label><label v-if="file.type.startsWith('image/')"><input v-model="sendAsSticker" type="checkbox" @change="sendAsDocument=false">Figurinha</label><label><input v-model="sendAsDocument" type="checkbox" @change="sendAsSticker=false">Documento</label><button class="icon-button" aria-label="Remover anexo" @click="file=pendingFiles.shift() || null">×</button></div>
+              <PendingAttachments v-if="file" :files="[file,...pendingFiles]" :disabled="sending" @remove="removePendingFile"/>
+              <div v-if="file" class="file-preview"><label v-if="file.type.startsWith('audio/')"><input v-model="sendAsVoice" :disabled="sending" type="checkbox">Voz</label><label><input v-model="sendAsDocument" :disabled="sending" type="checkbox">Documento</label></div>
               <button class="attach" aria-label="Anexar arquivo, localização ou contato" :disabled="!selectedCanCompose || openingChat" @click="attachmentOpen=true"><span class="material-icons" aria-hidden="true">attach_file</span></button>
               <div v-if="recording" class="voice-recording" role="status">● {{ recordingSeconds }}s <button class="btn secondary" @click="voice.cancel">Descartar</button><button class="btn" @click="voice.stop">Concluir gravação</button></div>
               <button v-if="!file && !recording" v-can-action="'whatsapp_web.send'" class="icon-button" aria-label="Gravar mensagem de voz" :disabled="sending || openingChat || !selectedCanCompose || startingRecording" @click="startRecording"><span class="material-icons">mic</span></button>

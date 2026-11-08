@@ -6978,5 +6978,13 @@
   "Não foi possível abrir a conversa.": "Unable to open the conversation.",
   "Iniciar conversa com este contato": "Start a conversation with this contact",
   "Conversa iniciada pelo administrador": "Conversation started by the administrator",
-  "Abra uma nova conversa com um contato salvo ou aguarde uma mensagem no WhatsApp.": "Open a new conversation or wait for messages from your contacts."
+  "Abra uma nova conversa com um contato salvo ou aguarde uma mensagem no WhatsApp.": "Open a new conversation or wait for messages from your contacts.",
+  "Anexos para revisar": "Attachments to review",
+  "Conferir {0}": "Preview {0}",
+  "Miniatura do anexo": "Attachment thumbnail",
+  "Miniatura do PDF": "PDF thumbnail",
+  "KB · Ampliar": "KB · Enlarge",
+  "Fechar prévia": "Close preview",
+  "Prévia indisponível neste navegador.": "Preview unavailable in this browser.",
+  "Salvar arquivo para conferir": "Save file to review"
 }

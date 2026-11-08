@@ -10,18 +10,19 @@ let searchRequest = 0
 const channels = [{ label: 'WhatsApp Web', value: 'whatsapp_web' }, { label: 'WhatsApp Cloud · API oficial', value: 'whatsapp_cloud' }]
 const valid = computed(() => contact.value?.active !== false && !!contactStartPhone(contact.value, channel.value))
 const label = item => [item?.displayName || item?.name || 'Contato', contactStartPhone(item, channel.value) || 'Sem telefone válido'].join(' · ')
-async function search(text = '') {
+async function search(text = '', update = callback => callback()) {
   const request = ++searchRequest
   loading.value = true
   try {
     const list = asList(unwrap(await http.get('/contacts', { params: { search: text, page: 1, limit: 30 } })))
-    if (request === searchRequest) options.value = list.filter(item => item.active !== false)
+    if (request === searchRequest) update(() => { options.value = list.filter(item => item.active !== false) })
   } catch (cause) { if (request === searchRequest) error.value = errorMessage(cause) }
   finally { if (request === searchRequest) loading.value = false }
 }
-function filter(text, update) { update(() => {}); void search(text) }
+function cancelSearch(){searchRequest++;loading.value=false}
+function filter(text, update) { void search(text, update) }
 watch(() => props.modelValue, open => {
-  if (!open) { searchRequest++; return }
+  if (!open) { cancelSearch(); return }
   contact.value = props.contact || null
   channel.value = props.channel || 'whatsapp_web'
   options.value = props.contact ? [props.contact] : []
@@ -46,7 +47,7 @@ async function submit() {
       <q-card-section class="row items-center"><div class="text-h6">Nova conversa</div><q-space/><q-btn flat round dense icon="close" aria-label="Fechar nova conversa" :disable="saving" @click="emit('update:modelValue', false)"/></q-card-section>
       <q-card-section class="q-pt-none">
         <p>Escolha um contato salvo. Você pode abrir a conversa mesmo que ele nunca tenha enviado uma mensagem.</p>
-        <q-select v-model="contact" :options="options" :option-label="label" outlined use-input clearable input-debounce="300" label="Buscar contato por nome ou telefone" :loading="loading" :disable="saving" @filter="filter"><template #no-option><q-item><q-item-section>Nenhum contato encontrado. Confira a busca ou cadastre a pessoa em Contatos.</q-item-section></q-item></template></q-select>
+        <q-select v-model="contact" :options="options" :option-label="label" :option-value="item => item.id || item._id" outlined use-input clearable input-debounce="300" label="Buscar contato por nome ou telefone" :loading="loading" :disable="saving" @filter="filter" @filter-abort="cancelSearch"><template #no-option><q-item><q-item-section>Nenhum contato encontrado. Confira a busca ou cadastre a pessoa em Contatos.</q-item-section></q-item></template></q-select>
         <q-select v-model="channel" :options="channels" emit-value map-options outlined label="Canal" :disable="!!props.channel || saving" class="q-mt-md"/>
         <q-banner rounded class="bg-teal-1 text-teal-10 q-mt-md">{{ channel === 'whatsapp_cloud' ? 'A conversa será aberta sem alterar permissões. Sem uma mensagem recebida nas últimas 24 horas, inicie com um template oficial aprovado.' : 'A sessão do WhatsApp Web precisa estar conectada. Abrir a conversa não envia uma mensagem nem autoriza notificações em massa.' }}</q-banner>
         <p v-if="contact && !valid" role="alert" class="text-negative q-mt-md">Este contato precisa de um telefone válido com DDI e DDD. Atualize o cadastro em Contatos.</p>
