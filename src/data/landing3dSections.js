@@ -8,7 +8,7 @@ export const landing3dSections = Object.freeze([
     modelKey: 'intro',
     cta: {
       label: 'Quero meu diagnóstico grátis',
-      href: 'https://wa.me/5561982637865?text=Ol%C3%A1%2C%20equipe%20AitoSoftwares!%20Gostaria%20de%20conversar%20sobre%20meu%20projeto%20e%20agendar%20um%20diagn%C3%B3stico%20gratuito.'
+      href: 'https://wa.me/5561982637685?text=Ol%C3%A1%2C%20equipe%20AitoSoftwares!%20Gostaria%20de%20conversar%20sobre%20meu%20projeto%20e%20agendar%20um%20diagn%C3%B3stico%20gratuito.'
     },
     secondaryCta: {
       label: 'Soluções para WhatsApp: Notificações e Chatbot',

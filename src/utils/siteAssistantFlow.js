@@ -6,7 +6,7 @@ export function assistantCommercialUrl(history = [], message = '', flow = '') {
   const entries = history.filter(entry => entry?.from === 'user' && typeof entry.text === 'string').map(entry => entry.text.slice(0, 1200));
   if (message && entries.at(-1) !== message) entries.push(message.slice(0, 1200));
   const summary = entries.slice(-5).join('\n').slice(0, 1200);
-  return 'https://wa.me/5561982637865?text=' + encodeURIComponent('Olá! Vim pelo Assistente AITO.\nFluxo: ' + (flow || 'Atendimento AitoNotify + WhatsApp BotBuilder') + '.' + (summary ? '\nMeu contexto:\n' + summary : ''));
+  return 'https://wa.me/5561982637685?text=' + encodeURIComponent('Olá! Vim pelo Assistente AITO.\nFluxo: ' + (flow || 'Atendimento AitoNotify + WhatsApp BotBuilder') + '.' + (summary ? '\nMeu contexto:\n' + summary : ''));
 }
 export function guidedAssistantReply(message, history = []) {
   const text = normalize(message);

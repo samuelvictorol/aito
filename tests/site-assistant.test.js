@@ -26,7 +26,7 @@ test('connection fallback guides the current campaign or bot need to a useful ne
   assert.equal(helpers.offlineReply('Quero bot no WhatsApp').link.url, '/whatsapp-solucoes')
   const history = [{ from: 'user', text: 'Quero fazer campanhas com Notify Flow' }]
   assert.equal(helpers.offlineReply('Quero criar um bot no WhatsApp', history).link.url, '/whatsapp-solucoes')
-  assert.match(helpers.offlineReply('Quero falar com um especialista', history).link.url, /^https:\/\/wa.me\/5561982637865/)
+  assert.match(helpers.offlineReply('Quero falar com um especialista', history).link.url, /^https:\/\/wa.me\/5561982637685/)
   assert.equal(helpers.offlineReply('Como transferir a conversa do bot para um atendente humano?').link.url, '/whatsapp-solucoes')
 })
 
@@ -105,7 +105,7 @@ test('offers separate Desktop and Whitelabel products with independent tokens', 
   assert.match(source.ia_replies.join(' '), /token é vitalício/)
   const monthly = guidedAssistantReply('Usar mensal')
   const url = new URL(monthly.link.url)
-  assert.equal(url.pathname, '/5561982637865')
+  assert.equal(url.pathname, '/5561982637685')
   assert.match(url.searchParams.get('text'), /Implantação e orientação de compra/)
   assert.equal(guidedAssistantReply('Comprar pelo site', [{ from: 'user', text: 'WhatsApp BotBuilder' }]).link.url, '/whatsapp-solucoes')
   assert.deepEqual(guidedAssistantReply('Voltar ao início').suggestions, [...assistantMenu])

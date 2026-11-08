@@ -388,7 +388,7 @@ function handleAuthSuccess(data) {
 }
 
 function buildWhatsappUrl(message) {
-  return `https://wa.me/5561982637865?text=${encodeURIComponent(message)}`
+  return `https://wa.me/5561982637685?text=${encodeURIComponent(message)}`
 }
 
 async function sendLead() {

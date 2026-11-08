@@ -17,11 +17,12 @@ const catalog = ref(defaultProductCatalog()), open = ref(false), loginOpen = ref
 const couponQuote = ref(null)
 const accepted = ref(false), termsOpen = ref(false), termsProduct = ref('desktop')
 const busy = ref(false), confirming = ref(false), error = ref(''), order = ref(null), paid = ref(false), couponCode = ref(typeof route.query.cupom === 'string' ? route.query.cupom : sessionStorage.getItem('aito.kit.coupon') || '')
-const entries = computed(() => cart.selected.value.map(type => ({ ...catalog.value[type], productType: type })))
+const effectiveCatalog=computed(()=>{const value={...catalog.value},plan=value.desktop.desktopPlans?.find(p=>p.months===cart.desktopMonths.value);if(plan)value.desktop={...value.desktop,priceCents:plan.priceCents,originalPriceCents:plan.priceCents,licenseTerm:{permanent:false,durationMonths:plan.months},durationMonths:plan.months};return value})
+const entries = computed(() => cart.selected.value.map(type => ({ ...effectiveCatalog.value[type], productType: type })))
 const termsReady = computed(() => entries.value.length > 0 && entries.value.every(item => typeof item.kitTerms?.version === 'string' && item.kitTerms.version.trim() && typeof item.kitTerms?.content === 'string' && item.kitTerms.content.trim()))
 const currentTerms = computed(() => catalog.value[termsProduct.value]?.kitTerms)
-const acceptanceContext = computed(() => JSON.stringify(cart.selected.value.map(type => ({ type, priceCents: catalog.value[type]?.priceCents, terms: catalog.value[type]?.kitTerms }))))
-const subtotal = computed(() => productSubtotal(cart.selected.value, catalog.value))
+const acceptanceContext = computed(() => JSON.stringify(cart.selected.value.map(type => ({ type, priceCents: effectiveCatalog.value[type]?.priceCents, terms: catalog.value[type]?.kitTerms }))))
+const subtotal = computed(() => productSubtotal(cart.selected.value, effectiveCatalog.value))
 const cartTotal = computed(() => couponQuote.value?.amountCents ?? subtotal.value)
 const total = computed(() => order.value?.amountCents ?? cartTotal.value)
 const checkoutReturn = computed(() => typeof route.query.order_nsu === 'string' && typeof route.query.transaction_nsu === 'string' && typeof (route.query.slug || route.query.invoice_slug) === 'string')
@@ -57,7 +58,7 @@ async function checkout() {
   busy.value = true; error.value = ''; trackJourney(route.path, 'checkout_start'); connect()
   try {
     const acceptedTerms = Object.fromEntries(cart.selected.value.map(type => [type, catalog.value[type].kitTerms.version]))
-    order.value = (await api.post('/products/aitonotify/checkout', { productTypes: [...cart.selected.value], acceptedTerms, couponCode: couponCode.value, attribution: attribution() }, headers())).data.data
+    order.value = (await api.post('/products/aitonotify/checkout', { productTypes: [...cart.selected.value], acceptedTerms,desktopPlanMonths:cart.desktopMonths.value, couponCode: couponCode.value, attribution: attribution() }, headers())).data.data
     paid.value = order.value.status === 'paid'; if (paid.value) { cart.clear(); emit('purchased') }
     clearInterval(timer); timer = setInterval(() => { if (open.value) refresh() }, 15000)
   } catch (cause) { error.value = cause.response?.data?.message || 'Não foi possível preparar a compra. Tente novamente.' }
@@ -105,7 +106,7 @@ defineExpose({ openCart, openLogin })
           <span><strong>{{type==='desktop'?'Aplicativo Desktop':'Código-fonte Whitelabel'}}</strong><small>{{type==='desktop'?'Instalador Windows':'Código editável + Cloud'}} · token {{productTermLabel(catalog[type])}}</small><em>{{type==='desktop'?'Para operar com o aplicativo pronto. Não inclui código-fonte nem licença Cloud.':'Para desenvolver e hospedar sua versão. Não inclui a licença do executável Desktop.'}}</em><small v-if="!catalog[type].available">Oferta indisponível no momento.</small></span>
           <b>{{money(catalog[type].priceCents)}}</b>
         </label>
-        <KitCouponInput v-model="couponCode" dark :product-types="cart.selected.value" @quote="value=>couponQuote=value"/>
+        <q-select v-if="cart.selected.value.includes('desktop')" dark outlined emit-value map-options :model-value="cart.desktopMonths.value" :options="(catalog.desktop.desktopPlans||[]).filter(p=>p.enabled).map(p=>({value:p.months,label:p.label+' · '+p.months+' mês(es) · '+money(p.priceCents)}))" label="Plano Desktop" @update:model-value="value=>{cart.setDesktopMonths(value);changed()}"/><KitCouponInput :desktop-plan-months="cart.desktopMonths.value" v-model="couponCode" dark :product-types="cart.selected.value" @quote="value=>couponQuote=value"/>
         <div class="kit-cart__summary"><span>{{entries.length}} produto(s)<small v-if="couponQuote?.discountCents">Desconto: {{money(couponQuote.discountCents)}}</small></span><strong>{{money(cartTotal)}}</strong></div>
       </template>
       <template v-else><div class="kit-cart__provider"><q-icon name="mdi-lock-check-outline" size="34px"/><div><h3>Checkout InfinitePay</h3><p>{{money(total)}} · {{order.items?.length || entries.length}} produto(s). Revise os itens no provedor antes de pagar.</p></div></div><q-btn v-if="order.checkoutUrl" class="full-width" unelevated color="teal-7" no-caps size="lg" label="Abrir pagamento seguro" :href="order.checkoutUrl" target="_blank" rel="noopener noreferrer"/><p class="kit-cart__note">A liberação acontece após a confirmação do pagamento. Não é necessário pagar novamente ao voltar para esta tela.</p><q-btn flat no-caps label="Consultar pagamento" :loading="confirming" @click="checkoutReturn?confirm():refresh()"/><q-btn flat no-caps label="Voltar ao carrinho" @click="changed"/></template>

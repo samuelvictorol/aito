@@ -1,4 +1,6 @@
 <script setup>
+import PortableConfigurationBackup from '../components/PortableConfigurationBackup.vue'
+const backupOpen=ref(false)
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { copyToClipboard, useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
@@ -519,6 +521,7 @@ onBeforeUnmount(() => {
       icon="space_dashboard"
     >
       <template #actions>
+        <q-btn v-if="!auth.isCollaborator" outline color="primary" icon="import_export" label="Exportar / importar JSON" no-caps @click="backupOpen=true"/>
         <q-btn outline color="primary" icon="refresh" label="Atualizar" no-caps :loading="loading" @click="loadDashboard" />
       </template>
     </PageHeader>
@@ -532,6 +535,7 @@ onBeforeUnmount(() => {
       <div v-else><strong>Canal protegido</strong><span>Configure e conecte o canal antes de acessar suas funções.</span></div>
     </div>
 
+    <q-dialog v-model="backupOpen"><q-card style="width:1000px;max-width:96vw;max-height:94vh;overflow:auto"><q-card-actions align="right"><q-btn flat round icon="close" v-close-popup/></q-card-actions><PortableConfigurationBackup v-if="backupOpen"/></q-card></q-dialog>
     <ProductLicenseStatus v-if="!auth.isCollaborator" />
     <BrowserNotificationsCard v-if="!auth.isCollaborator" />
     <AdminEmailSecurityCard v-if="!auth.isCollaborator" />

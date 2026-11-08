@@ -1,4 +1,5 @@
 const routes = [
+  {path:'/produto/renovar',component:()=>import('pages/DesktopRenewalPage.vue')},
   {path:'/d/:slug/:section(.*)*',component:()=>import('pages/DesktopPublicPage.vue')},
   {path:'/produto/atualizacoes/:slug?',component:()=>import('pages/ProductUpdatesPage.vue')},
   { path: '/generate-notifications', alias: '/gn', name: 'notification-generator', component: () => import('pages/NotificationGeneratorPage.vue') },
