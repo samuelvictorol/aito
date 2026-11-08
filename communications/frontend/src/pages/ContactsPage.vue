@@ -7,6 +7,8 @@ import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
+import StartConversationDialog from '../components/StartConversationDialog.vue'
+import { startedConversationRoute } from '../services/conversation-starts.js'
 import ContactDialog from '../components/ContactDialog.vue'
 import ContactTransferDialog from '../components/ContactTransferDialog.vue'
 import BulkRemoveBar from '../components/BulkRemoveBar.vue'
@@ -41,6 +43,9 @@ const contacts = ref([])
 const groups = ref([])
 const invites = ref([])
 const dialog = ref(false)
+const newConversationOpen = ref(false), conversationContact = ref(null)
+function startContactConversation(contact) { conversationContact.value = contact; newConversationOpen.value = true }
+function onConversationStarted(result) { router.push(startedConversationRoute(result, !!route.meta.prototype)) }
 const contactDialog = ref(false)
 const transferDialog = ref(false)
 const editingContact = ref(null)
@@ -531,7 +536,7 @@ watch(() => route.query.contactId || route.query.editContact, openContactFromQue
             <template #body-cell-updatedAt="props"><q-td :props="props">{{ formatDate(props.row.updatedAt) }}</q-td></template>
             <template #body-cell-actions="props">
               <q-td :props="props">
-                <q-btn v-can-action="'contacts.edit'" flat round dense icon="edit" aria-label="Editar contato" @click="openEdit('contact', props.row)" />
+                <q-btn v-if="getStoredUser()?.role === 'admin'" flat round dense color="primary" icon="add_comment" aria-label="Iniciar conversa com este contato" @click="startContactConversation(props.row)"/><q-btn v-can-action="'contacts.edit'" flat round dense icon="edit" aria-label="Editar contato" @click="openEdit('contact', props.row)" />
                 <q-btn v-can-action="'contacts.delete'" flat round dense color="negative" icon="delete" aria-label="Remover contato" @click="remove('contact', props.row)" />
               </q-td>
             </template>
@@ -721,6 +726,7 @@ watch(() => route.query.contactId || route.query.editContact, openContactFromQue
       @saved="loadData"
     />
   </q-page>
+<StartConversationDialog v-model="newConversationOpen" :contact="conversationContact" @started="onConversationStarted"/>
 </template>
 
 <style scoped>

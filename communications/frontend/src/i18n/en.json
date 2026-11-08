@@ -6964,5 +6964,19 @@
   "Atualize a configuração antes de registrar o cofre.": "Update the configuration before registering the vault.",
   "Confirme o banco copiado antes de registrar o cofre.": "Please confirm the copied bank before registering the safe.",
   "Uma chave de cofre já está registrada. Uma troca exige recifrar todas as credenciais antes de alterar a chave.": "A vault key is already registered. An exchange requires re-encrypting all credentials before changing the key.",
-  "Idioma padrão (pt-BR, en-US ou es)": "Default language (pt-BR, en-US or es)"
+  "Idioma padrão (pt-BR, en-US ou es)": "Default language (pt-BR, en-US or es)",
+  "Selecione um contato ativo com telefone válido, incluindo DDI e DDD.": "Select an active contact with a valid phone number, including country and area codes.",
+  "Sem telefone válido": "No valid phone number",
+  "Fechar nova conversa": "Close new conversation",
+  "Escolha um contato salvo. Você pode abrir a conversa mesmo que ele nunca tenha enviado uma mensagem.": "Choose a saved contact. You can open a conversation even if they have never sent you a message.",
+  "Buscar contato por nome ou telefone": "Search contacts by name or phone",
+  "Nenhum contato encontrado. Confira a busca ou cadastre a pessoa em Contatos.": "No contacts found. Check your search or add the person in Contacts.",
+  "WhatsApp Cloud · API oficial": "WhatsApp Cloud · Official API",
+  "A conversa será aberta sem alterar permissões. Sem uma mensagem recebida nas últimas 24 horas, inicie com um template oficial aprovado.": "Opening the conversation does not change permissions. If no message was received in the last 24 hours, start with an approved official template.",
+  "A sessão do WhatsApp Web precisa estar conectada. Abrir a conversa não envia uma mensagem nem autoriza notificações em massa.": "The WhatsApp Web session must be connected. Opening a conversation does not send a message or authorize bulk notifications.",
+  "Este contato precisa de um telefone válido com DDI e DDD. Atualize o cadastro em Contatos.": "This contact needs a valid phone number with country and area codes. Update their details in Contacts.",
+  "Não foi possível abrir a conversa.": "Unable to open the conversation.",
+  "Iniciar conversa com este contato": "Start a conversation with this contact",
+  "Conversa iniciada pelo administrador": "Conversation started by the administrator",
+  "Abra uma nova conversa com um contato salvo ou aguarde uma mensagem no WhatsApp.": "Open a new conversation or wait for messages from your contacts."
 }

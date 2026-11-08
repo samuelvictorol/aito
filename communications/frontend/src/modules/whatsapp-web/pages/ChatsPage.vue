@@ -14,6 +14,8 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } fr
 import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { api, formatDate, idOf, messageOf, socket, currentUser } from '../services.js'
+import StartConversationDialog from '../../../components/StartConversationDialog.vue'
+import { manualWebConversationAllowed } from '../../../services/conversation-starts.js'
 import ContactAvatar from '../components/ContactAvatar.vue'
 import { formatWhatsApp } from '../whatsapp-format.js'
 import { ATTENDANCE_SCOPES, attendanceLabel, matchesScope, attendanceGroups } from '../attendance-state.js'
@@ -57,6 +59,15 @@ let clock
 
 const selectedId = computed(() => idOf(selected.value))
 const selectedWindowOpen = computed(() => Boolean(selected.value?.serviceWindow?.lastInboundAt && selected.value?.serviceWindow?.expiresAt && new Date(selected.value.serviceWindow.expiresAt).getTime() > now.value && !selected.value?.isGroup))
+const newConversationOpen = ref(false)
+const mayStartConversation = computed(() => (currentUser.value || getStoredUser())?.role === 'admin')
+const selectedManuallyStarted = computed(() => manualWebConversationAllowed(selected.value, currentUser.value || getStoredUser()))
+const selectedCanCompose = computed(() => selectedWindowOpen.value || selectedManuallyStarted.value)
+async function onConversationStarted({ conversation }) {
+  attendanceScope.value = 'all'
+  chats.value = [conversation, ...chats.value.filter(chat => idOf(chat) !== idOf(conversation))]
+  await selectChat(conversation)
+}
 const selectedAsset = computed(() => assets.value.find((item) => item._id === assetId.value))
 function orderStage(chat){const stage=chat?.tags?.find(t=>t.startsWith('pedido-'));return({'pedido-fulfillment':'Retirada/entrega','pedido-address':'Endereço','pedido-cart':'Carrinho','pedido-review':'Conferência','pedido-completed':'Pedido enviado'})[stage]||''}
 function name(chat) { return chat?.displayNameOverride || chat?.displayName || chat?.phone || chat?.externalId || 'Contato' }
@@ -148,7 +159,7 @@ async function older() {
     await nextTick(); if (stream.value) stream.value.scrollTop = stream.value.scrollHeight - previousHeight
   } catch (cause) { show(messageOf(cause)) }
 }
-function assertWindow() { if (!selectedWindowOpen.value) { show('Aguarde o contato enviar uma nova mensagem para abrir a janela receptiva.'); return false } return true }
+function assertWindow() { if (!selectedCanCompose.value) { show('Aguarde o contato enviar uma nova mensagem para abrir a janela receptiva.'); return false } return true }
 async function send() { if(!canAction(getStoredUser(),'whatsapp_web','send'))return;
   const text = draft.value.trim(); if (!selected.value || !text || !assertWindow()) return
   sending.value = true
@@ -321,12 +332,12 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
       <aside class="chat-list-panel">
 
         <div class="inbox-heading"><div><strong>Atendimentos</strong><small>{{ myStats.total - myStats.completed }} em aberto · {{ myStats.completed }} concluídos</small></div><span class="inbox-live" :class="{ offline: !liveConnected }">{{ liveConnected ? 'Ao vivo' : 'Reconectando' }}</span></div>
-        <form class="chat-search" @submit.prevent="loadChats(1)"><input v-model="search" class="search" aria-label="Buscar conversa" type="search" placeholder="Buscar conversa…" autocomplete="off"><button class="icon-button" type="submit" aria-label="Buscar conversas"><span class="material-icons" aria-hidden="true">search</span></button></form>
+        <q-btn v-if="mayStartConversation" unelevated no-caps color="primary" icon="add_comment" label="Nova conversa" class="q-ma-sm" @click="newConversationOpen = true"/><form class="chat-search" @submit.prevent="loadChats(1)"><input v-model="search" class="search" aria-label="Buscar conversa" type="search" placeholder="Buscar conversa…" autocomplete="off"><button class="icon-button" type="submit" aria-label="Buscar conversas"><span class="material-icons" aria-hidden="true">search</span></button></form>
         <div class="inbox-scope"><label for="attendance-scope">Caixa de entrada</label><select id="attendance-scope" v-model="attendanceScope"><option v-for="scope in ATTENDANCE_SCOPES" :key="scope.value" :value="scope.value">{{ scope.label }}</option></select></div>
         <div class="chat-list-summary"><small class="chat-count">{{ total }} conversa(s)</small><button class="icon-button" aria-label="Atualizar conversas" :disabled="loading" @click="loadChats(page)"><span class="material-icons" aria-hidden="true">refresh</span></button></div>
         <BulkRemoveBar v-if="canAction(getStoredUser(),'whatsapp_web','delete')" target="whatsapp_web" :selected="selectedChatIds" @removed="onBulkRemoved" />
         <div class="chat-list-scroll">
-        <div v-if="loading" class="empty">Carregando…</div><div v-else-if="!chats.length" class="empty"><b>Nenhuma conversa direta</b><span>Quando alguém escrever no WhatsApp, a conversa aparecerá aqui.</span></div>
+        <div v-if="loading" class="empty">Carregando…</div><div v-else-if="!chats.length" class="empty"><b>Nenhuma conversa direta</b><span>Abra uma nova conversa com um contato salvo ou aguarde uma mensagem no WhatsApp.</span></div>
         <template v-else><q-expansion-item v-for="group in groupedChats" :key="group.key" default-opened :icon="group.icon" :label="`${group.label} · ${group.items.length}`" class="attendance-collapse" header-class="attendance-collapse-heading">
           <div v-for="chat in group.items" :key="chat._id" class="chat-row-selection">
             <q-checkbox v-if="canAction(getStoredUser(),'whatsapp_web','delete')" v-model="selectedChatIds" :val="chat._id" :aria-label="`Selecionar ${name(chat)}`" dense class="chat-selection" />
@@ -347,7 +358,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
             <ContactAvatar :contact="selected" />
             <div class="contact-heading"><strong data-sensitive>{{ name(selected) }}</strong><span class="contact-attendance">{{ attendanceLabel(selected) }}</span><small data-sensitive>{{ selected.phone || selected.externalId }} · {{ selected.isGroup ? 'Grupo' : selected.isBusiness ? 'Conta comercial' : 'Contato' }}</small></div>
             <button class="icon-button" aria-label="Buscar em todo o histórico da conversa" @click="openSearch"><span class="material-icons">search</span></button>
-            <span :class="['window-state',{closed:!selectedWindowOpen}]">{{ selected.isGroup ? 'Bot não atua em grupos' : selectedWindowOpen ? `Responder até ${formatDate(selected.serviceWindow.expiresAt,true)}` : 'Aguardando mensagem do contato' }}</span>
+            <span :class="['window-state',{closed:!selectedCanCompose}]">{{ selected.isGroup ? 'Bot não atua em grupos' : selectedManuallyStarted ? 'Conversa iniciada pelo administrador' : selectedWindowOpen ? `Responder até ${formatDate(selected.serviceWindow.expiresAt,true)}` : 'Aguardando mensagem do contato' }}</span>
             <button class="btn secondary desktop-assume" v-can-action="'whatsapp_web.assign'" @click="selected.bot?.paused && selected.bot.ownerId===currentUser?.id && selected.bot.origin==='panel'?toggleBot():assumeChat()">{{selected.bot?.paused && selected.bot.ownerId===currentUser?.id && selected.bot.origin==='panel'?'Devolver ao bot':'Assumir chat'}}</button>
             <button v-can-action="['whatsapp_web.assign','whatsapp_web.edit','whatsapp_web.delete']" class="icon-button" aria-label="Ações da conversa" @click="chatActionsOpen = true"><span class="material-icons" aria-hidden="true">more_vert</span></button>
             <button v-if="canArea(getStoredUser(),'whatsapp_web')" class="icon-button" :aria-label="chatIsMuted('whatsapp_web', selectedId) ? 'Reativar notificações da conversa' : 'Silenciar notificações da conversa'" @click="toggleMute"><span class="material-icons">{{ chatIsMuted('whatsapp_web', selectedId) ? 'notifications_off' : 'notifications_active' }}</span></button>
@@ -373,7 +384,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
               </div>
             </div>
           </div>
-          <div v-if="!selectedWindowOpen && !openingChat" class="window-notice">Aguarde uma mensagem recente do contato para responder nesta conversa.</div>
+          <div v-if="!selectedCanCompose && !openingChat" class="window-notice">Aguarde uma mensagem recente do contato para responder nesta conversa.</div>
           <footer v-can-action="'whatsapp_web.send'" class="composer">
             <div v-if="replyTo" class="reply-preview"><span>Respondendo a: <b>{{ replyTo.body || replyTo.type }}</b></span><button @click="replyTo=null">×</button></div>
             <div v-if="composerMode==='location'" class="rich-composer"><button class="btn secondary" type="button" @click="currentLocation">Usar minha localização</button><div class="field"><label>Nome do local</label><input v-model="locationForm.name" placeholder="Escritório"></div><div class="field"><label>Endereço</label><input v-model="locationForm.address" placeholder="Endereço opcional"></div><div class="field"><label>Latitude</label><input v-model="locationForm.latitude" type="number" step="any"></div><div class="field"><label>Longitude</label><input v-model="locationForm.longitude" type="number" step="any"></div><button class="btn secondary" @click="composerMode='text'">Cancelar</button><button class="btn" :disabled="sending||locationForm.latitude === '' || locationForm.longitude === ''" @click="sendLocation">Enviar localização</button></div>
@@ -381,11 +392,11 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
             <div v-else-if="composerMode==='asset'" class="rich-composer asset-mode"><div class="field"><label>Arquivo da biblioteca</label><select v-model="assetId"><option value="">Selecione…</option><option v-for="asset in assets" :key="asset._id" :value="asset._id">{{ asset.name }}</option></select></div><div class="field"><label>Legenda opcional</label><input v-model="draft"></div><label v-if="selectedAsset?.kind==='audio'" class="toggle"><input v-model="sendAsVoice" type="checkbox"> Enviar como voz</label><label class="toggle"><input v-model="sendAsDocument" type="checkbox"> Enviar como documento</label><button class="btn secondary" @click="composerMode='text'">Cancelar</button><button class="btn" :disabled="sending||!assetId" @click="sendStoredAsset">Enviar arquivo</button></div>
             <template v-else>
               <div v-if="file" class="file-preview"><audio v-if="file.type.startsWith('audio/')" :src="filePreviewUrl" controls preload="metadata" aria-label="Revisar gravação antes de enviar"></audio><img v-else-if="file.type.startsWith('image/')" :src="filePreviewUrl" alt="Prévia do anexo" style="max-width:100px;max-height:90px;object-fit:contain"><b>{{ file.name }}</b><small>{{ Math.ceil(file.size/1024) }} KB</small><label v-if="file.type.startsWith('audio/')"><input v-model="sendAsVoice" type="checkbox">Voz</label><label v-if="file.type.startsWith('image/')"><input v-model="sendAsSticker" type="checkbox" @change="sendAsDocument=false">Figurinha</label><label><input v-model="sendAsDocument" type="checkbox" @change="sendAsSticker=false">Documento</label><button class="icon-button" aria-label="Remover anexo" @click="file=null">×</button></div>
-              <button class="attach" aria-label="Anexar arquivo, localização ou contato" :disabled="!selectedWindowOpen || openingChat" @click="attachmentOpen=true"><span class="material-icons" aria-hidden="true">attach_file</span></button>
+              <button class="attach" aria-label="Anexar arquivo, localização ou contato" :disabled="!selectedCanCompose || openingChat" @click="attachmentOpen=true"><span class="material-icons" aria-hidden="true">attach_file</span></button>
               <div v-if="recording" class="voice-recording" role="status">● {{ recordingSeconds }}s <button class="btn secondary" @click="voice.cancel">Descartar</button><button class="btn" @click="voice.stop">Concluir gravação</button></div>
-              <button v-if="!file && !recording" v-can-action="'whatsapp_web.send'" class="icon-button" aria-label="Gravar mensagem de voz" :disabled="sending || openingChat || !selectedWindowOpen || startingRecording" @click="startRecording"><span class="material-icons">mic</span></button>
-              <textarea v-show="!recording" ref="draftElement" v-model="draft" aria-label="Mensagem para o contato" rows="1" :placeholder="file ? 'Legenda opcional…' : selectedWindowOpen ? 'Mensagem…' : 'Aguardando contato'" :disabled="!selectedWindowOpen || openingChat" @focus="onViewportResize" @keydown.ctrl.enter.prevent="file ? sendFile() : send()"></textarea>
-              <button v-if="file" class="btn send-button" aria-label="Enviar anexo" :disabled="sending||!selectedWindowOpen" @click="sendFile"><span class="material-icons" aria-hidden="true">send</span></button><button v-else class="btn send-button" aria-label="Enviar mensagem" :disabled="sending||!draft.trim()||!selectedWindowOpen||openingChat" @click="send"><span class="material-icons" aria-hidden="true">send</span></button>
+              <button v-if="!file && !recording" v-can-action="'whatsapp_web.send'" class="icon-button" aria-label="Gravar mensagem de voz" :disabled="sending || openingChat || !selectedCanCompose || startingRecording" @click="startRecording"><span class="material-icons">mic</span></button>
+              <textarea v-show="!recording" ref="draftElement" v-model="draft" aria-label="Mensagem para o contato" rows="1" :placeholder="file ? 'Legenda opcional…' : selectedCanCompose ? 'Mensagem…' : 'Aguardando contato'" :disabled="!selectedCanCompose || openingChat" @focus="onViewportResize" @keydown.ctrl.enter.prevent="file ? sendFile() : send()"></textarea>
+              <button v-if="file" class="btn send-button" aria-label="Enviar anexo" :disabled="sending||!selectedCanCompose" @click="sendFile"><span class="material-icons" aria-hidden="true">send</span></button><button v-else class="btn send-button" aria-label="Enviar mensagem" :disabled="sending||!draft.trim()||!selectedCanCompose||openingChat" @click="send"><span class="material-icons" aria-hidden="true">send</span></button>
               <small>Ctrl + Enter para enviar · sem simulação de digitação</small>
             </template>
           </footer>
@@ -400,6 +411,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
     <div v-if="forwarding" class="modal-backdrop" @click.self="forwarding=null"><div class="card forward-modal"><span class="eyebrow">Encaminhar mensagem</span><h2>{{ forwarding.body || forwarding.type }}</h2><div class="field"><label>Buscar destinatário</label><form class="row q-gutter-sm" @submit.prevent="findForwardChats"><input v-model="forwardSearch" class="col" placeholder="Nome ou telefone"><button class="btn secondary" type="submit">Buscar</button></form><label>Conversa receptiva de destino</label><select v-model="forwardTarget"><option value="">Selecione…</option><option v-for="chat in forwardChats.filter(item=>item.serviceWindow?.expiresAt&&new Date(item.serviceWindow.expiresAt).getTime()>now&&!item.isGroup)" :key="chat._id" :value="chat._id">{{ name(chat) }}</option></select></div><div><button class="btn secondary" @click="forwarding=null">Cancelar</button><button class="btn" :disabled="!forwardTarget||sending" v-can-action="'whatsapp_web.send'" @click="confirmForward">Encaminhar</button></div></div></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
   </section>
+<StartConversationDialog v-model="newConversationOpen" channel="whatsapp_web" @started="onConversationStarted"/>
 </template>
 
 <style scoped src="../chat-layout.css"></style>

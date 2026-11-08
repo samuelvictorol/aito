@@ -510,12 +510,13 @@ import { useChatFocus } from "../services/chat-focus.js"
 const { chatListCollapsed, toggleChatList } = useChatFocus("whatsapp_cloud")
 import { vChatBottom } from "../services/chat-bottom.js"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import BulkRemoveBar from '../components/BulkRemoveBar.vue'
 import { chatIsMuted, toggleChatAlerts } from '../services/chat-alerts.js'
 import { useQuasar } from 'quasar'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
+import StartConversationDialog from '../components/StartConversationDialog.vue'
 import ContactDialog from '../components/ContactDialog.vue'
 import ContextHelp from '../components/ContextHelp.vue'
 import { asList, errorMessage, fetchAll, http, unwrap } from '../services/http.js'
@@ -536,7 +537,16 @@ import {
 } from '../services/chat-pagination.js'
 
 const props = defineProps({ embedded: { type: Boolean, default: false } })
+const newConversationOpen = ref(false)
+const mayStartConversation = computed(() => getStoredUser()?.role === 'admin')
+async function onConversationStarted({ conversation }) {
+  conversations.value = upsertCloudConversation(conversations.value, conversation)
+  await selectConversation(conversation)
+  if (!serviceWindowOf(conversation).open) sendMode.value = 'template'
+  await router.replace({ query: { ...route.query, chatId: cloudConversationId(conversation), tab: 'conversations' } })
+}
 const route = useRoute()
+const router = useRouter()
 const selectedChats = ref([])
 async function onBulkChatsRemoved(ids) { selectedChats.value = selectedChats.value.filter(item => !ids.includes(String(item))); if (ids.includes(cloudConversationId(selected.value))) closeConversation(); await loadConversations({ background: true }) }
 const $q = useQuasar()
@@ -741,10 +751,10 @@ async function loadConversations({ background = false, keepSelection = true } = 
       ? conversations.value.find((item) => cloudConversationId(item) === selectedId)
       : null
     if (refreshed) selected.value = { ...selected.value, ...refreshed }
-    else if (selectedId) closeConversation()
-    if (!selected.value && /^[a-f\d]{24}$/i.test(String(route.query.chatId || ''))) {
-      const requested = conversations.value.find(item => cloudConversationId(item) === route.query.chatId)
-      if (requested) await selectConversation(requested)
+    else if (selectedId && selectedId !== route.query.chatId) closeConversation()
+    if (cloudConversationId(selected.value) !== route.query.chatId && /^[a-f\d]{24}$/i.test(String(route.query.chatId || ''))) {
+      const requested = conversations.value.find(item => cloudConversationId(item) === route.query.chatId) || unwrap(await http.get(`/whatsapp-cloud/conversations/${route.query.chatId}`))
+      if (requested) { conversations.value = upsertCloudConversation(conversations.value, requested); await selectConversation(requested); if (!serviceWindowOf(requested).open) sendMode.value = 'template' }
     }
   } catch (error) {
     if (!background) {
@@ -1255,6 +1265,10 @@ function onSocketDisconnected() {
   liveConnected.value = false
 }
 
+watch(() => route.query.chatId, value => {
+  if (value && value !== cloudConversationId(selected.value)) void loadConversations({ background: true })
+})
+
 onMounted(() => {
   clockTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
   const socket = connectSocket()
@@ -1349,7 +1363,7 @@ onBeforeUnmount(() => {
           </div>
           <q-badge outline color="primary" :label="`${conversations.length} chats`" />
         </div>
-        <q-input v-model="search" dense outlined clearable placeholder="Buscar nome ou telefone" class="q-ma-md">
+        <q-btn v-if="mayStartConversation" unelevated no-caps color="primary" icon="add_comment" label="Nova conversa" class="q-ma-md" @click="newConversationOpen = true"/><q-input v-model="search" dense outlined clearable placeholder="Buscar nome ou telefone" class="q-ma-md">
           <template #prepend><q-icon name="search" /></template>
         </q-input>
         <BulkRemoveBar v-if="mayDeleteChannel" target="whatsapp_cloud" :selected="selectedChats" @removed="onBulkChatsRemoved" />
@@ -1818,6 +1832,7 @@ onBeforeUnmount(() => {
       @saved="loadConversations({ background: true })"
     />
   </component>
+<StartConversationDialog v-model="newConversationOpen" channel="whatsapp_cloud" @started="onConversationStarted"/>
 </template>
 
 <style scoped>
