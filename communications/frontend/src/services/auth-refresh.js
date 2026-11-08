@@ -1,8 +1,9 @@
+import {desktopApi,desktopSlug} from './desktop-public.js'
 import axios from 'axios'
 import { inPrototype, prototypeBlocked } from './prototype-runtime.js'
 import { clearStoredSession, setAccessToken } from './tokens.js'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+export const API_BASE_URL = desktopApi || import.meta.env.VITE_API_BASE_URL || '/api'
 export const AUTH_REFRESHED_EVENT = 'auth:refreshed'
 export const AUTH_EXPIRED_EVENT = 'auth:expired'
 
@@ -24,6 +25,7 @@ export function expireSession() {
 }
 
 export function refreshAccessToken() {
+  if(desktopSlug)return Promise.reject(new Error("Página pública não usa sessão administrativa."))
   if (inPrototype()) return Promise.reject(prototypeBlocked())
   const renew = () => axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
   // Serialize rotations across tabs so each request uses the latest HttpOnly cookie.

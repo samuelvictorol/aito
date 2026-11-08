@@ -1,4 +1,5 @@
 <script setup>
+import {desktopSlug} from './services/desktop-public.js'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -27,6 +28,7 @@ const layoutOwnsFooter = computed(() => route.matched.some((record) => record.pa
 onMounted(() => { if (!isPrototypePath(window.location.pathname)) whiteLabel.load() })
 watch(() => route.fullPath, () => {
   const path=route.matched.length?route.path:window.location.pathname
+  if(desktopSlug){if(!whiteLabel.loaded.value&&!whiteLabel.loading.value)void whiteLabel.load();return}
   configureInstallManifest(path)
   if (isPrototypePath(path)) return
   if (!whiteLabel.loaded.value && !whiteLabel.loading.value) void whiteLabel.load()

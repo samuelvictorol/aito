@@ -1,4 +1,5 @@
 <script setup>
+import AdminPushBell from '../components/AdminPushBell.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {finishScreen,beginScreen} from '../services/screen-loading'
@@ -42,7 +43,7 @@ onBeforeUnmount(() => {clearTimeout(startupTimeout);window.removeEventListener('
 </script>
 <template>
   <div class="communication-host">
-    <header class="communication-host__bar"><router-link :to="demo?'/whatsapp-solucoes':'/admin'"><q-icon name="mdi-arrow-left"/>{{demo?'Conhecer o kit':'Painel AitoSoftwares'}}</router-link><strong>{{demo?'Demonstração gratuita':'Comunicação'}}</strong><router-link v-if="!demo" to="/admin/comunicacao/sistema"><q-icon name="mdi-cog-outline"/>Sistema</router-link><a v-else href="https://aitosoftwares.com/whatsapp-solucoes#planos">Ver planos <q-icon name="mdi-arrow-top-right"/></a></header>
+    <header class="communication-host__bar"><router-link :to="demo?'/whatsapp-solucoes':'/admin'"><q-icon name="mdi-arrow-left"/>{{demo?'Conhecer o kit':'Painel AitoSoftwares'}}</router-link><AdminPushBell v-if="!demo"/><strong>{{demo?'Demonstração gratuita':'Comunicação'}}</strong><router-link v-if="!demo" to="/admin/comunicacao/sistema"><q-icon name="mdi-cog-outline"/>Sistema</router-link><a v-else href="https://aitosoftwares.com/whatsapp-solucoes#planos">Ver planos <q-icon name="mdi-arrow-top-right"/></a></header>
     <main class="communication-host__main"><iframe ref="frame" :key="version" :src="frameUrl" :title="demo?'Demonstração do ecossistema de comunicação':'Painel de comunicação AitoSoftwares'" allow="microphone; camera; clipboard-write; fullscreen; autoplay; geolocation" referrerpolicy="same-origin"/>
       <div v-if="error" class="communication-host__status" role="status"><q-spinner v-if="loading" color="teal-4" size="40px"/><q-icon v-else name="mdi-cloud-alert-outline" size="38px"/><strong>{{loading?'Abrindo sua central de comunicação':error}}</strong><span v-if="loading">Preparando seus canais e ferramentas.</span><div v-else><q-btn outline no-caps color="teal-3" label="Tentar novamente" @click="retry"/><q-btn v-if="!demo" flat no-caps color="teal-2" label="Abrir Sistema" to="/admin/comunicacao/sistema"/></div></div>
     </main>

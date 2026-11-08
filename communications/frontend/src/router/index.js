@@ -1,3 +1,4 @@
+import {desktopSlug,desktopPublicRoute} from '../services/desktop-public.js'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { useAppStore } from '../stores/app.js'
@@ -111,6 +112,8 @@ const router = createRouter({
 installRouteLoading(router)
 
 router.beforeEach(async (to, from) => {
+  if(desktopSlug){if(!desktopPublicRoute(to.path))return false;if(to.query.desktop!==desktopSlug)return {...to,query:{...to.query,desktop:desktopSlug},replace:true};return}
+
   // Links inside the original views remain inside the sandbox; a full login link explicitly exits it.
   if (from.meta.prototype && !to.meta.prototype) {
     return prototypeDestination(to)

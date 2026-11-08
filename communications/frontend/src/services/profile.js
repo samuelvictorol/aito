@@ -1,11 +1,12 @@
+import {desktopSlug} from './desktop-public.js'
 import { communicationPayload } from './communication-urls.js'
 import axios from 'axios'
 import { inPrototype } from './prototype-runtime.js'
 import { prototypeRequest } from './prototype-api.js'
 import { API_BASE_URL } from './http.js'
 
-const PROFILE_TOKEN_KEY = 'aito.communication.profileAccessToken'
-const PROFILE_TOKEN_EXPIRES_AT_KEY = 'aito.communication.profileAccessExpiresAt'
+const PROFILE_TOKEN_KEY = 'aito.communication.profileAccessToken'+(desktopSlug?':'+desktopSlug:'')
+const PROFILE_TOKEN_EXPIRES_AT_KEY = 'aito.communication.profileAccessExpiresAt'+(desktopSlug?':'+desktopSlug:'')
 let expiryTimer = null
 
 export const profileHttp = axios.create({

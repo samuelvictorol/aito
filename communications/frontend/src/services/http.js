@@ -1,3 +1,4 @@
+import {desktopSlug} from './desktop-public.js'
 import { currentLocale, uiText } from '../i18n/index.js'
 import axios from 'axios'
 import { communicationPayload } from './communication-urls.js'
@@ -27,6 +28,7 @@ http.interceptors.request.use((config) => {
     config.adapter = async request => prototypeRequest(request)
     return config
   }
+  if(desktopSlug){delete config.headers.Authorization;config.headers.delete?.('Authorization');config.withCredentials=false;return config}
   const user = getStoredUser()
   if (isCollaborator(user)) {
     const permission=apiPermission(config)
@@ -44,6 +46,7 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (response) => { response.data = communicationPayload(response.data); return response },
   async (error) => {
+    if(desktopSlug)return Promise.reject(error)
     const request = error.config
     const status = error.response?.status
     const isAuthRequest = /\/auth\/(login|refresh|logout|mfa)(?:\/|$)/.test(request?.url || '') || /\/collaborator\//.test(request?.url || '')
