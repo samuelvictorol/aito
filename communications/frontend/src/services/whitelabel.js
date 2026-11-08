@@ -1,3 +1,4 @@
+import {desktopSlug} from './desktop-public.js'
 import { applyPwaBranding } from './pwa-branding.js'
 import { computed, reactive, readonly } from 'vue'
 import { inPrototype, DEMO_BRANDING } from './prototype-runtime.js'
@@ -19,7 +20,7 @@ export const DEFAULT_WHITELABEL = Object.freeze({
 })
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
-export const LOADING_BRAND_CACHE_KEY = 'aito.communication.loading-brand.v1'
+export const LOADING_BRAND_CACHE_KEY = 'aito.communication.loading-brand.v1'+(desktopSlug?':'+desktopSlug:'')
 const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000
 const cachedBranding = readLoadingBrandCache()
 const state = reactive({
