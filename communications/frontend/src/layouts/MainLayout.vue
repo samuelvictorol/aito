@@ -1,4 +1,5 @@
 <script setup>
+import AiAgentEntry from '../components/AiAgentEntry.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ScreenPrivacyToggle from "../components/ScreenPrivacyToggle.vue"
 import { startScreenPrivacy, stopScreenPrivacy } from "../services/screen-privacy.js"
@@ -449,6 +450,7 @@ onBeforeUnmount(() => {
         <q-btn flat round dense icon="menu" aria-label="Abrir menu" @click="drawer = !drawer" />
         <WhiteLabelBrand compact class="brand--compact" />
         <q-space />
+        <AiAgentEntry v-if="auth.user?.role === 'admin'" />
         <LanguageSwitcher />
         <ScreenPrivacyToggle />
         <q-btn v-if="!auth.isCollaborator" flat round icon="notifications" aria-label="Notificações do administrador" class="admin-bell">

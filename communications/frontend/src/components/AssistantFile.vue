@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { assistantApi } from '../services/admin-assistant.js'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { assistantApi, ASSISTANT_SESSION_API } from '../services/admin-assistant.js'
 import { errorMessage } from '../services/http.js'
+const fileApi = inject(ASSISTANT_SESSION_API, assistantApi)
 const props = defineProps({ file: { type: Object, required: true } })
 const source = ref(''), busy = ref(false), error = ref('')
 const image = computed(() => /^image\//.test(props.file.mimeType || '') || props.file.kind === 'image')
@@ -11,7 +12,7 @@ function revoke() { if (source.value) URL.revokeObjectURL(source.value); source.
 async function load() {
   if (blob) return blob
   busy.value = true; error.value = ''
-  try { blob = await assistantApi.download(props.file.url || '/admin-assistant/files/' + props.file.id); return blob }
+  try { blob = await fileApi.download(props.file.url || '/admin-assistant/files/' + props.file.id); return blob }
   catch (cause) { error.value = errorMessage(cause, 'Arquivo indisponível.'); throw cause }
   finally { busy.value = false }
 }

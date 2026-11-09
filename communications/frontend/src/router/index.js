@@ -56,6 +56,10 @@ const routes = [
       { path: 'app-mobile/web', name: 'app-mobile-web', component: () => import('../pages/MobileAppPage.vue'), props: { channel: 'web' }, meta: { appMobile: true, whatsappWebChat: true } },
       { path: 'app-mobile/cloud', name: 'app-mobile-cloud', component: () => import('../pages/MobileAppPage.vue'), props: { channel: 'cloud' }, meta: { appMobile: true } },
       { path: 'collaborators', name: 'collaborators', component: () => import('../pages/CollaboratorsPage.vue') },
+      { path: 'agent-ai', alias: '/agente-ia', name: 'ai-agent', component: () => import('../pages/AiAgentPage.vue'), meta: { adminOnly: true } },
+      { path: 'agent-ai/campaigns', name: 'ai-campaigns', component: () => import('../pages/AiCampaignStudioPage.vue'), meta: { adminOnly: true } },
+      { path: 'agent-ai/campaigns/logs', name: 'ai-campaign-logs', component: () => import('../pages/AiCampaignLogsPage.vue'), meta: { adminOnly: true } },
+      { path: 'agent-ai/chatbot', name: 'ai-chatbot', component: () => import('../pages/AiChatbotStudioPage.vue'), meta: { adminOnly: true } },
       { path: 'contacts', name: 'contacts', component: () => import('../pages/ContactsPage.vue') },
       { path: 'templates', name: 'templates', component: () => import('../pages/TemplatesPage.vue') },
       { path: 'notifications', alias: '/notification', name: 'notifications', component: () => import('../pages/NotificationsPage.vue') },
@@ -130,6 +134,7 @@ router.beforeEach(async (to, from) => {
     try { auth.token = await refreshAccessToken(); auth.ready = false } catch { /* The normal login redirect preserves the requested channel. */ }
   }
   await auth.bootstrap()
+  if (to.meta.adminOnly && auth.isAuthenticated && auth.user?.role !== 'admin') return firstAllowed(auth.user)
 
   if (to.meta.guestOnly && auth.isAuthenticated) return firstAllowed(auth.user)
   if (!to.meta.public && !auth.isAuthenticated) {

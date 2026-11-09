@@ -984,7 +984,7 @@ import { canChannel } from '../services/access.js'
 import { getStoredUser } from '../services/tokens.js'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
-import { useQuasar } from 'quasar'
+import { QPage, useQuasar } from 'quasar'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import ContextHelp from '../components/ContextHelp.vue'
@@ -1011,6 +1011,8 @@ import {
   telegramVariables,
 } from '../services/telegram-templates.js'
 
+defineProps({ embedded: Boolean })
+const emit = defineEmits(['assistant-reference', 'library-change'])
 const $q = useQuasar()
 const loading = ref(false)
 const saving = ref(false)
@@ -1520,6 +1522,12 @@ function openEditTemplateSet(set) {
   templateSetDialog.value = true
 }
 
+function openCloneTemplateSet(set) {
+  openEditTemplateSet(set)
+  templateSetEditingId.value = null
+  templateSetForm.name = templateCopyName(set.name, allTemplateSets.value.map(item => item.name))
+}
+
 async function saveTemplateSet() {
   if (!templateSetForm.name.trim()) {
     $q.notify({ type: 'warning', message: 'Informe o nome do conjunto.' })
@@ -1540,6 +1548,7 @@ async function saveTemplateSet() {
     templateSetDialog.value = false
     $q.notify({ type: 'positive', message: 'Conjunto salvo com sucesso.' })
     await Promise.all([loadTemplateSets(), loadAllTemplateSets()])
+    emit('library-change')
   } catch (error) {
     $q.notify({ type: 'negative', message: errorMessage(error, 'Não foi possível salvar o conjunto.') })
   } finally {
@@ -1561,6 +1570,7 @@ function removeTemplateSet(set) {
       }
       $q.notify({ type: 'positive', message: 'Conjunto removido.' })
       await Promise.all([loadTemplateSets(), loadAllTemplateSets()])
+      emit('library-change')
     } catch (error) {
       $q.notify({ type: 'negative', message: errorMessage(error, 'Não foi possível remover o conjunto.') })
     }
@@ -2176,6 +2186,7 @@ async function save() {
     $q.notify({ type: 'positive', message: cloningSourceId.value ? 'Cópia do template salva com sucesso.' : 'Template salvo com sucesso.' })
     cloningSourceId.value = null
     await loadTemplates()
+    emit('library-change')
   } catch (error) {
     $q.notify({ type: 'negative', message: errorMessage(error) })
   } finally {
@@ -2206,6 +2217,7 @@ function remove(template) {
       await http.delete(`/templates/${recordId(template)}`)
       $q.notify({ type: 'positive', message: 'Template removido.' })
       await loadTemplates()
+      emit('library-change')
     } catch (error) {
       $q.notify({ type: 'negative', message: errorMessage(error) })
     }
@@ -2213,11 +2225,13 @@ function remove(template) {
 }
 
 onMounted(loadPageData)
+defineExpose({ refresh: loadPageData })
 </script>
 
 <template>
-  <q-page class="page-container">
+  <component :is="embedded ? 'div' : QPage" :class="{ 'page-container': !embedded }">
     <PageHeader
+      v-if="!embedded"
       eyebrow="Biblioteca de conteúdo"
       title="Templates por canal"
       icon="dashboard_customize"
@@ -2320,6 +2334,9 @@ onMounted(loadPageData)
         </template>
         <template #body-cell-actions="props">
           <q-td :props="props">
+            <q-btn v-if="embedded" v-can-action="'templates.create'" flat round dense color="primary" icon="content_copy" aria-label="Clonar conjunto" @click="openCloneTemplateSet(props.row)">
+              <q-tooltip>Clonar conjunto</q-tooltip>
+            </q-btn>
             <q-btn v-can-action="'templates.edit'" flat round dense icon="edit" aria-label="Editar conjunto" @click="openEditTemplateSet(props.row)">
               <q-tooltip>Editar conjunto</q-tooltip>
             </q-btn>
@@ -2446,6 +2463,13 @@ onMounted(loadPageData)
         <template #body-cell-updatedAt="props"><q-td :props="props">{{ formatDate(props.row.updatedAt) }}</q-td></template>
         <template #body-cell-actions="props">
           <q-td :props="props">
+            <q-btn
+              v-if="embedded && normalizedChannel(props.row.channel || props.row.type) !== 'global'"
+              flat round dense color="primary" icon="auto_awesome" aria-label="Adaptar template com IA"
+              @click="emit('assistant-reference', { id: recordId(props.row), name: props.row.name, channel: normalizedChannel(props.row.channel || props.row.type) })"
+            >
+              <q-tooltip>Usar este template como referência para o agente</q-tooltip>
+            </q-btn>
             <q-btn v-can-action="'templates.edit'"
               flat
               round
@@ -3409,7 +3433,7 @@ onMounted(loadPageData)
         </q-form>
       </q-card>
     </q-dialog>
-  </q-page>
+  </component>
 </template>
 
 <style scoped>

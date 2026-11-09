@@ -109,7 +109,8 @@ export function notificationActivityName(notification = {}, templates = [], temp
   if (selectedTemplateNames.length) return [...new Set(selectedTemplateNames)].join(' · ')
 
   const providerTemplateName = String(
-    notification.content?.templateName
+    notification.templateName
+    || notification.content?.templateName
     || notification.content?.externalTemplateName
     || notification.content?.customTemplate?.name
     || '',
@@ -266,6 +267,7 @@ function whatsappMediaPreview(builderComponents = [], variables = {}) {
 }
 
 export function notificationTemplatePreview(template = {}, channel = '', variables = {}) {
+  template ||= {}
   const normalizedChannel = String(channel || '').replaceAll('-', '_')
   const whatsappValues = normalizedChannel === 'whatsapp_cloud'
     ? { ...variables, ...notificationWhatsAppFixedValues(template) }
@@ -516,17 +518,16 @@ export function normalizeMetaDeliveryBlocks(payload = {}) {
 import { vCanAction } from '../services/permission-directives.js'
 import { searchRecipientOptions } from '../services/recipient-search.js'
 import { canChannel } from '../services/access.js'
-import LinkedSitesPreview from '../components/LinkedSitesPreview.vue'
+import CampaignChannelPreview from '../components/CampaignChannelPreview.vue'
 import EmailDeliveryPreview from '../components/EmailDeliveryPreview.vue'
 import { getStoredUser } from '../services/tokens.js'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import DOMPurify from 'dompurify'
-import { useQuasar } from 'quasar'
+import { QPage, useQuasar } from 'quasar'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import { useAppStore } from '../stores/app.js'
 import { notificationChannel, notificationDeliveryCounts } from '../services/channels.js'
-import { asList, errorMessage, fetchAll, http, unwrap } from '../services/http.js'
+import { asList, errorMessage, fetchAll, http, paginationOf, unwrap } from '../services/http.js'
 import { normalizeDeliveryPage } from '../services/bulk-notifications.js'
 import {
   templateSetChannels,
@@ -534,6 +535,13 @@ import {
   templateSetTemplateIds,
 } from '../services/template-sets.js'
 
+const props = defineProps({
+  mode: { type: String, default: 'standalone' },
+  generatedImages: { type: Array, default: () => [] },
+  downloadGenerated: { type: Function, default: null },
+})
+const isStudio = computed(() => props.mode === 'campaign')
+const isLogs = computed(() => props.mode === 'logs')
 const $q = useQuasar()
 const app = useAppStore()
 const tab = ref('global')
@@ -543,7 +551,12 @@ const loading = ref(false)
 const sending = ref(false)
 const contactSearch = ref(''), groupSearch = ref(''), webRiskAccepted = ref(false), clearingHistory = ref(false)
 const metaTable = ref(null), activityTable = ref(null)
-const metaPagination = ref({page:1, rowsPerPage:5}), activityPagination = ref({page:1, rowsPerPage:10})
+const metaPagination = ref({page:1, rowsPerPage:5})
+const activityPagination = ref({ page: 1, rowsPerPage: 10, ...(isLogs.value ? { rowsNumber: 0 } : {}) })
+const historyChannel = ref(null)
+const historyLoading = ref(false)
+const generatedUploadKey = ref('')
+let historyRequest = 0
 const mayClearHistory = computed(() => getStoredUser()?.role === 'admin')
 const reviewUsesWeb = computed(() => reviewItems.value.some(item => item.value === 'whatsapp_web'))
 const filteredContactOptions = computed(() => searchRecipientOptions(contactOptions.value, contactSearch.value))
@@ -551,6 +564,7 @@ const filteredGroupOptions = computed(() => searchRecipientOptions(groupOptions.
 function filterContacts(value, update) { update(() => { contactSearch.value = value }) }
 function filterGroups(value, update) { update(() => { groupSearch.value = value }) }
 function currentHistoryRows(kind) {
+  if (isLogs.value && kind === 'activity') return deliveries.value
   const table = kind === 'meta' ? metaTable.value : activityTable.value
   const rows = table?.filteredSortedRows || (kind === 'meta' ? metaBlocks.value : deliveries.value)
   const pagination = kind === 'meta' ? metaPagination.value : activityPagination.value
@@ -613,7 +627,7 @@ const channels = computed(() => [
   { label: 'WhatsApp Cloud', value: 'whatsapp_cloud', icon: 'cloud_sync', enabled: app.isChannelEnabled('whatsappCloud') },
   { label: 'WhatsApp Web', value: 'whatsapp_web', icon: 'qr_code_2', enabled: app.isChannelEnabled('whatsappWeb') },
   { label: 'Email', value: 'email', icon: 'mail', enabled: app.isChannelEnabled('email') },
-])
+].filter(channel => !isStudio.value || channel.value !== 'whatsapp_web'))
 
 const enabledChannelOptions = computed(() => channels.value.filter((channel) => channel.enabled))
 const quickEnabledChannelOptions = computed(() => enabledChannelOptions.value.filter((channel) => channel.value !== 'whatsapp_cloud'))
@@ -629,7 +643,9 @@ const contactOptions = computed(() => contacts.value.map((item) => ({
   searchText: [item.displayName,item.name,item.email,item.phone,item.telegramUsername].filter(Boolean).join(' '),
 })))
 const groupOptions = computed(() => groups.value.map((item) => ({ label: item.name, value: item.id || item._id })))
-const templateSetOptions = computed(() => templateSets.value.map((set) => ({
+const templateSetOptions = computed(() => templateSets.value
+  .filter(set => !isStudio.value || !templateSetChannels(set).includes('whatsapp_web'))
+  .map((set) => ({
   label: set.name,
   description: set.description || `${templateSetChannels(set).length} canal(is)`,
   invite: set.invite?.title || set.invite?.slug || '',
@@ -756,8 +772,89 @@ const reviewItems = computed(() => {
   })
 })
 
-function safeReviewHtml(value) {
-  return DOMPurify.sanitize(String(value || ''), { USE_PROFILES: { html: true } })
+const studioContext = computed(() => {
+  const templateIds = tab.value === 'template' ? { [form.channel]: form.templateId } : activeGlobalTemplateIds.value
+  return JSON.stringify({
+    kind: tab.value,
+    channel: tab.value === 'global' ? 'global' : form.channel,
+    ...(tab.value === 'quick' ? { subject: form.subject.slice(0, 300), message: form.message.slice(0, 3000) } : {
+      templateSetId: tab.value === 'global' && globalSelectionMode.value === 'set' ? form.templateSetId : null,
+      templates: Object.fromEntries(Object.entries(templateIds).filter(([, id]) => id).map(([channel, id]) => [
+        channel, { id, name: templateById(id)?.name },
+      ])),
+    }),
+    selectedDestinations: selectedRecipients.value,
+  })
+})
+
+function applyCampaignDraft(draft) {
+  if (reviewDialog.value || sending.value || generatedUploadKey.value) {
+    return 'Feche a revisão ou aguarde a operação atual antes de aplicar a proposta.'
+  }
+  if (draft.kind === 'quick' && !quickEnabledChannelOptions.value.some(item => item.value === draft.channel)) {
+    return 'Configure o canal da mensagem rápida antes de aplicar esta proposta.'
+  }
+  if (draft.kind === 'template' && (!templateEnabledChannelOptions.value.some(item => item.value === draft.channel)
+    || !templatesForChannel(draft.channel).some(item => item.value === draft.templateId))) {
+    return 'O template sugerido não está ativo neste canal ou o canal ainda não foi configurado.'
+  }
+  if (draft.kind === 'global') {
+    if (!canGlobal) return 'Seu acesso não permite montar um disparo global.'
+    if (draft.templateSetId && !templateSetOptions.value.some(item => item.value === draft.templateSetId)) {
+      return 'O conjunto sugerido não está disponível neste estúdio.'
+    }
+    const entries = Object.entries(draft.templateIds || {})
+    if (entries.some(([channel, id]) => !enabledChannelOptions.value.some(item => item.value === channel)
+      || !templatesForChannel(channel).some(item => item.value === id))) {
+      return 'Confira a disponibilidade dos canais e dos templates sugeridos.'
+    }
+    globalSelectionMode.value = draft.templateSetId ? 'set' : 'manual'
+    form.templateSetId = draft.templateSetId || null
+    form.templateIds = { telegram: null, whatsapp_cloud: null, whatsapp_web: null, email: null, ...draft.templateIds }
+  } else {
+    form.channel = draft.channel
+    if (draft.kind === 'quick') {
+      form.message = draft.message
+      form.subject = draft.subject || ''
+    } else {
+      form.templateId = draft.templateId
+    }
+  }
+  tab.value = draft.kind
+  return ''
+}
+
+function reconcileStudioTemplates() {
+  if (!templateOptions.value.some(option => option.value === form.templateId)) form.templateId = null
+  if (!templateSetOptions.value.some(option => option.value === form.templateSetId)) form.templateSetId = null
+  for (const channel of channels.value) {
+    if (!templatesForChannel(channel.value).some(option => option.value === form.templateIds[channel.value])) {
+      form.templateIds[channel.value] = null
+    }
+  }
+}
+
+async function attachGeneratedImage(definition, image) {
+  if (!props.downloadGenerated || generatedUploadKey.value || reviewDialog.value) return
+  const scope = activeVariableScopeKey.value
+  generatedUploadKey.value = definition.key
+  try {
+    const blob = await props.downloadGenerated(image.url || '/admin-assistant/files/' + image.id)
+    if (scope !== activeVariableScopeKey.value) return
+    const body = new FormData()
+    body.append('file', blob, image.name || 'imagem-campanha.png')
+    body.append('mediaType', 'image')
+    body.append('purpose', 'dispatch')
+    const asset = unwrap(await http.post('/media', body, { timeout: 120000 }))
+    if (!asset?.url || asset.mediaType !== 'image') throw new Error('O servidor não retornou a imagem para este disparo.')
+    if (scope !== activeVariableScopeKey.value) return
+    form.variables[definition.key] = asset.url
+    $q.notify({ type: 'positive', message: 'Imagem aplicada à prévia desta campanha.' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: errorMessage(error, 'Não foi possível anexar a imagem.') })
+  } finally {
+    generatedUploadKey.value = ''
+  }
 }
 
 function newIdempotencyKey(prefix) {
@@ -1035,7 +1132,7 @@ function openDispatchDetails(notification) {
   if (!notificationId(notification)) return
   selectedDispatch.value = notification
   dispatchDetailRows.value = []
-  dispatchDetailChannel.value = null
+  dispatchDetailChannel.value = isLogs.value ? historyChannel.value : null
   dispatchDetailStatus.value = null
   dispatchDetailPagination.value = { page: 1, rowsPerPage: 15, rowsNumber: 0 }
   dispatchDetailDialog.value = true
@@ -1052,24 +1149,62 @@ function filterDispatchDetails() {
   })
 }
 
+async function loadHistory({ pagination = activityPagination.value } = {}) {
+  const requestId = ++historyRequest
+  historyLoading.value = true
+  try {
+    const payload = unwrap(await http.get('/notifications', {
+      params: {
+        page: pagination.page,
+        limit: pagination.rowsPerPage,
+        deliveryChannel: historyChannel.value || undefined,
+      },
+    }))
+    if (requestId !== historyRequest) return
+    deliveries.value = asList(payload, 'notifications')
+    activityPagination.value = paginationOf(payload, { ...pagination, rowsNumber: 0 })
+  } catch (error) {
+    if (requestId !== historyRequest) return
+    deliveries.value = []
+    $q.notify({ type: 'negative', message: errorMessage(error, 'Não foi possível carregar o histórico.') })
+  } finally {
+    if (requestId === historyRequest) historyLoading.value = false
+  }
+}
+
+function changeHistoryChannel() {
+  loadHistory({ pagination: { ...activityPagination.value, page: 1 } })
+}
+
 async function loadData({ includeMetaBlocks = true } = {}) {
   loading.value = true
   try {
+    if (isLogs.value) {
+      await Promise.all([
+        fetchAll('/contacts', { preferredKey: 'contacts' }).then(items => { contacts.value = items }),
+        fetchAll('/templates', { preferredKey: 'templates' }).then(items => { templates.value = items }),
+        fetchAll('/template-sets', { preferredKey: 'templateSets' }).then(items => { templateSets.value = items }),
+        loadHistory(),
+        ...(includeMetaBlocks ? [loadMetaDeliveryBlocks({ showError: false })] : []),
+      ])
+      return
+    }
     await app.fetchStatus(true)
     const [contactItems, groupItems, templateItems, templateSetItems, notificationResponse] = await Promise.all([
       fetchAll('/contacts', { params: { active: true }, preferredKey: 'contacts' }),
       fetchAll('/contact-groups', { params: { active: true }, preferredKey: 'groups' }),
       fetchAll('/templates', { preferredKey: 'templates' }),
       fetchAll('/template-sets', { preferredKey: 'templateSets' }),
-      http.get('/notifications', { params: { limit: 20 } }),
+      isStudio.value ? null : http.get('/notifications', { params: { limit: 20 } }),
     ])
     contacts.value = contactItems
     groups.value = groupItems
     templates.value = templateItems
     templateSets.value = templateSetItems
+    if (isStudio.value) reconcileStudioTemplates()
     deliveries.value = asList(unwrap(notificationResponse), 'notifications')
     if (!form.channel && dispatchChannelOptions.value.length) form.channel = dispatchChannelOptions.value[0].value
-    if (includeMetaBlocks) await loadMetaDeliveryBlocks({ showError: false })
+    if (!isStudio.value && includeMetaBlocks) await loadMetaDeliveryBlocks({ showError: false })
   } catch (error) {
     $q.notify({ type: 'negative', message: errorMessage(error, 'Não foi possível preparar o disparador.') })
   } finally {
@@ -1104,6 +1239,7 @@ function buildPayload() {
 }
 
 async function send() {
+  if (generatedUploadKey.value) return
   if (!selectedRecipients.value) {
     $q.notify({ type: 'warning', message: 'Selecione ao menos um contato ou grupo.' })
     return
@@ -1121,6 +1257,10 @@ async function send() {
   if (tab.value === 'global') {
     if (globalSelectionMode.value === 'set' && !form.templateSetId) {
       $q.notify({ type: 'warning', message: 'Selecione um conjunto de templates.' })
+      return
+    }
+    if (isStudio.value && globalSelectionMode.value === 'set' && !templateSetOptions.value.some(item => item.value === form.templateSetId)) {
+      $q.notify({ type: 'warning', message: 'Escolha um conjunto com os canais deste estúdio.' })
       return
     }
     if (!selectedGlobalChannelOptions.value.length) {
@@ -1202,11 +1342,13 @@ async function confirmSend() {
 }
 
 onMounted(loadData)
+defineExpose({ applyCampaignDraft, studioContext, refresh: loadData })
 </script>
 
 <template>
-  <q-page class="page-container">
+  <component :is="mode === 'standalone' ? QPage : 'div'" :class="{ 'page-container': mode === 'standalone', 'notification-studio': isStudio }">
     <PageHeader
+      v-if="mode === 'standalone'"
       eyebrow="Central de disparos"
       title="Notificações"
       icon="send"
@@ -1217,7 +1359,7 @@ onMounted(loadData)
     </PageHeader>
 
     <q-banner v-if="reviewUsesWeb" rounded class="bg-orange-1 text-brown-10 q-mb-lg"><template #avatar><q-icon name="warning_amber"/></template>WhatsApp Web pode sofrer bloqueios ao iniciar conversas com pessoas que não entraram em contato ou ao fazer disparos em massa. Para campanhas, prefira o WhatsApp Cloud pela API oficial, respeitando suas políticas. Você pode continuar pelo Web após confirmar o risco na revisão.</q-banner>
-    <section class="page-grid notification-layout">
+    <section v-if="!isLogs" class="page-grid notification-layout">
       <q-card flat class="glass-card section-card composer-card">
         <q-tabs v-model="tab" no-caps inline-label active-color="primary" indicator-color="transparent" class="composer-tabs">
           <q-tab name="global" v-if="canGlobal" icon="hub" label="Template global" />
@@ -1385,6 +1527,24 @@ onMounted(loadData)
                     :hint="variableHint(definition)"
                   >
                     <template #prepend><q-icon :name="variableIcon(definition)" color="primary" /></template>
+                    <template v-if="isStudio && definition.type === 'image' && generatedImages.length" #append>
+                      <q-btn
+                        flat round dense icon="auto_awesome" color="primary"
+                        aria-label="Escolher imagem gerada pelo agente"
+                        :loading="generatedUploadKey === definition.key"
+                        :disable="Boolean(generatedUploadKey)"
+                      >
+                        <q-tooltip>Imagens geradas na conversa</q-tooltip>
+                        <q-menu>
+                          <q-list dense>
+                            <q-item v-for="image in generatedImages" :key="image.id" clickable v-close-popup @click="attachGeneratedImage(definition, image)">
+                              <q-item-section avatar><q-icon name="image" /></q-item-section>
+                              <q-item-section>{{ image.name }}</q-item-section>
+                            </q-item>
+                          </q-list>
+                        </q-menu>
+                      </q-btn>
+                    </template>
                   </q-input>
                 </div>
               </section>
@@ -1400,11 +1560,11 @@ onMounted(loadData)
             <strong>{{ tab === 'global' ? `${selectedGlobalChannelOptions.length} selecionado(s)` : (dispatchChannelOptions.find((item) => item.value === form.channel)?.label || '—') }}</strong>
           </div>
           <q-space />
-          <q-btn v-can-action="'notifications.send'" color="dark" unelevated no-caps size="lg" icon-right="send" label="Revisar e enviar" :loading="sending" @click="send" />
+          <q-btn v-can-action="'notifications.send'" color="dark" unelevated no-caps size="lg" icon-right="send" label="Revisar e enviar" :loading="sending" :disable="Boolean(generatedUploadKey)" @click="send" />
         </div>
       </q-card>
 
-      <aside class="safety-column">
+      <aside v-if="!isStudio" class="safety-column">
         <q-card flat class="glass-card section-card">
           <h2 class="section-title">🟢 Canais prontos</h2>
           <div class="channel-ready-list">
@@ -1418,7 +1578,17 @@ onMounted(loadData)
       </aside>
     </section>
 
-    <q-card flat class="glass-card section-card q-mt-lg meta-blocks-card"><q-expansion-item label="Bloqueios temporários da Meta" icon="policy">
+    <section v-if="isStudio" class="studio-preview q-mt-lg" aria-label="Prévia ao vivo">
+      <header>
+        <q-icon name="visibility" size="21px" color="primary" />
+        <div><h2>Prévia ao vivo</h2><p>Acompanhe o conteúdo enquanto ajusta a campanha.</p></div>
+        <q-badge color="teal-8" :label="reviewItems.length + ' canal(is)'" />
+      </header>
+      <CampaignChannelPreview v-if="reviewItems.length" :items="reviewItems" />
+      <EmptyState v-else icon="view_quilt" title="Escolha o conteúdo da campanha" description="Selecione templates, um conjunto ou escreva uma mensagem para abrir a prévia." />
+    </section>
+
+    <q-card v-if="!isStudio && (!isLogs || !historyChannel || historyChannel === 'whatsapp_cloud')" flat class="glass-card section-card q-mt-lg meta-blocks-card"><q-expansion-item label="Bloqueios temporários da Meta" icon="policy">
       <div class="toolbar-row meta-blocks-toolbar"><q-btn v-if="mayClearHistory" flat no-caps color="negative" icon="delete_sweep" label="Limpar página atual" :disable="!metaBlocks.length" :loading="clearingHistory" @click="clearHistory('meta', currentHistoryRows('meta'))"/>
         <div>
           <div class="meta-blocks-title-row">
@@ -1528,26 +1698,34 @@ onMounted(loadData)
       </q-table>
     </q-expansion-item></q-card>
 
-    <q-card flat class="glass-card section-card q-mt-lg"><q-expansion-item label="Atividade recente" icon="history">
+    <q-card v-if="!isStudio" flat class="glass-card section-card q-mt-lg"><q-expansion-item :label="isLogs ? 'Histórico de disparos' : 'Atividade recente'" icon="history" :default-opened="isLogs">
+      <div v-if="isLogs" class="studio-history-filters q-mb-md">
+        <q-select
+          v-model="historyChannel" outlined dense emit-value map-options clearable
+          :options="channels" label="Filtrar por canal" @update:model-value="changeHistoryChannel"
+        />
+        <q-btn outline color="primary" no-caps icon="refresh" label="Atualizar" :loading="historyLoading || loading" @click="loadData()" />
+      </div>
       <div class="toolbar-row">
         <q-btn v-if="mayClearHistory" flat no-caps color="negative" icon="delete_sweep" label="Limpar página atual" :disable="!deliveries.length" :loading="clearingHistory" @click="clearHistory('activity', currentHistoryRows('activity'))"/><div><h2 class="section-title">Atividade recente</h2><p class="section-copy">Últimos lotes e entregas registrados pela API.</p></div>
       </div>
-      <EmptyState v-if="!loading && !deliveries.length" icon="outbox" title="Nenhum envio registrado" description="Seu primeiro disparo aparecerá aqui com status por canal." />
+      <EmptyState v-if="!loading && !historyLoading && !deliveries.length" icon="outbox" title="Nenhum envio registrado" description="Os disparos registrados aparecem aqui com status por canal." />
       <q-table ref="activityTable" v-model:pagination="activityPagination"
         v-else
         flat
         :rows="deliveries"
         :columns="deliveryColumns"
         row-key="_id"
-        :loading="loading"
+        :loading="loading || historyLoading"
         :grid="$q.screen.lt.sm"
         :rows-per-page-options="[10, 20]"
         class="activity-table"
+        @request="isLogs && loadHistory($event)"
         @row-click="(_event, row) => openDispatchDetails(row)"
       >
         <template #body-cell-createdAt="props"><q-td :props="props">{{ formatDate(props.row.createdAt) }}</q-td></template>
         <template #body-cell-mode="props"><q-td :props="props">{{ activityType(props.row) }}</q-td></template>
-        <template #body-cell-channel="props"><q-td :props="props"><q-badge outline color="primary" :label="props.row.channel || 'global'" /></q-td></template>
+        <template #body-cell-channel="props"><q-td :props="props"><q-badge outline color="primary" :label="channelLabel(props.row.channel)" /></q-td></template>
         <template #body-cell-contentName="props"><q-td :props="props">{{ activityName(props.row) }}</q-td></template>
         <template #body-cell-status="props"><q-td :props="props"><q-badge :color="statusColor(props.row.status)" :label="props.row.status || 'queued'" /></q-td></template>
         <template #body-cell-actions="props">
@@ -1844,62 +2022,7 @@ onMounted(loadData)
             A fila validará configuração e consentimento separadamente em cada canal. Uma falha não interrompe as demais entregas.
           </q-banner>
 
-          <div class="review-preview-grid">
-            <article v-for="item in reviewItems" :key="item.value" class="review-preview-card">
-              <header>
-                <span class="review-channel-icon"><q-icon :name="item.icon" /></span>
-                <div>
-                  <strong>{{ item.label }}</strong>
-                  <span>{{ item.templateName }}</span>
-                </div>
-                <q-badge
-                  outline
-                  :color="item.enabled ? 'primary' : 'warning'"
-                  :label="item.enabled ? 'Selecionado' : 'Canal indisponível'"
-                />
-              </header>
-
-              <q-banner v-if="!item.enabled" dense rounded class="review-channel-warning">
-                <template #avatar><q-icon name="warning_amber" color="warning" /></template>
-                A fila consultará este canal novamente. Se continuar indisponível, a entrega será ignorada e registrada sem interromper os demais canais.
-              </q-banner>
-
-              <LinkedSitesPreview :ids="item.siteTemplateIds || []" />
-              <div v-if="item.preview.officialName" class="review-meta">
-                <span>Nome oficial</span>
-                <strong>{{ item.preview.officialName }}</strong>
-                <q-badge color="grey-3" text-color="dark" :label="item.preview.languageCode" />
-              </div>
-              <div v-if="item.preview.subject" class="review-subject">
-                <span>Assunto</span>
-                <strong>{{ item.preview.subject }}</strong>
-              </div>
-              <div class="review-message">
-                <span>Prévia da mensagem</span>
-                <strong v-if="item.preview.header" class="review-component-text">{{ item.preview.header }}</strong>
-                <div v-if="item.preview.mediaUrl" class="review-media">
-                  <img
-                    v-if="['photo', 'image'].includes(item.preview.mediaType)"
-                    :src="item.preview.mediaUrl"
-                    alt="Imagem do template"
-                    referrerpolicy="no-referrer"
-                  />
-                  <video v-else-if="item.preview.mediaType === 'video'" :src="item.preview.mediaUrl" controls preload="metadata" />
-                  <a v-else :href="item.preview.mediaUrl" target="_blank" rel="noopener noreferrer">
-                    <q-icon name="description" /> Abrir documento
-                  </a>
-                </div>
-                <div v-if="item.preview.html" class="review-html" v-html="safeReviewHtml(item.preview.html)" />
-                <p v-else>{{ item.preview.body }}</p>
-                <small v-if="item.preview.footer" class="review-footer">{{ item.preview.footer }}</small>
-                <div v-if="item.preview.buttons?.length" class="review-buttons">
-                  <span v-for="button in item.preview.buttons" :key="`${button.text}-${button.url}`">
-                    <q-icon name="open_in_new" /> {{ button.text }}
-                  </span>
-                </div>
-              </div>
-            </article>
-          </div>
+          <CampaignChannelPreview :items="reviewItems" />
         </q-card-section>
 
         <q-separator />
@@ -1909,10 +2032,42 @@ onMounted(loadData)
         </q-card-actions>
       </q-card>
     </q-dialog>
-  </q-page>
+  </component>
 </template>
 
 <style scoped>
+.notification-studio .notification-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.studio-preview > header,
+.studio-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.studio-preview > header {
+  margin-bottom: 12px;
+}
+
+.studio-preview > header > div,
+.studio-history-filters > .q-select {
+  flex: 1 1 200px;
+}
+
+.studio-preview h2 {
+  font-size: 1.1rem;
+  line-height: 1.3;
+  margin: 0;
+  font-weight: 800;
+}
+
+.studio-preview p {
+  margin: 3px 0 0;
+}
+
 .page-container,
 .notification-layout,
 .composer-card,
@@ -2022,8 +2177,7 @@ onMounted(loadData)
   font-size: 0.72rem;
 }
 
-.global-availability-warning,
-.review-channel-warning {
+.global-availability-warning {
   border: 1px solid rgba(242, 169, 59, 0.32);
   background: rgba(255, 244, 219, 0.72);
   color: #76551d;
@@ -2657,170 +2811,7 @@ onMounted(loadData)
   color: #345d56;
 }
 
-.review-channel-warning {
-  margin: 12px 14px 0;
-  font-size: 0.76rem;
-}
 
-.review-preview-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.review-preview-card {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid rgba(14, 89, 78, 0.14);
-  border-radius: 17px;
-  background: #f9fdfc;
-  box-shadow: 0 8px 24px rgba(7, 57, 50, 0.06);
-}
-
-.review-preview-card > header {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  background: rgba(130, 248, 230, 0.11);
-}
-
-.review-preview-card > header strong,
-.review-preview-card > header span {
-  display: block;
-}
-
-.review-preview-card > header span {
-  overflow: hidden;
-  color: #657975;
-  font-size: 0.76rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.review-channel-icon {
-  display: grid !important;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 12px;
-  background: #dffaf5;
-  color: #168f7d !important;
-  font-size: 21px !important;
-}
-
-.review-meta,
-.review-subject,
-.review-message {
-  padding: 12px 14px;
-  border-top: 1px solid rgba(14, 89, 78, 0.09);
-}
-
-.review-meta {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 2px 8px;
-}
-
-.review-meta > span,
-.review-subject > span,
-.review-message > span {
-  display: block;
-  color: #70817e;
-  font-size: 0.7rem;
-}
-
-.review-meta > strong {
-  overflow-wrap: anywhere;
-}
-
-.review-meta > span {
-  grid-column: 1 / -1;
-}
-
-.review-subject strong {
-  display: block;
-  margin-top: 3px;
-}
-
-.review-message p {
-  margin: 6px 0 0;
-  color: #173c36;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.review-media {
-  margin-top: 8px;
-}
-
-.review-media img,
-.review-media video {
-  display: block;
-  width: 100%;
-  max-height: 260px;
-  border-radius: 12px;
-  background: #e7f1ef;
-  object-fit: contain;
-}
-
-.review-media a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #e7f6f2;
-  color: #13745f;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.review-component-text {
-  display: block;
-  margin-top: 8px;
-  color: #123f37;
-  overflow-wrap: anywhere;
-}
-
-.review-footer {
-  display: block;
-  margin-top: 8px;
-  color: #6b7f7b;
-  line-height: 1.4;
-}
-
-.review-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 10px;
-}
-
-.review-html {
-  max-width: 100%;
-  margin-top: 8px;
-  overflow-wrap: anywhere;
-}
-
-.review-html :deep(img),
-.review-html :deep(video) {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 8px auto;
-  border-radius: 10px;
-}
-
-.review-html :deep(table) {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-}
 
 .review-dialog-actions {
   gap: 8px;
@@ -2898,9 +2889,6 @@ onMounted(loadData)
     padding-left: 16px;
   }
 
-  .review-preview-grid {
-    grid-template-columns: 1fr;
-  }
 
   .template-runtime-fields__grid {
     grid-template-columns: 1fr;

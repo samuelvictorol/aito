@@ -1,7 +1,7 @@
 <script setup>
 import { vCanAction } from '../services/permission-directives.js'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useQuasar } from 'quasar'
+import { QPage, useQuasar } from 'quasar'
 import PageHeader from '../components/PageHeader.vue'
 import CompactPagination from '../components/CompactPagination.vue'
 import { errorMessage, fetchAll } from '../services/http.js'
@@ -16,6 +16,7 @@ import {
   updateNotificationSchedule,
 } from '../services/notification-schedules.js'
 
+defineProps({ embedded: Boolean })
 const $q = useQuasar()
 const canGlobal = ['whatsapp_web', 'whatsapp_cloud', 'telegram', 'email'].every(channel => canChannel(getStoredUser(), channel))
 const loading = ref(true)
@@ -207,6 +208,14 @@ function openEdit(schedule) {
   dialog.value = true
 }
 
+function openClone(schedule) {
+  openEdit(schedule)
+  editing.value = null
+  form.name = schedule.name.slice(0, 150) + ' (cópia)'
+  form.startsAt = defaultStart()
+  form.endsAt = ''
+}
+
 function recurrencePayload() {
   const startsAt = new Date(form.startsAt)
   if (Number.isNaN(startsAt.getTime())) throw new Error('Informe a data e hora inicial.')
@@ -337,7 +346,7 @@ function confirmRemove(schedule) {
   })
 }
 
-onMounted(async () => {
+async function refresh() {
   loading.value = true
   try {
     await Promise.all([loadReferences(), loadSchedules()])
@@ -346,12 +355,15 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+onMounted(refresh)
+defineExpose({ refresh })
 </script>
 
 <template>
-  <q-page class="page-container schedules-page">
+  <component :is="embedded ? 'div' : QPage" class="schedules-page" :class="{ 'page-container': !embedded }">
     <PageHeader
+      v-if="!embedded"
       eyebrow="Fila programável"
       title="Programações"
       icon="schedule_send"
@@ -362,6 +374,11 @@ onMounted(async () => {
         <q-btn v-can-action="'schedules.create'" v-if="canAction(getStoredUser(), 'schedules', 'send')" color="primary" unelevated no-caps icon="add_alarm" label="Nova programação" @click="openCreate" />
       </template>
     </PageHeader>
+
+    <div v-if="embedded" class="row q-gutter-sm q-mb-md">
+      <q-btn outline color="primary" no-caps icon="refresh" label="Atualizar" :loading="loading" @click="refresh" />
+      <q-btn v-can-action="'schedules.create'" v-if="canAction(getStoredUser(), 'schedules', 'send')" color="primary" unelevated no-caps icon="add_alarm" label="Programar campanha" @click="openCreate" />
+    </div>
 
     <section class="glass-card section-card">
       <div class="schedule-toolbar">
@@ -435,6 +452,11 @@ onMounted(async () => {
             <span v-if="schedule.lastRunAt">Último: {{ formatDate(schedule.lastRunAt) }}</span>
             <span v-else>Criado em {{ formatDate(schedule.createdAt) }}</span>
             <div>
+              <q-btn
+                v-if="embedded && schedule.source === 'admin' && canAction(getStoredUser(), 'schedules', 'send')"
+                v-can-action="'schedules.create'"
+                flat dense no-caps icon="content_copy" label="Clonar" @click="openClone(schedule)"
+              />
               <q-btn v-can-action="'schedules.edit'"
                 v-if="['scheduled', 'paused', 'failed'].includes(schedule.status) && (schedule.status === 'scheduled' || canAction(getStoredUser(), 'schedules', 'send'))"
                 flat
@@ -616,7 +638,7 @@ onMounted(async () => {
         </q-form>
       </q-card>
     </q-dialog>
-  </q-page>
+  </component>
 </template>
 
 <style scoped>

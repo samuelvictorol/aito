@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('quasar', () => ({ useQuasar: () => ({}) }))
 
+const previewSource = readFileSync(fileURLToPath(new URL('../src/components/CampaignChannelPreview.vue', import.meta.url)), 'utf8')
+
 import {
   isExternalMetaDeliveryBlock,
   mergeNotificationVariableDefinitions,
@@ -206,7 +208,7 @@ describe('compositor amigável de notificações', () => {
     const source = readFileSync(fileURLToPath(new URL('../src/pages/NotificationsPage.vue', import.meta.url)), 'utf8')
     expect(source).toContain('unavailableGlobalChannelOptions')
     expect(source).toContain("globalSelectionMode.value === 'manual' && !enabledChannelOptions.value.length")
-    expect(source).toContain("item.enabled ? 'Selecionado' : 'Canal indisponível'")
+    expect(previewSource).toContain("item.enabled ? 'Selecionado' : 'Canal indisponível'")
   })
 
   it('monta uma prévia amigável por canal sem renderizar HTML bruto', () => {
@@ -381,11 +383,12 @@ describe('compositor amigável de notificações', () => {
     const source = readFileSync(fileURLToPath(new URL('../src/pages/NotificationsPage.vue', import.meta.url)), 'utf8')
 
     expect(source).toContain('<q-dialog v-model="reviewDialog" persistent :maximized="$q.screen.lt.sm">')
-    expect(source).toContain('v-for="item in reviewItems"')
+    expect(source).toContain('<CampaignChannelPreview :items="reviewItems" />')
+    expect(previewSource).toContain('v-for="item in items"')
     expect(source).toContain('Confirmar e colocar na fila')
     expect(source).toContain('@click="confirmSend"')
-    expect(source).toContain('v-html="safeReviewHtml(item.preview.html)"')
-    expect(source).toContain('item.preview.mediaUrl')
+    expect(previewSource).toContain('v-html="safeReviewHtml(item.preview.html)"')
+    expect(previewSource).toContain('item.preview.mediaUrl')
     expect(source.slice(source.indexOf('async function send()'),source.indexOf('async function confirmSend()'))).not.toContain('$q.dialog({')
   })
 

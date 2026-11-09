@@ -18,10 +18,13 @@ import { api, messageOf } from '../services.js'
 import { inPrototype } from '../../../services/prototype-runtime.js'
 
 const prototype = inPrototype()
+const props = defineProps({ flowId: String, studio: Boolean, locked: Boolean })
+const emit = defineEmits(['state-change', 'saved'])
 
-const mayEdit = computed(() => canAction(getStoredUser(), 'web_flows', 'edit'))
+const mayEdit = computed(() => !props.locked && canAction(getStoredUser(), 'web_flows', 'edit'))
 const mayExecute = computed(() => canAction(getStoredUser(), 'web_flows', 'execute'))
 const route = useRoute(), router = useRouter()
+const flowId = computed(() => props.flowId || route.params.id)
 const nodes = ref([]), edges = ref([])
 const meta = ref({ name: '', description: '', active: false, channels: ['whatsapp'], settings: {} })
 const assets = ref([]), selectedNodeId = ref(''), selectedEdgeId = ref(''), keywordDraft = ref('')
@@ -31,6 +34,7 @@ const previewOpen = ref(false), testingAction = ref(false), actionResult = ref(n
 const history = ref([]), future = ref([])
 const fullscreen = ref(false), inspectorOpen = ref(false), simulatorOpen = ref(false), simulationNode = ref(null), jsonInput = ref(null)
 const generalOpen = ref(false), builderRoot = ref(null)
+const revision = ref(null), loaded = ref(false)
 let flowInstance
 function onFlowInit(instance) { flowInstance = instance; setTimeout(() => instance.fitView({ padding: 0.2, maxZoom: 1 }), 50) }
 async function toggleFullscreen(diagram = false) { if (diagram) { fullscreen.value = !fullscreen.value; await nextTick(); flowInstance?.fitView({ padding: 0.2 }); return } try { if (document.fullscreenElement) await document.exitFullscreen(); else await builderRoot.value.requestFullscreen() } catch { showToast('Tela cheia indisponível neste navegador.') } }
@@ -139,24 +143,39 @@ async function loadIntegrations() {
   ;[paymentConfigs.value, aiProfiles.value, contactGroups.value] = results.map(result => result.status === 'fulfilled' ? result.value.data.items : [])
 }
 async function load() {
-  loading.value = true; suspendTracking = true
+  loading.value = true; loaded.value = false; suspendTracking = true
   try {
-    const { data } = await api.get(`/flows/${route.params.id}`)
+    const { data } = await api.get(`/flows/${flowId.value}`)
     mapFlow(data.flow); analysis.value = data.analysis
+    revision.value = data.flow.version ?? 1
     savedSnapshot = serializeEditor(); trackedSnapshot = savedSnapshot; history.value = []; future.value = []; dirty.value = false
+    loaded.value = true
   } catch (cause) { showToast(messageOf(cause)) }
   finally { loading.value = false; await nextTick(); suspendTracking = false }
   await Promise.allSettled([loadAssets(), loadIntegrations()])
 }
+async function reloadIfClean() {
+  if (dirty.value || saving.value) return false
+  await load()
+  return loaded.value
+}
+function simulate() {
+  if (loaded.value && mayExecute.value) simulatorOpen.value = true
+}
+watch([dirty, loading, loaded, saving, revision, () => meta.value.name], () => {
+  if (props.studio) emit('state-change', { id: flowId.value, dirty: dirty.value, loading: loading.value, saving: saving.value, loaded: loaded.value, version: revision.value, name: meta.value.name })
+}, { immediate: true })
+defineExpose({ reloadIfClean, simulate, reloadResources: () => Promise.allSettled([loadAssets(), loadIntegrations()]) })
 async function save() {
   if (prototype) { showToast('Demonstração: o fluxo pode ser editado nesta tela, mas não pode ser salvo ou aplicado.'); return }
-  if (!mayEdit.value) return
+  if (!mayEdit.value || !loaded.value) return
   saving.value = true; flushHistory()
   try {
-    const { data } = await api.put(`/flows/${route.params.id}`, flowPayload())
+    const { data } = await api.put(`/flows/${flowId.value}`, { ...flowPayload(), expectedVersion: revision.value })
     suspendTracking = true; analysis.value = data.analysis; mapFlow(data.flow)
+    revision.value = data.flow.version ?? 1
     savedSnapshot = serializeEditor(); trackedSnapshot = savedSnapshot; history.value = []; future.value = []; dirty.value = false
-    await nextTick(); suspendTracking = false; showToast('Fluxo salvo e aplicado em tempo real.')
+    await nextTick(); suspendTracking = false; showToast('Fluxo salvo e aplicado em tempo real.'); emit('saved', data.flow)
   } catch (cause) {
     const payload = cause?.response?.data; analysis.value = payload?.analysis || analysis.value; showToast(messageOf(cause))
   } finally { saving.value = false }
@@ -282,6 +301,7 @@ async function testAction() {
 function openPreview() { previewOpen.value = !previewOpen.value; if (previewOpen.value) clearSelection() }
 function beforeUnload(event) { if (dirty.value && !prototype) { event.preventDefault(); event.returnValue = '' } }
 function keydown(event) {
+  if (props.studio && !builderRoot.value?.contains(document.activeElement)) return
   if (!mayEdit.value) return
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); return }
   if (simulatorOpen.value || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable) return
@@ -297,18 +317,18 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
 </script>
 
 <template>
-  <section ref="builderRoot" :class="['builder-page', { 'is-fullscreen': fullscreen }]">
+  <section ref="builderRoot" :class="['builder-page', { 'is-fullscreen': fullscreen, 'builder-page--studio': studio }]">
     <div class="builder-head">
-      <button class="icon-button" title="Voltar para os fluxos" @click="router.push('/whatsapp-web/flows')">←</button>
+      <button v-show="!studio" class="icon-button" title="Voltar para os fluxos" @click="router.push('/whatsapp-web/flows')">←</button>
       <div><input v-model="meta.name" :readonly="!mayEdit" class="title-input" aria-label="Nome do fluxo"><span>{{ prototype ? 'Demonstração interativa · alterações temporárias' : dirty ? 'Alterações ainda não salvas' : 'Tudo salvo e sincronizado' }}</span></div>
       <label class="toggle"><input v-model="meta.active" :disabled="prototype || !mayEdit || !mayExecute" type="checkbox"> Fluxo ativo</label>
       <input ref="jsonInput" type="file" accept=".json,application/json" hidden @change="importFlow">
       <button v-can-action="'web_flows.import'" :disabled="!mayEdit" class="icon-button responsive-action" title="Importar fluxo JSON" aria-label="Importar fluxo JSON" @click="jsonInput.click()"><span aria-hidden="true">↥</span><span class="action-label">Importar JSON</span></button>
       <button v-can-action="'web_flows.export'" class="icon-button responsive-action" title="Exportar fluxo JSON" aria-label="Exportar fluxo JSON" @click="exportFlow"><span aria-hidden="true">↧</span><span class="action-label">Exportar JSON</span></button>
-      <button v-can-action="'web_flows.execute'" class="icon-button responsive-action" title="Simular bot" aria-label="Simular bot" @click="simulatorOpen = true"><span aria-hidden="true">▷</span><span class="action-label">Simular bot</span></button>
+      <button v-if="!studio" v-can-action="'web_flows.execute'" class="icon-button responsive-action" title="Simular bot" aria-label="Simular bot" @click="simulate"><span aria-hidden="true">▷</span><span class="action-label">Simular bot</span></button>
       <button class="icon-button responsive-action" title="Tela cheia do diagrama (Esc duas vezes para sair)" aria-label="Tela cheia do diagrama" :disabled="fullscreen" @click="fullscreen = true; lastEscape = 0"><span aria-hidden="true">⛶</span><span class="action-label">Diagrama</span></button>
       <button class="icon-button responsive-action" title="Configurações gerais do fluxo" aria-label="Configurações gerais do fluxo" @click="generalOpen = true"><span aria-hidden="true">⚙</span><span class="action-label">Configurações</span></button><button class="icon-button responsive-action" title="Tela cheia do navegador" aria-label="Tela cheia do navegador" @click="toggleFullscreen()"><span aria-hidden="true">⛶</span><span class="action-label">Tela cheia</span></button><button v-if="dirty" class="btn ghost" @click="discard">Descartar</button>
-      <button v-can-action="'web_flows.edit'" class="btn" :disabled="prototype || saving || localConflicts.length > 0" @click="save">{{ prototype ? 'Salvar indisponível na demonstração' : saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
+      <button v-can-action="'web_flows.edit'" class="btn" :disabled="prototype || !mayEdit || !loaded || saving || localConflicts.length > 0" @click="save">{{ prototype ? 'Salvar indisponível na demonstração' : saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
     </div>
     <div v-if="analysis.errors?.length || localConflicts.length" class="validation danger"><b>Corrija antes de salvar:</b> {{ analysis.errors?.[0] || `Há ${localConflicts.length} palavra(s)-chave repetida(s).` }}</div>
     <div v-else-if="analysis.warnings?.length" class="validation"><b>Atenção:</b> {{ analysis.warnings[0] }}</div>
@@ -449,3 +469,46 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
 </style>
 
 <style scoped src="../flow-builder-mobile.css"></style>
+<style scoped>
+.builder-page--studio { padding: 0; }
+.builder-page--studio .builder-head { position: static; }
+.builder-page--studio .builder-shell {
+  position: relative;
+  height: clamp(420px, 62vh, 740px);
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.builder-page--studio .flow-canvas { grid-row: 2; }
+.builder-page--studio .mobile-config {
+  display: inline-flex;
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 20;
+}
+.builder-page--studio .inspector { display: none; }
+.builder-page--studio .inspector.is-open {
+  display: block;
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(100%, 390px);
+  max-height: none;
+  border-radius: 0;
+  z-index: 51;
+}
+.builder-page--studio .inspector-backdrop {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: #042d2466;
+  border: 0;
+  z-index: 50;
+}
+.builder-page--studio .inspector-close { display: inline-grid; float: right; }
+.builder-page--studio.is-fullscreen .builder-shell { height: auto; }
+@media (max-width: 580px) {
+  .builder-page--studio .builder-shell { height: clamp(420px, 65dvh, 620px); }
+}
+</style>

@@ -1,4 +1,5 @@
 import { http, unwrap } from './http.js'
+import { sealAssistantKey } from './assistant-key-envelope.js'
 
 const ROOT = '/admin-assistant'
 export const ASSISTANT_NAME = 'Aito I.A'
@@ -17,18 +18,42 @@ export const ASSISTANT_SHORTCUTS = Object.freeze([
   { id: 'backup', icon: 'storage', label: 'Backup e limpeza', description: 'Consultar armazenamento e revisar remoções', prompt: 'Ajude-me a revisar o armazenamento e os backups. Comece somente consultando os dados e explique as opções. Para qualquer remoção, mostre exatamente a coleção, período e impacto, e exija a frase de confirmação antes de executar.' },
 ])
 
+export const ASSISTANT_CONFIG_EVENT = 'aito-assistant:configuration'
+export const ASSISTANT_SESSION_API = Symbol('assistant-session-api')
+
+export function createAssistantSessionApi(scope = '') {
+  const params = scope ? { scope } : undefined
+  const upload = (path, file) => {
+    const data = new FormData()
+    data.append('file', file)
+    return http.post(ROOT + path, data, { params, timeout: 120000 }).then(unwrap)
+  }
+  return {
+    state: () => http.get(ROOT + '/session', { params }).then(unwrap),
+    message: input => http.post(ROOT + '/message', input, { params, timeout: 60000 }).then(unwrap),
+    confirm: input => http.post(ROOT + '/confirm', input, { params, timeout: 60000 }).then(unwrap),
+    reject: actionId => http.post(ROOT + '/cancel', { actionId }, { params }).then(unwrap),
+    clear: () => http.delete(ROOT + '/session', { params }).then(unwrap),
+    upload: file => upload('/attachments', file),
+    transcribe: file => upload('/transcribe', file),
+    download: async path => (await http.get(assistantFilePath(path), { params, responseType: 'blob', timeout: 120000 })).data,
+  }
+}
+
 export const assistantApi = {
+  ...createAssistantSessionApi(),
   config: (refreshModels = false) => http.get(ROOT + '/config', { params: refreshModels ? { refreshModels: true } : undefined }).then(unwrap),
   keySources: () => http.get(ROOT + '/key-sources').then(unwrap),
-  saveConfig: input => http.put(ROOT + '/config', input).then(unwrap),
-  state: () => http.get(ROOT + '/session').then(unwrap),
-  message: input => http.post(ROOT + '/message', input, { timeout: 60000 }).then(unwrap),
-  confirm: input => http.post(ROOT + '/confirm', input, { timeout: 60000 }).then(unwrap),
-  reject: actionId => http.post(ROOT + '/cancel', { actionId }).then(unwrap),
-  clear: () => http.delete(ROOT + '/session').then(unwrap),
-  upload: file => { const data = new FormData(); data.append('file', file); return http.post(ROOT + '/attachments', data, { timeout: 120000 }).then(unwrap) },
-  transcribe: file => { const data = new FormData(); data.append('file', file); return http.post(ROOT + '/transcribe', data, { timeout: 120000 }).then(unwrap) },
-  download: async path => (await http.get(assistantFilePath(path), { responseType: 'blob', timeout: 120000 })).data,
+  async saveConfig(input) {
+    const { apiKey, ...changes } = input
+    if (typeof apiKey === 'string') {
+      const { publicKey } = await http.get(ROOT + '/config/transport').then(unwrap)
+      changes.keyEnvelope = await sealAssistantKey(apiKey, publicKey)
+    } else if (apiKey === null) changes.apiKey = null
+    const saved = unwrap(await http.put(ROOT + '/config', changes))
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ASSISTANT_CONFIG_EVENT, { detail: saved }))
+    return saved
+  },
 }
 
 export function assistantFilePath(value) {
