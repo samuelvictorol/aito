@@ -583,6 +583,7 @@ function clearHistory(kind, rows) {
 }
 const reviewDialog = ref(false)
 const pendingPayload = ref(null)
+let lastDispatchAttempt = null
 const contacts = ref([])
 const groups = ref([])
 const templates = ref([])
@@ -837,17 +838,18 @@ function reconcileStudioTemplates() {
 async function attachGeneratedImage(definition, image) {
   if (!props.downloadGenerated || generatedUploadKey.value || reviewDialog.value) return
   const scope = activeVariableScopeKey.value
+  const initialValue = form.variables[definition.key]
   generatedUploadKey.value = definition.key
   try {
     const blob = await props.downloadGenerated(image.url || '/admin-assistant/files/' + image.id)
-    if (scope !== activeVariableScopeKey.value) return
+    if (scope !== activeVariableScopeKey.value || form.variables[definition.key] !== initialValue) return
     const body = new FormData()
     body.append('file', blob, image.name || 'imagem-campanha.png')
     body.append('mediaType', 'image')
     body.append('purpose', 'dispatch')
     const asset = unwrap(await http.post('/media', body, { timeout: 120000 }))
     if (!asset?.url || asset.mediaType !== 'image') throw new Error('O servidor não retornou a imagem para este disparo.')
-    if (scope !== activeVariableScopeKey.value) return
+    if (scope !== activeVariableScopeKey.value || form.variables[definition.key] !== initialValue) return
     form.variables[definition.key] = asset.url
     $q.notify({ type: 'positive', message: 'Imagem aplicada à prévia desta campanha.' })
   } catch (error) {
@@ -1221,8 +1223,8 @@ function buildPayload() {
     : undefined
   return {
     kind: tab.value,
-    contactIds: form.contactIds,
-    groupIds: form.groupIds,
+    contactIds: [...form.contactIds],
+    groupIds: [...form.groupIds],
     channel: notificationChannel(tab.value, form.channel),
     idempotencyKey: newIdempotencyKey(`notification-${tab.value}`),
     templateId: tab.value === 'template' ? form.templateId : undefined,
@@ -1302,13 +1304,28 @@ async function confirmSend() {
   if (!pendingPayload.value || sending.value) return
   if (reviewUsesWeb.value && !webRiskAccepted.value) return
   pendingPayload.value.whatsappWebRiskConfirmed = reviewUsesWeb.value && webRiskAccepted.value
+  const signature = JSON.stringify({
+    ...pendingPayload.value,
+    idempotencyKey: undefined,
+    contactIds: [...pendingPayload.value.contactIds].sort(),
+    groupIds: [...pendingPayload.value.groupIds].sort(),
+  })
+  // A timeout can happen after the batch was accepted. Reopening the review for
+  // the same draft must not turn that retry into a second dispatch.
+  if (lastDispatchAttempt?.signature === signature) {
+    pendingPayload.value.idempotencyKey = lastDispatchAttempt.key
+  } else {
+    lastDispatchAttempt = { signature, key: pendingPayload.value.idempotencyKey }
+  }
   sending.value = true
   try {
     const result = unwrap(await http.post('/notifications', pendingPayload.value)) || {}
     const { queued, skipped } = notificationDeliveryCounts(result)
     reviewDialog.value = false
     pendingPayload.value = null
-    if (queued === 0) {
+    lastDispatchAttempt = null
+    const replay = result.idempotentReplay === true
+    if (queued === 0 && !replay) {
       $q.notify({
         type: 'warning',
         message: 'Nenhuma entrega foi colocada na fila.',
@@ -1320,11 +1337,13 @@ async function confirmSend() {
       return
     }
     $q.notify({
-      type: 'positive',
-      message: queued !== undefined ? `${queued} entrega(s) colocada(s) na fila.` : 'Notificação colocada na fila.',
+      type: replay ? 'info' : 'positive',
+      message: replay
+        ? 'Este disparo já foi registrado. Consulte as entregas no histórico.'
+        : queued !== undefined ? `${queued} entrega(s) colocada(s) na fila.` : 'Notificação colocada na fila.',
       caption: skipped ? `${skipped} canal(is) sem configuração ou autorização foram ignorados.` : undefined,
     })
-    if (queued > 0) {
+    if (queued > 0 || replay) {
       form.message = ''
       form.templateId = null
       if (tab.value === 'global') {
@@ -1523,6 +1542,7 @@ defineExpose({ applyCampaignDraft, studioContext, refresh: loadData })
                     outlined
                     stack-label
                     :type="['image', 'video', 'document'].includes(definition.type) ? 'url' : 'text'"
+                    :readonly="generatedUploadKey === definition.key"
                     :label="`${definition.label} *`"
                     :hint="variableHint(definition)"
                   >

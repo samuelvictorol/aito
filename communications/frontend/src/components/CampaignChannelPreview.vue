@@ -7,6 +7,15 @@ defineProps({ items: { type: Array, required: true } })
 function safeReviewHtml(value) {
   return DOMPurify.sanitize(String(value || ''), { USE_PROFILES: { html: true } })
 }
+
+function safeDocumentLink(value) {
+  try {
+    const url = new URL(value)
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''
+  } catch {
+    return ''
+  }
+}
 </script>
 
 <template>
@@ -51,7 +60,7 @@ function safeReviewHtml(value) {
             referrerpolicy="no-referrer"
           />
           <video v-else-if="item.preview.mediaType === 'video'" :src="item.preview.mediaUrl" controls preload="metadata" />
-          <a v-else :href="item.preview.mediaUrl" target="_blank" rel="noopener noreferrer">
+          <a v-else-if="safeDocumentLink(item.preview.mediaUrl)" :href="safeDocumentLink(item.preview.mediaUrl)" target="_blank" rel="noopener noreferrer">
             <q-icon name="description" /> Abrir documento
           </a>
         </div>

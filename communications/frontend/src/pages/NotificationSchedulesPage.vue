@@ -213,7 +213,6 @@ function openClone(schedule) {
   editing.value = null
   form.name = schedule.name.slice(0, 150) + ' (cópia)'
   form.startsAt = defaultStart()
-  form.endsAt = ''
 }
 
 function recurrencePayload() {
