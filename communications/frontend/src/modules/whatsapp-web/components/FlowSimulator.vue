@@ -6,7 +6,13 @@ const prototype = inPrototype()
 import MediaPreview from './MediaPreview.vue'
 import { formatWhatsApp } from '../whatsapp-format.js'
 import { MapPin, Paperclip, Send, X, RotateCcw, Braces, BookOpen, Plus } from '@lucide/vue'
-const props = defineProps({ flow: Object, assets: Array, paymentConfigs: { type: Array, default: () => [] } })
+const props = defineProps({
+  flow: Object,
+  assets: Array,
+  paymentConfigs: { type: Array, default: () => [] },
+  detached: Boolean,
+  previewOnly: Boolean,
+})
 const emit = defineEmits(['close', 'step'])
 const messages = ref([]), draft = ref(''), busy = ref(false), error = ref(''), context = ref({}), feed = ref(null)
 const aiLive = ref(false), aiResponse = ref('Resposta de teste da IA.'), selectedAsset = ref('')
@@ -95,7 +101,10 @@ async function runRequest(request) {
   try {
     let responses
     try { responses = JSON.parse(fixtures.value); if (!responses || Array.isArray(responses) || typeof responses !== 'object') throw new Error() } catch { throw new Error('Respostas de teste: informe um objeto JSON válido.') }
-    const { data } = await api.post('/flows/simulate', { flow: props.flow, ...request, now: Date.now() + clockOffset.value, context: context.value, fixtures: responses, paymentConfigs: props.paymentConfigs, aiLive: aiLive.value, aiResponse: aiResponse.value }, { signal: controller.signal })
+    const { data } = await api.post('/flows/simulate', {
+      flow: props.flow, ...request, now: Date.now() + clockOffset.value, context: context.value, fixtures: responses,
+      paymentConfigs: props.paymentConfigs, aiLive: !props.previewOnly && !prototype && aiLive.value, aiResponse: aiResponse.value,
+    }, { signal: controller.signal })
     await applyEvents(data, current)
   } catch (cause) { if (current === generation) { error.value = messageOf(cause); failedRequest.value = request } }
   finally { if (current === generation) { requestController = null; busy.value = false; schedulePending() } }
@@ -127,10 +136,20 @@ function time(value) { return value.toLocaleTimeString('pt-BR', { hour: '2-digit
 onBeforeUnmount(() => { feedObserver?.disconnect(); reset() })
 </script>
 <template>
+  <Teleport to="body" :disabled="!detached">
   <div class="sim-overlay" @click.self="emit('close')">
     <section class="sim-dialog" role="dialog" aria-modal="true" aria-label="Simular fluxo" @keydown.esc.stop="emit('close')">
-      <header class="sim-tools"><b>Simular fluxo</b><button title="Respostas de teste das APIs" @click="optionsOpen = !optionsOpen"><Braces :size="18" /></button><button title="Reiniciar conversa" @click="reset"><RotateCcw :size="18" /></button><button title="Fechar simulador" @click="emit('close')"><X :size="18" /></button></header>
-      <div v-if="optionsOpen" class="fixture-editor"><label><input v-model="aiLive" :disabled="prototype" type="checkbox">{{ prototype ? 'IA fictícia · sem consumo de créditos' : 'Usar IA real (consome créditos OpenAI)' }}</label><label v-if="!aiLive">Resposta de teste da IA<textarea v-model="aiResponse"></textarea></label><label>Respostas das APIs por ID do card<textarea v-model="fixtures" spellcheck="false" aria-label="Respostas das APIs por ID do card"></textarea></label><div v-for="node in flow.nodes.filter(n => n.type === 'action' && n.data.action.type === 'http')" :key="node.nodeId">{{ node.data.label }}: <code>{{ node.nodeId }}</code></div><div class="sim-clock"><label>Avançar tempo<select v-model.number="advanceMinutes"><option :value="1">1 minuto</option><option :value="5">5 minutos</option><option :value="30">30 minutos</option><option :value="60">1 hora</option></select></label><button type="button" :disabled="busy || pending.length > 0" @click="advanceClock">Avançar</button></div></div>
+      <header class="sim-tools"><b>{{ previewOnly ? 'Simular proposta' : 'Simular fluxo' }}</b><button title="Respostas de teste das APIs" @click="optionsOpen = !optionsOpen"><Braces :size="18" /></button><button title="Reiniciar conversa" @click="reset"><RotateCcw :size="18" /></button><button title="Fechar simulador" @click="emit('close')"><X :size="18" /></button></header>
+      <div v-if="optionsOpen" class="fixture-editor">
+        <label><input v-model="aiLive" :disabled="prototype || previewOnly" type="checkbox">{{ prototype || previewOnly ? 'IA fictícia · sem consumo de créditos' : 'Usar IA real (consome créditos OpenAI)' }}</label>
+        <label v-if="!aiLive">Resposta de teste da IA<textarea v-model="aiResponse"></textarea></label>
+        <label>Respostas das APIs por ID do card<textarea v-model="fixtures" spellcheck="false" aria-label="Respostas das APIs por ID do card"></textarea></label>
+        <div v-for="node in flow.nodes.filter(n => n.type === 'action' && n.data?.action?.type === 'http')" :key="node.nodeId">{{ node.data.label }}: <code>{{ node.nodeId }}</code></div>
+        <div class="sim-clock">
+          <label>Avançar tempo<select v-model.number="advanceMinutes"><option :value="1">1 minuto</option><option :value="5">5 minutos</option><option :value="30">30 minutos</option><option :value="60">1 hora</option></select></label>
+          <button type="button" :disabled="busy || pending.length > 0" @click="advanceClock">Avançar</button>
+        </div>
+      </div>
       <div class="phone">
         <div class="phone-status"><span>9:41</span><span>▮▮▮ 100%</span></div>
         <header class="chat-header"><span class="avatar">{{ flow.name?.charAt(0) || 'B' }}</span><div><strong>{{ flow.name }}</strong><small>{{ busy ? 'Respondendo…' : context.mode === 'human' ? 'Atendimento humano' : context.mode === 'closed' ? 'Conversa encerrada' : 'Conta comercial · Simulação' }}</small></div><span>⋮</span></header>
@@ -165,6 +184,7 @@ onBeforeUnmount(() => { feedObserver?.disconnect(); reset() })
       <details v-if="trace.length || context.tags?.length" class="execution"><summary>Etapas e etiquetas</summary>{{ trace.join(' → ') }}<p>{{ context.tags?.join(', ') }}</p></details>
     </section>
   </div>
+  </Teleport>
 </template>
 <style scoped>
 .sim-overlay{position:fixed;inset:0;z-index:2200;display:grid;place-items:center;padding:12px;background:#14221eb3}.sim-dialog{width:min(420px,100%);max-height:96dvh;overflow:auto}.sim-tools{display:flex;align-items:center;gap:8px;color:white;padding:0 4px 10px}.sim-tools b{flex:1}.sim-tools button{width:32px;height:32px;border:0;border-radius:6px;background:white;color:#253a34;font-size:19px}.sim-asset{background:#fff;color:#173e33;padding:8px;margin:0 10px;border:1px solid #abbfb4;border-radius:6px;font-size:11px}.phone{color:#152f29;color-scheme:light;height:min(700px,80dvh);display:flex;flex-direction:column;overflow:hidden;border:8px solid #242729;border-radius:34px;background:#f0f2f5;box-shadow:0 12px 40px #0005}.phone-status{display:flex;justify-content:space-between;padding:10px 20px 8px;background:#fff;font-size:11px;font-weight:700}.chat-header{display:flex;align-items:center;gap:10px;padding:12px;background:#fff}.chat-header>div{flex:1;min-width:0}.chat-header strong{display:block;overflow-wrap:anywhere;font-size:14px}.chat-header small{display:block;font-size:11px;color:#63716b;margin-top:3px}.avatar{display:grid;place-items:center;width:38px;height:38px;flex-shrink:0;border-radius:50%;background:#d5ede4;color:#156b52;font-weight:700}.chat-feed{flex:1;min-height:0;overflow:auto;padding:15px 12px;display:flex;flex-direction:column;gap:8px;background:#e5e9e3}.day{align-self:center;background:#fff;padding:5px 10px;border-radius:6px;font-size:11px;color:#60706b}.bubble{max-width:88%;min-width:70px;padding:8px 9px 5px;border-radius:7px;background:#fff;align-self:flex-start;box-shadow:0 1px 1px #0002;overflow-wrap:anywhere}.bubble.client{align-self:flex-end;background:#d9fdd3}.bubble p{margin:0;white-space:pre-wrap;font-size:14px;line-height:1.4}.bubble footer{text-align:right;font-size:10px;color:#718078;margin-top:4px}.bubble footer span{color:#379ace}.composer{display:flex;gap:8px;padding:10px;align-items:center}.composer input{min-width:0;flex:1;border:0;border-radius:20px;padding:12px;font-size:14px}.composer button{border:0;border-radius:50%;width:40px;height:40px;color:#fff;background:#16876c}.composer button:disabled{opacity:.45}.sim-error{padding:10px;background:#fff0f2;color:#a2233a;border-radius:6px;font-size:13px}.location{font-size:38px;text-align:center;background:#dae9dd}.fixture-editor,.execution{padding:12px;background:white;font-size:12px;overflow-wrap:anywhere}.fixture-editor textarea{display:block;width:100%;min-height:95px;font-family:monospace}.execution{margin-top:8px;border-radius:6px}@media(max-width:480px){.sim-overlay{padding:7px}.sim-asset{background:#fff;color:#173e33;padding:8px;margin:0 10px;border:1px solid #abbfb4;border-radius:6px;font-size:11px}.phone{color:#152f29;color-scheme:light;height:78dvh}.sim-tools{padding-bottom:6px}}

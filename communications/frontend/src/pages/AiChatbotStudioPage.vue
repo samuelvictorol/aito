@@ -7,6 +7,7 @@ import { MarkerType, VueFlow } from '@vue-flow/core'
 import AdminAssistant from '../components/AdminAssistant.vue'
 import FlowBuilderPage from '../modules/whatsapp-web/pages/FlowBuilderPage.vue'
 import FlowNode from '../modules/whatsapp-web/components/FlowNode.vue'
+import FlowSimulator from '../modules/whatsapp-web/components/FlowSimulator.vue'
 import { api, messageOf } from '../modules/whatsapp-web/services.js'
 import { canAction, canArea } from '../services/access.js'
 import { getStoredUser } from '../services/tokens.js'
@@ -29,6 +30,7 @@ const actions = ref([])
 const mode = ref('editor')
 const proposalId = ref('')
 const proposalView = ref(null)
+const proposalSimulation = ref(null)
 const linksOpen = ref(false)
 const linksLoading = ref(false)
 const linksError = ref('')
@@ -57,6 +59,13 @@ const proposals = computed(() => actions.value.filter(action => {
     && Array.isArray(action.preview?.data?.nodes) && (!target.id || target.id === selected.value?._id)
 }))
 const proposal = computed(() => proposals.value.find(action => action.id === proposalId.value) || proposals.value.at(-1))
+const reviewingProposal = computed(() => mode.value === 'proposal' && Boolean(proposal.value))
+// The assistant's public preview masks sensitive data and caps every array at 100 entries.
+const previewMayBePartial = computed(() => {
+  const flow = proposal.value?.preview.data
+  return Boolean(flow && (flow.nodes.length >= 100 || flow.edges?.length >= 100))
+})
+const simulatorReady = computed(() => reviewingProposal.value ? !previewMayBePartial.value : Boolean(activeFlow.value?.loaded))
 const graph = computed(() => {
   const flow = proposal.value?.preview.data
   if (!flow) return { nodes: [], edges: [] }
@@ -104,10 +113,11 @@ function canApplyAction(action) {
 }
 
 function onActionsUpdated(value) {
-  const previousId = proposal.value?.id
+  const known = new Set(proposals.value.map(action => action.id))
   actions.value = Array.isArray(value) ? value : []
-  if (proposal.value && proposal.value.id !== previousId) {
-    proposalId.value = proposal.value.id
+  const latest = proposals.value.findLast(action => !known.has(action.id))
+  if (latest) {
+    proposalId.value = latest.id
     mode.value = 'proposal'
   } else if (!proposal.value) {
     mode.value = 'editor'
@@ -202,9 +212,21 @@ function onSaved(flow) {
 }
 
 async function simulate() {
-  mode.value = 'editor'
-  await nextTick()
-  editor.value?.simulate()
+  if (!simulatorReady.value || !maySimulate || proposalSimulation.value) return
+  if (!reviewingProposal.value) {
+    editor.value?.simulate()
+    return
+  }
+  const flow = JSON.parse(JSON.stringify(proposal.value.preview.data))
+  proposalSimulation.value = { flow, assets: [], paymentConfigs: [] }
+  const current = proposalSimulation.value
+  const results = await Promise.allSettled([
+    canArea(user, 'web_files') ? api.get('/assets', { params: { limit: 100 } }) : null,
+    canArea(user, 'web_integrations') ? api.get('/integrations/infinitepay/configs') : null,
+  ])
+  if (destroyed || proposalSimulation.value !== current) return
+  const [assets, paymentConfigs] = results.map(result => result.status === 'fulfilled' ? result.value?.data?.items || [] : [])
+  Object.assign(current, { assets, paymentConfigs })
 }
 
 async function refreshEditor() {
@@ -251,7 +273,7 @@ onBeforeUnmount(() => { destroyed = true })
       </div>
       <div class="studio-hero-actions">
         <q-btn v-if="maySeeFlows" outline no-caps icon="link" label="Links públicos" @click="loadLinks" />
-        <q-btn v-if="maySimulate" class="studio-simulate" unelevated no-caps icon="smartphone" label="Abrir simulador" :disable="!activeFlow?.loaded || actionInProgress" @click="simulate" />
+        <q-btn v-if="maySimulate" class="studio-simulate" unelevated no-caps icon="smartphone" :label="reviewingProposal ? 'Simular proposta' : 'Abrir simulador'" :disable="!simulatorReady || actionInProgress" @click="simulate" />
       </div>
     </header>
 
@@ -297,7 +319,8 @@ onBeforeUnmount(() => { destroyed = true })
             Abra a versão mais recente do fluxo e conclua as edições locais. Se o fluxo mudou, peça uma nova proposta para essa versão.
             <template #action><q-btn flat no-caps label="Atualizar editor" :disable="activeFlow?.dirty || activeFlow?.saving || activeFlow?.loading" @click="refreshEditor" /></template>
           </q-banner>
-          <p v-else class="studio-review-hint">Confira os caminhos aqui e confirme a proposta no painel do agente. Depois, teste o fluxo no simulador.</p>
+          <p v-else-if="previewMayBePartial" class="studio-review-hint">A prévia mostra até 100 etapas ou conexões. Confirme a proposta para testar o diagrama completo.</p>
+          <p v-else class="studio-review-hint">Teste a proposta no simulador com respostas fictícias e confirme a alteração pelo painel do agente.</p>
           <VueFlow :id="`studio-preview-${proposal.id}`" :key="proposal.id" class="studio-graph" :nodes="graph.nodes" :edges="graph.edges" :nodes-draggable="false" :nodes-connectable="false" :elements-selectable="false" :edges-updatable="false" :delete-key-code="null" fit-view-on-init :min-zoom="0.02">
             <template #node-bot="node"><FlowNode v-bind="node" /></template>
             <Background pattern-color="#b5d5cc" :gap="20" />
@@ -316,6 +339,14 @@ onBeforeUnmount(() => { destroyed = true })
         <AdminAssistant embedded scope="chatbot" :workspace-context="contextText" :action-allowed="canApplyAction" @actions-updated="onActionsUpdated" @action-applied="onActionApplied" />
       </aside>
     </div>
+
+    <FlowSimulator
+      v-if="proposalSimulation"
+      v-bind="proposalSimulation"
+      detached
+      preview-only
+      @close="proposalSimulation = null"
+    />
 
     <q-dialog v-model="creating" :persistent="saving">
       <q-card class="studio-dialog"><q-form @submit="createFlow">

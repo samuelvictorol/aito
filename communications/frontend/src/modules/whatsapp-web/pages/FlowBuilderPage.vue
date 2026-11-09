@@ -33,6 +33,7 @@ const loading = ref(true), saving = ref(false), dirty = ref(false), toast = ref(
 const previewOpen = ref(false), testingAction = ref(false), actionResult = ref(null), uploading = ref(false)
 const history = ref([]), future = ref([])
 const fullscreen = ref(false), inspectorOpen = ref(false), simulatorOpen = ref(false), simulationNode = ref(null), jsonInput = ref(null)
+const simulationFlow = ref(null)
 const generalOpen = ref(false), builderRoot = ref(null)
 const revision = ref(null), loaded = ref(false)
 let flowInstance
@@ -160,7 +161,9 @@ async function reloadIfClean() {
   return loaded.value
 }
 function simulate() {
-  if (loaded.value && mayExecute.value) simulatorOpen.value = true
+  if (!loaded.value || !mayExecute.value) return
+  simulationFlow.value = JSON.parse(serializeEditor())
+  simulatorOpen.value = true
 }
 watch([dirty, loading, loaded, saving, revision, () => meta.value.name], () => {
   if (props.studio) emit('state-change', { id: flowId.value, dirty: dirty.value, loading: loading.value, saving: saving.value, loaded: loaded.value, version: revision.value, name: meta.value.name })
@@ -437,7 +440,8 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
       </aside>
     </div>
     <div v-if="toast" class="toast">{{ toast }}</div>
-    <div v-if="generalOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Configurações gerais"><section class="card general-dialog"><header><h2>Configurações gerais do fluxo</h2><button class="icon-button" aria-label="Fechar" @click="generalOpen = false">×</button></header><fieldset class="permission-fields" :disabled="!mayEdit"><FlowGeneralSettings :nodes="nodes" v-model="meta.settings" /></fieldset><button class="btn" @click="generalOpen = false">Concluir</button><p>As alterações são aplicadas ao salvar o fluxo.</p></section></div><FlowSimulator v-if="simulatorOpen" :flow="flowPayload()" :assets="assets" :payment-configs="paymentConfigs" @close="simulatorOpen = false; simulationNode = null" @step="simulationNode = $event" />
+    <div v-if="generalOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Configurações gerais"><section class="card general-dialog"><header><h2>Configurações gerais do fluxo</h2><button class="icon-button" aria-label="Fechar" @click="generalOpen = false">×</button></header><fieldset class="permission-fields" :disabled="!mayEdit"><FlowGeneralSettings :nodes="nodes" v-model="meta.settings" /></fieldset><button class="btn" @click="generalOpen = false">Concluir</button><p>As alterações são aplicadas ao salvar o fluxo.</p></section></div>
+    <FlowSimulator v-if="simulatorOpen" :flow="simulationFlow" :assets="assets" :payment-configs="paymentConfigs" :detached="studio" @close="simulatorOpen = false; simulationNode = null; simulationFlow = null" @step="simulationNode = $event" />
   </section>
 </template>
 
