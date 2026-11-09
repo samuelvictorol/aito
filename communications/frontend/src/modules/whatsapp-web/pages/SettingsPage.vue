@@ -3,6 +3,7 @@ import { vCanAction } from '../../../services/permission-directives.js'
 import { canArea, canAction, isCollaborator } from '../../../services/access.js'
 import { getStoredUser } from '../../../services/tokens.js'
 import ConversationSignature from '../ConversationSignature.vue'
+import AutomationAllowlist from '../components/AutomationAllowlist.vue'
 import { computed, onMounted, ref } from 'vue'
 import { api, messageOf, currentUser } from '../services.js'
 
@@ -44,6 +45,7 @@ onMounted(load)
   <section>
     <ConversationSignature class="q-mb-md"/>
     <div class="page-head"><div><span class="eyebrow">Tudo pelo painel</span><h1>Configurações</h1><p>Personalize o whitelabel, os limites operacionais e os segredos usados pelas ações sem editar arquivos do projeto.</p></div><button v-can-action="'web_settings.configure'" class="btn" :disabled="loading" @click="save">{{ loading ? 'Aplicando…' : 'Salvar configurações' }}</button></div>
+    <AutomationAllowlist v-if="actor()?.role === 'admin'" />
     <fieldset class="permission-fields" :disabled="!may('configure')"><article class="card settings-card"><h2>Assinaturas opcionais</h2><div class="fields two"><div><label class="toggle"><input v-model="form.messages.botSignatureEnabled" type="checkbox">Assinar mensagens do bot e da IA</label><div class="field"><label for="bot-signature">Nome do assistente</label><input id="bot-signature" v-model="form.messages.botSignature" maxlength="60" placeholder="AitoSoftwares"></div><p>Exemplo: <strong>AitoSoftwares:</strong> Bem-vindo(a), sou seu assistente virtual.</p></div><div><label class="toggle"><input v-model="form.messages.panelSignatureEnabled" type="checkbox">Assinar respostas pelo painel</label><p>As respostas usam a assinatura de conversa escolhida acima. O administrador pode entrar como ele mesmo ou selecionar um colaborador.</p></div></div><p>O nome é enviado entre asteriscos para aparecer em negrito no WhatsApp. Cada colaborador usa sua própria assinatura, configurada no acesso da equipe.</p></article><div class="settings-grid">
       <article class="card settings-card">
         <div class="section-head"><span class="settings-icon">W</span><div><h2>Identidade do painel</h2><p>Nome, subtítulo e cor principal do whitelabel.</p></div></div>
