@@ -2,11 +2,12 @@
   <q-layout view="lHh Lpr lFf" class="user-app">
     <q-page-container><q-page class="user-app__page"><div class="user-app__shell">
       <header class="user-app__header"><router-link class="user-app__brand" to="/"><img src="/aito-logo-restored.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="user-app__session"><NotificationBell /><div class="user-app__identity"><strong>{{ firstName }}</strong><small>{{ sessionUser.email }}</small></div><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
-      <nav class="user-app__nav" aria-label="Area do usuario"><button v-for="item in menu" :key="item.id" type="button" :class="{ 'is-active': activeMenu === item.id }" @click="activeMenu = item.id"><q-icon :name="item.icon" /> {{ item.label }}</button></nav>
+      <nav class="user-app__nav" aria-label="Area do usuario"><button v-for="item in menu" :key="item.id" type="button" :class="{ 'is-active': activeMenu === item.id }" :aria-current="activeMenu === item.id ? 'page' : undefined" @click="showTab(item.id)"><q-icon :name="item.icon" /> {{ item.label }}</button></nav>
 
       <main v-if="activeMenu === 'courses'" class="user-app__main user-app__wide"><UserCoursesPanel /></main>
       <main v-else-if="activeMenu === 'certificates'" class="user-app__main user-app__wide"><UserCertificatesPanel /></main>
       <main v-else-if="activeMenu === 'products'" class="user-app__main user-app__wide"><UserProductsPanel /></main>
+      <main v-else-if="activeMenu === 'webhooks'" class="user-app__main user-app__wide"><UserWebhooksPanel /></main>
       <main v-else-if="activeMenu === 'profile'" class="user-app__main user-app__profile"><span class="user-app__eyebrow">Meu perfil</span><h1>Seu acesso, do seu jeito.</h1><q-form class="user-app__profile-form" @submit.prevent="saveProfile"><q-input v-model="profile.name" outlined label="Nome" /><q-input v-model="profile.email" outlined label="E-mail" readonly /><q-input v-model="profile.phone" outlined label="Telefone" readonly /><q-btn unelevated no-caps type="submit" label="Salvar nome" icon="mdi-content-save" :loading="saving" /></q-form></main>
       <main v-else-if="activeMenu === 'finance'" class="user-app__main user-app__wide"><FinanceDashboard title="Meu financeiro" /></main>
       <main v-else class="user-app__main user-app__wide"><SupportTicketsPanel /></main>
@@ -16,9 +17,9 @@
 
 <script setup>
 import { api } from 'boot/axios'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import FinanceDashboard from 'components/FinanceDashboard.vue'
 import SupportTicketsPanel from 'components/SupportTicketsPanel.vue'
 import UserCoursesPanel from 'components/UserCoursesPanel.vue'
@@ -26,8 +27,21 @@ import UserCertificatesPanel from 'components/UserCertificatesPanel.vue'
 import UserProductsPanel from 'components/UserProductsPanel.vue'
 import NotificationBell from 'components/NotificationBell.vue'
 
-const router = useRouter(); const $q = useQuasar(); const sessionUser = ref({}); const activeMenu = ref('products'); const saving = ref(false); const profile = reactive({ name: '', email: '', phone: '' })
-const menu = [{ id: 'products', label: 'Meu produto e licença', icon: 'mdi-shield-key-outline' }, {id:'tickets',label:'Chamados',icon:'mdi-lifebuoy'}, { id: 'profile', label: 'Meus dados', icon: 'mdi-account-outline' }]
+const UserWebhooksPanel = defineAsyncComponent(() => import('components/UserWebhooksPanel.vue'))
+const router = useRouter()
+const route = useRoute()
+const $q = useQuasar()
+const sessionUser = ref({})
+const saving = ref(false)
+const profile = reactive({ name: '', email: '', phone: '' })
+const menu = [
+  { id: 'products', label: 'Meus produtos', icon: 'mdi-shield-key-outline' },
+  { id: 'webhooks', label: 'Webhooks', icon: 'mdi-webhook' },
+  { id: 'tickets', label: 'Chamados', icon: 'mdi-lifebuoy' },
+  { id: 'profile', label: 'Meus dados', icon: 'mdi-account-outline' },
+]
+const activeMenu = computed(() => menu.find(item => item.id === route.query.tab)?.id || 'products')
+const showTab = tab => router.push({ query: { ...route.query, tab } })
 const firstName = computed(() => String(sessionUser.value.name || 'Usuario Aito').trim().split(/\s+/)[0])
 onMounted(async () => { if(sessionStorage.getItem('aito.productClaim')){router.replace('/produto/acesso');return} try { const response=await api.get('/products/aitonotify/profile',{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});localStorage.setItem('aito_user',JSON.stringify(response.data.data)); sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
 async function saveProfile () { saving.value = true; try { const response=await api.patch('/products/aitonotify/profile',{name:profile.name.trim()},{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});sessionUser.value=response.data.data;localStorage.setItem('aito_user',JSON.stringify(sessionUser.value));$q.notify({type:'positive',message:'Perfil salvo.'}) }catch(error){$q.notify({type:'negative',message:error.response?.data?.message || 'Não foi possível salvar.'})}finally{saving.value=false} }
