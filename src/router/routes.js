@@ -59,6 +59,7 @@ const routes = [
   },
   {
     path: '/app',
+    alias: '/apps',
     name: 'user-app',
     meta: { requiresAuth: 'user' },
     component: () => import('pages/UserHomePage.vue'),

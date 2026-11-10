@@ -19,7 +19,7 @@ import { inPrototype } from '../../../services/prototype-runtime.js'
 
 const prototype = inPrototype()
 const props = defineProps({ flowId: String, studio: Boolean, locked: Boolean })
-const emit = defineEmits(['state-change', 'saved'])
+const emit = defineEmits(['state-change', 'saved', 'fullscreen-change', 'simulation-change'])
 
 const mayEdit = computed(() => !props.locked && canAction(getStoredUser(), 'web_flows', 'edit'))
 const mayExecute = computed(() => canAction(getStoredUser(), 'web_flows', 'execute'))
@@ -38,7 +38,16 @@ const generalOpen = ref(false), builderRoot = ref(null)
 const revision = ref(null), loaded = ref(false)
 let flowInstance
 function onFlowInit(instance) { flowInstance = instance; setTimeout(() => instance.fitView({ padding: 0.2, maxZoom: 1 }), 50) }
-async function toggleFullscreen(diagram = false) { if (diagram) { fullscreen.value = !fullscreen.value; await nextTick(); flowInstance?.fitView({ padding: 0.2 }); return } try { if (document.fullscreenElement) await document.exitFullscreen(); else await builderRoot.value.requestFullscreen() } catch { showToast('Tela cheia indisponível neste navegador.') } }
+function toggleDiagramFullscreen() {
+  fullscreen.value = !fullscreen.value
+  lastEscape = 0
+}
+async function toggleBrowserFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await builderRoot.value.requestFullscreen()
+  } catch { showToast('Tela cheia indisponível neste navegador.') }
+}
 let copiedGraph = null, lastEscape = 0
 let savedSnapshot = '', trackedSnapshot = '', historyTimer, suspendTracking = true
 
@@ -165,10 +174,21 @@ function simulate() {
   simulationFlow.value = JSON.parse(serializeEditor())
   simulatorOpen.value = true
 }
+function closeSimulation() {
+  simulatorOpen.value = false
+  simulationNode.value = null
+  simulationFlow.value = null
+}
+watch(simulatorOpen, value => { if (props.studio) emit('simulation-change', value) })
+watch(fullscreen, async value => {
+  if (props.studio) emit('fullscreen-change', value)
+  await nextTick()
+  requestAnimationFrame(() => flowInstance?.fitView({ padding: 0.2, maxZoom: 1 }))
+})
 watch([dirty, loading, loaded, saving, revision, () => meta.value.name], () => {
   if (props.studio) emit('state-change', { id: flowId.value, dirty: dirty.value, loading: loading.value, saving: saving.value, loaded: loaded.value, version: revision.value, name: meta.value.name })
 }, { immediate: true })
-defineExpose({ reloadIfClean, simulate, reloadResources: () => Promise.allSettled([loadAssets(), loadIntegrations()]) })
+defineExpose({ reloadIfClean, simulate, closeSimulation, exitFullscreen: () => { fullscreen.value = false }, reloadResources: () => Promise.allSettled([loadAssets(), loadIntegrations()]) })
 async function save() {
   if (prototype) { showToast('Demonstração: o fluxo pode ser editado nesta tela, mas não pode ser salvo ou aplicado.'); return }
   if (!mayEdit.value || !loaded.value) return
@@ -329,8 +349,8 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
       <button v-can-action="'web_flows.import'" :disabled="!mayEdit" class="icon-button responsive-action" title="Importar fluxo JSON" aria-label="Importar fluxo JSON" @click="jsonInput.click()"><span aria-hidden="true">↥</span><span class="action-label">Importar JSON</span></button>
       <button v-can-action="'web_flows.export'" class="icon-button responsive-action" title="Exportar fluxo JSON" aria-label="Exportar fluxo JSON" @click="exportFlow"><span aria-hidden="true">↧</span><span class="action-label">Exportar JSON</span></button>
       <button v-if="!studio" v-can-action="'web_flows.execute'" class="icon-button responsive-action" title="Simular bot" aria-label="Simular bot" @click="simulate"><span aria-hidden="true">▷</span><span class="action-label">Simular bot</span></button>
-      <button class="icon-button responsive-action" title="Tela cheia do diagrama (Esc duas vezes para sair)" aria-label="Tela cheia do diagrama" :disabled="fullscreen" @click="fullscreen = true; lastEscape = 0"><span aria-hidden="true">⛶</span><span class="action-label">Diagrama</span></button>
-      <button class="icon-button responsive-action" title="Configurações gerais do fluxo" aria-label="Configurações gerais do fluxo" @click="generalOpen = true"><span aria-hidden="true">⚙</span><span class="action-label">Configurações</span></button><button class="icon-button responsive-action" title="Tela cheia do navegador" aria-label="Tela cheia do navegador" @click="toggleFullscreen()"><span aria-hidden="true">⛶</span><span class="action-label">Tela cheia</span></button><button v-if="dirty" class="btn ghost" @click="discard">Descartar</button>
+      <button class="icon-button responsive-action" :title="fullscreen ? 'Sair da tela cheia do diagrama' : 'Tela cheia do diagrama'" :aria-label="fullscreen ? 'Sair da tela cheia do diagrama' : 'Tela cheia do diagrama'" :aria-pressed="fullscreen" @click="toggleDiagramFullscreen"><span aria-hidden="true">{{ fullscreen ? '↙' : '⛶' }}</span><span class="action-label">{{ fullscreen ? 'Sair da tela cheia' : 'Diagrama' }}</span></button>
+      <button class="icon-button responsive-action" title="Configurações gerais do fluxo" aria-label="Configurações gerais do fluxo" @click="generalOpen = true"><span aria-hidden="true">⚙</span><span class="action-label">Configurações</span></button><button v-if="!studio" class="icon-button responsive-action" title="Tela cheia do navegador" aria-label="Tela cheia do navegador" @click="toggleBrowserFullscreen"><span aria-hidden="true">⛶</span><span class="action-label">Tela cheia</span></button><button v-if="dirty" class="btn ghost" @click="discard">Descartar</button>
       <button v-can-action="'web_flows.edit'" class="btn" :disabled="prototype || !mayEdit || !loaded || saving || localConflicts.length > 0" @click="save">{{ prototype ? 'Salvar indisponível na demonstração' : saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
     </div>
     <div v-if="analysis.errors?.length || localConflicts.length" class="validation danger"><b>Corrija antes de salvar:</b> {{ analysis.errors?.[0] || `Há ${localConflicts.length} palavra(s)-chave repetida(s).` }}</div>
@@ -441,7 +461,7 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
     </div>
     <div v-if="toast" class="toast">{{ toast }}</div>
     <div v-if="generalOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Configurações gerais"><section class="card general-dialog"><header><h2>Configurações gerais do fluxo</h2><button class="icon-button" aria-label="Fechar" @click="generalOpen = false">×</button></header><fieldset class="permission-fields" :disabled="!mayEdit"><FlowGeneralSettings :nodes="nodes" v-model="meta.settings" /></fieldset><button class="btn" @click="generalOpen = false">Concluir</button><p>As alterações são aplicadas ao salvar o fluxo.</p></section></div>
-    <FlowSimulator v-if="simulatorOpen" :flow="simulationFlow" :assets="assets" :payment-configs="paymentConfigs" :detached="studio" @close="simulatorOpen = false; simulationNode = null; simulationFlow = null" @step="simulationNode = $event" />
+    <FlowSimulator v-if="simulatorOpen" :flow="simulationFlow" :assets="assets" :payment-configs="paymentConfigs" :detached="studio" :docked="studio" @close="closeSimulation" @step="simulationNode = $event" />
   </section>
 </template>
 
@@ -511,7 +531,10 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
   z-index: 50;
 }
 .builder-page--studio .inspector-close { display: inline-grid; float: right; }
-.builder-page--studio.is-fullscreen .builder-shell { height: auto; }
+.builder-page--studio.is-fullscreen { width: 100vw; max-width: none; height: 100dvh; max-height: none; padding: clamp(8px,2vw,18px) clamp(8px,2vw,18px) calc(80px + env(safe-area-inset-bottom,0px)); z-index: 4100; }
+.builder-page--studio.is-fullscreen .builder-head { flex-shrink: 0; }
+.builder-page--studio.is-fullscreen .builder-shell { flex: 1 1 0; height: auto; min-height: 0; }
+.builder-page--studio.is-fullscreen .flow-canvas { width: 100%; height: 100%; min-height: 0; }
 @media (max-width: 580px) {
   .builder-page--studio .builder-shell { height: clamp(420px, 65dvh, 620px); }
 }

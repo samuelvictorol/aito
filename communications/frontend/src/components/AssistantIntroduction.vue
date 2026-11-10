@@ -26,7 +26,7 @@ const abilities = [
     <footer>
       <div class="assistant-introduction__account"><q-icon name="key"/><p>{{canConfigure?'Para começar, conecte uma chave OpenAI sua ou importe uma já cadastrada neste sistema. O uso é cobrado pela OpenAI na conta da chave escolhida.':'A administração precisa configurar a chave OpenAI da instalação antes do seu acesso. O consumo usa a conta da chave configurada; seus dados e ações continuam limitados às permissões do seu perfil.'}}</p></div>
       <q-btn v-if="canConfigure" unelevated no-caps icon="arrow_forward" label="Configurar meu agente" class="assistant-introduction__start" @click="$emit('configure')"/>
-      <q-btn v-else unelevated no-caps label="Entendi" class="assistant-introduction__start" @click="$emit('close')"/><small>A conversa só é liberada depois da configuração. Chaves protegidas no servidor; contexto temporário.</small>
+      <q-btn v-else unelevated no-caps label="Entendi" class="assistant-introduction__start" @click="$emit('close')"/>
     </footer>
   </q-card>
 </template>

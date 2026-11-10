@@ -823,7 +823,7 @@ onBeforeUnmount(() => {
     <q-footer v-if="!isMobileApp && !hideWebChatFooter" class="app-footer" :style="{ bottom: '0px' }">
       <WhiteLabelFooter />
     </q-footer>
-    <AdminAssistant v-if="auth.isAuthenticated && (auth.user?.role === 'admin' || canArea(auth.user, 'assistant'))" :chat-mode="isWhatsappWebChat || ['/app-mobile/cloud','/telegram','/email'].includes(route.path)" />
+    <AdminAssistant v-if="auth.isAuthenticated && !['ai-campaigns', 'ai-campaign-logs', 'ai-chatbot'].includes(route.name) && (auth.user?.role === 'admin' || canArea(auth.user, 'assistant'))" :chat-mode="isWhatsappWebChat || ['/app-mobile/cloud','/telegram','/email'].includes(route.path)" />
   </q-layout>
 </template>
 

@@ -1,12 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
-const floatPosition=ref(null)
-let floatDrag=null,suppressFloatClick=false
-function floatDown(e){if(e.button!==0)return;const b=e.currentTarget.getBoundingClientRect();floatDrag={x:e.clientX,y:e.clientY,left:b.left,top:b.top,moved:false};e.currentTarget.setPointerCapture(e.pointerId)}
-function floatMove(e){if(!floatDrag)return;const dx=e.clientX-floatDrag.x,dy=e.clientY-floatDrag.y;if(Math.hypot(dx,dy)<6&&!floatDrag.moved)return;floatDrag.moved=true;floatPosition.value={left:Math.max(0,Math.min(window.innerWidth-70,floatDrag.left+dx))+'px',top:Math.max(0,Math.min(window.innerHeight-70,floatDrag.top+dy))+'px',right:'auto',bottom:'auto'}}
-function floatUp(){suppressFloatClick=!!floatDrag?.moved;floatDrag=null}
-function floatClick(){if(suppressFloatClick){suppressFloatClick=false;return}open()}
 import { QDialog, useQuasar } from 'quasar'
+import { fabMeta } from '@quasar/extras/fontawesome-v6'
 import { useAuthStore } from '../stores/auth.js'
 import { useWhiteLabel } from '../services/whitelabel.js'
 import { errorMessage } from '../services/http.js'
@@ -17,15 +12,18 @@ import AssistantActionReview from './AssistantActionReview.vue'
 import AssistantFile from './AssistantFile.vue'
 import AssistantIntroduction from './AssistantIntroduction.vue'
 import AssistantSettingsDialog from './AssistantSettingsDialog.vue'
+import AssistantFloat from './AssistantFloat.vue'
+import { createAssistantComposerKeys } from '../services/assistant-composer-keys.js'
 
 const props = defineProps({
   chatMode: Boolean,
   embedded: Boolean,
+  floating: Boolean,
   scope: { type: String, default: '' },
   workspaceContext: { type: String, default: '' },
   actionAllowed: { type: Function, default: () => true },
 })
-const emit = defineEmits(['action-applied', 'actions-updated', 'draft-updated', 'files-updated'])
+const emit = defineEmits(['action-applied', 'actions-updated', 'draft-updated', 'files-updated', 'visibility-change'])
 const sessionApi = createAssistantSessionApi(props.scope)
 provide(ASSISTANT_SESSION_API, sessionApi)
 const spoken = ref(false)
@@ -39,14 +37,35 @@ let lastSpeech = ''
 
 const $q = useQuasar(), auth = useAuthStore(), { branding } = useWhiteLabel()
 const canConfigure = ref(!auth.isCollaborator), canExecute = ref(!auth.isCollaborator), sharedAccount = ref(auth.isCollaborator)
-const dialog = ref(false), introDialog = ref(false), settingsDialog = ref(false), logsDialog = ref(false), loadErrorDialog = ref(false), shortcutsVisible = ref(!props.embedded), opening = ref(false)
+const dialog = ref(false), introDialog = ref(false), settingsDialog = ref(false), logsDialog = ref(false), loadErrorDialog = ref(false), shortcutsVisible = ref(true), opening = ref(false)
 const thread = ref(null), input = ref(null), fileInput = ref(null), draft = ref('')
 const attachmentQueue = createAssistantAttachmentQueue({ upload: sessionApi.upload, validate: assistantAttachmentError })
 const { files: attachments, uploading, error: attachmentError, progress: attachmentProgress } = attachmentQueue
 const loading = ref(false), sending = ref(false), transcribing = ref(false), confirming = ref(false), error = ref(''), configError = ref(''), dragging = ref(false)
 const configured = ref(false), models = ref([])
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
-const theme = computed(() => assistantTheme(branding))
+const inline = computed(() => props.embedded && !props.floating)
+const profiles = {
+  campaign: {
+    name: 'Agente de campanhas', icon: fabMeta, color: '#2087e0',
+    heading: 'Vamos montar sua campanha?', hint: 'Defina o público, a mensagem e os canais. Revise o resultado antes de enviar.',
+    placeholder: 'Descreva sua campanha…',
+    shortcuts: ['campaign', 'meta', 'email'],
+  },
+  chatbot: {
+    name: 'Agente de chatbot', icon: 'qr_code_2', color: '#28a97d',
+    heading: 'Como seu bot deve atender?', hint: 'Descreva a jornada do cliente. Posso preparar o fluxo, conectar integrações e sugerir testes.',
+    placeholder: 'Descreva o atendimento…',
+    shortcuts: ['flow', 'flow-payment', 'flow-improve'],
+  },
+}
+const profile = computed(() => profiles[props.scope])
+const agentName = computed(() => profile.value?.name || ASSISTANT_NAME)
+const shortcuts = computed(() => profile.value
+  ? profile.value.shortcuts.map(id => ASSISTANT_SHORTCUTS.find(item => item.id === id)).filter(Boolean)
+  : ASSISTANT_SHORTCUTS.filter(item => !item.id.startsWith('flow-')))
+const theme = computed(() => assistantTheme(profile.value ? { primaryColor: profile.value.color } : branding))
+const { keydown: keyDown, reset: resetKeys } = createAssistantComposerKeys(send)
 const emptySession = () => ({ messages: [], events: [], usage: {}, pendingActions: [], files: [], campaignDraft: null, running: false, progress: 0 })
 const session = reactive(emptySession())
 const recording = ref(false), recordSeconds = ref(0)
@@ -92,7 +111,7 @@ function onSettingsSaved(value) {
 function onConfigurationChanged(event) {
   const wasConfigured = configured.value
   applyConfig(event.detail)
-  if (props.embedded && configured.value && !wasConfigured) void enterChat()
+  if (props.embedded && configured.value && !wasConfigured) void (inline.value ? enterChat() : pollWorkspace())
 }
 function syncWorkspace(value) {
   if (!props.embedded) return
@@ -130,6 +149,14 @@ function syncWorkspace(value) {
   }
   loadedSession = true
 }
+async function pollWorkspace() {
+  await loadState()
+  if (session.running) void poll()
+}
+function minimize() { dialog.value = false }
+function toggleChat() { if (dialog.value) minimize(); else void open() }
+defineExpose({ minimize })
+
 async function enterChat(){
   if(!configured.value)return
   introDialog.value=false;dialog.value=true;loading.value=true
@@ -154,9 +181,9 @@ async function open() {
   if(opening.value)return
   opening.value=true;error.value=''
   const loaded=await loadConfig()
-  if(!loaded&&!props.embedded)loadErrorDialog.value=true
+  if(!loaded&&!inline.value)loadErrorDialog.value=true
   else if(loaded&&configured.value)await enterChat()
-  else if(!props.embedded) introDialog.value=true
+  else if(!inline.value) introDialog.value=true
   opening.value=false
 }
 async function retryOpen(){loadErrorDialog.value=false;await open()}
@@ -168,13 +195,12 @@ function chooseShortcut(item) {if(!configured.value||!dialog.value)return;draft.
 async function send() {
   if(busy.value||(!draft.value.trim()&&!attachments.value.length))return
   if(!configured.value||!dialog.value)return
-  sending.value=true;error.value=''
+  resetKeys();sending.value=true;error.value=''
   try {
     await sessionApi.message({text:draft.value.trim(),attachmentIds:attachments.value.map(file=>file.id), ...(props.embedded && props.workspaceContext ? { workspaceContext: props.workspaceContext.slice(0, 12000) } : {}) })
     draft.value='';attachmentQueue.clear();session.running=true;if($q.screen.lt.md)shortcutsVisible.value=false;await loadState();await scrollBottom(true)
   }catch(cause){error.value=errorMessage(cause)}finally{sending.value=false;poll()}
 }
-function keyDown(event) {if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&$q.screen.gt.sm){event.preventDefault();send()}}
 async function attachFiles(files) {
   dragging.value=false
   if(!configured.value||!dialog.value)return
@@ -231,11 +257,16 @@ async function toggleRecording() {
 }
 function cancelRecording(){recorderCancelled=true;if(recorder?.state==='recording')recorder.stop();releaseRecorder()}
 watch(() => config.model, () => { if (!effortOptions.value.some(item => item.value === config.effort)) config.effort = 'medium' })
-watch(dialog,value=>{if(!value){clearTimeout(timer);pollVersion++;cancelRecording();if(session.running)timer=setTimeout(poll,5000)}})
+watch(dialog,value=>{
+  if (props.floating) emit('visibility-change', value)
+  if(!value){clearTimeout(timer);pollVersion++;resetKeys();cancelRecording();if(session.running)timer=setTimeout(poll,5000)}
+})
 watch(spoken, enabled => { if (!enabled && speechSupported) window.speechSynthesis.cancel() })
 onMounted(() => {
   window.addEventListener(ASSISTANT_CONFIG_EVENT, onConfigurationChanged)
-  if (props.embedded) void loadConfig().then(loaded => { if (loaded && configured.value && !dialog.value) return enterChat() })
+  if (props.embedded) void loadConfig().then(loaded => {
+    if (loaded && configured.value && !dialog.value) return inline.value ? enterChat() : pollWorkspace()
+  })
 })
 onBeforeUnmount(() => {
   destroyed = true
@@ -250,21 +281,38 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <button v-if="!embedded&&!dialog&&!introDialog&&!settingsDialog" class="aito-assistant-float" @dragstart.prevent :style="floatPosition" @pointerdown="floatDown" @pointermove="floatMove" @pointerup="floatUp" @pointercancel="floatUp" :class="{'aito-assistant-float--chat':chatMode}" type="button" aria-label="Abrir Aito I.A" :disabled="opening" @click="floatClick"><q-spinner v-if="opening" color="white"/><img v-else src="/comunicacao/app/ia.gif" alt=""/><i v-if="session.running"/><q-tooltip>Aito I.A · seu agente do {{branding.appName}}</q-tooltip></button>
+  <Teleport to="body">
+    <AssistantFloat
+      v-if="floating || !inline && !dialog && !introDialog && !settingsDialog"
+      :label="dialog ? 'Minimizar ' + agentName : 'Abrir ' + agentName"
+      :kind="floating ? 'chatbot' : 'admin'" :expanded="dialog" :loading="opening" :chat-mode="chatMode" @toggle="toggleChat"
+    >
+      <q-icon v-if="floating" :name="dialog ? 'close' : 'auto_awesome'" />
+      <img v-else src="/comunicacao/app/ia.gif" alt="" />
+    </AssistantFloat>
+  </Teleport>
   <q-dialog v-model="introDialog" :maximized="$q.screen.lt.sm"><AssistantIntroduction :app-name="branding.appName" :can-configure="canConfigure" :shared-account="sharedAccount" :style="theme" :error="configError" @configure="openSettings" @retry="loadConfig" @close="introDialog=false"/></q-dialog>
   <q-dialog v-model="loadErrorDialog"><q-card class="aito-config-unavailable aito-assistant-shell" :style="theme"><q-card-section><q-icon name="cloud_off" size="36px"/><h2>Não foi possível consultar o agente</h2><p>Isso não significa que sua configuração foi apagada. Tente novamente para carregar a chave e as preferências já salvas.</p><q-banner rounded class="aito-error" role="alert">{{configError}}</q-banner></q-card-section><q-card-actions align="right"><q-btn flat no-caps label="Fechar" v-close-popup/><q-btn class="aito-primary" unelevated no-caps icon="refresh" label="Tentar novamente" :loading="opening" @click="retryOpen"/></q-card-actions></q-card></q-dialog>
+  <Teleport to="body" :disabled="!floating">
   <component
     :is="embedded ? 'div' : QDialog"
     v-if="configured"
-    :class="{ 'aito-embedded': embedded }"
+    v-show="!floating || dialog"
+    :class="{ 'aito-embedded': inline, 'aito-floating-panel': floating }"
     v-bind="embedded ? {} : { modelValue: dialog, persistent: true, noShake: true, maximized: $q.screen.lt.md, transitionShow: 'slide-up', transitionHide: 'slide-down' }"
+    :role="floating ? 'region' : undefined" :aria-label="floating ? agentName : undefined"
     @update:model-value="dialog = $event"
+    @keydown.esc="floating && minimize()"
   >
-    <q-card class="aito-assistant-shell" :style="theme" @paste="pasteFiles" @dragover="dragOver" @dragleave.self="dragging=false" @drop="drop">
-      <header class="aito-assistant-header"><img src="/comunicacao/app/ia.gif" alt=""/><div><strong>{{ASSISTANT_NAME}}</strong><span>Seu agente do {{branding.appName}}</span></div><nav><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="embedded&&speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/><q-btn v-if="!embedded" flat round dense icon="close" aria-label="Minimizar Aito I.A" v-close-popup/></nav></header>
+    <q-card class="aito-assistant-shell" :class="scope && 'aito-assistant-shell--' + scope" :style="theme" @paste="pasteFiles" @dragover="dragOver" @dragleave.self="dragging=false" @drop="drop">
+      <header class="aito-assistant-header"><q-icon v-if="profile" :name="profile.icon" class="aito-specialty-mark" /><img v-else src="/comunicacao/app/ia.gif" alt=""/><div><strong>{{agentName}}</strong><span v-if="!profile">Seu agente do {{branding.appName}}</span></div><nav><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="embedded&&speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/><q-btn v-if="!inline" flat round dense icon="close" :aria-label="'Minimizar ' + agentName" @click="minimize"/></nav></header>
       <div v-if="loading" class="aito-initial-loading"><q-spinner color="primary"/> Preparando seu espaço…</div>
       <div v-else ref="thread" class="aito-assistant-thread"><q-banner v-if="sharedAccount" dense rounded class="aito-shared-account" role="status"><template #avatar><q-icon name="policy"/></template>Você usa a conta OpenAI configurada pela administração. {{canExecute?'Ações seguem suas permissões e exigem revisão.':'Seu acesso permite conversar e consultar dados autorizados, sem executar alterações.'}}</q-banner>
-        <section v-if="!session.messages.length" class="aito-assistant-welcome"><span class="aito-welcome-mark"><q-icon name="auto_awesome"/></span><div class="aito-eyebrow">PENSE. CRIE. RESOLVA.</div><h2>{{embedded ? (scope === 'campaign' ? 'Vamos montar sua campanha?' : 'Como seu bot deve atender?') : 'O que vamos fazer no ' + branding.appName + '?'}}</h2><p>Transforme ideias, prints e instruções em configurações, fluxos e notificações. Eu preparo o trabalho; você revisa as ações antes de executar.</p></section>
+        <section v-if="!session.messages.length" class="aito-assistant-welcome">
+          <span class="aito-welcome-mark"><q-icon :name="profile?.icon || 'auto_awesome'"/></span>
+          <h2>{{ profile?.heading || 'Como posso ajudar no ' + branding.appName + '?' }}</h2>
+          <p>{{ profile?.hint || 'Consulte configurações, investigue falhas ou prepare uma ação para revisão.' }}</p>
+        </section>
         <AssistantMessage v-for="message in session.messages" :key="message.id" :message="message"/>
         <section v-if="generatedFiles.length" class="aito-generated"><h3><q-icon name="folder_open"/> Arquivos desta conversa</h3><div><AssistantFile v-for="file in generatedFiles" :key="file.id" :file="file"/></div></section>
         <AssistantActionReview v-for="action in pending" :key="action.id" :action="action" :busy="busy" :execute-allowed="canExecute && actionAllowed(action)" @confirm="confirmAction" @cancel="cancelAction" @revise="reviseAction"/>
@@ -272,24 +320,23 @@ onBeforeUnmount(() => {
         <q-banner v-if="error" rounded class="aito-error" role="alert"><template #avatar><q-icon name="info_outline"/></template>{{error}}<template #action><q-btn flat dense no-caps label="Atualizar" @click="loadState"/></template></q-banner>
       </div>
       <section class="aito-composer-area">
-        <button v-if="!embedded" class="aito-shortcuts-toggle" type="button" @click="shortcutsVisible=!shortcutsVisible"><q-icon name="bolt"/> Atalhos para começar <q-icon :name="shortcutsVisible?'expand_less':'expand_more'"/></button>
-        <div v-if="!embedded&&shortcutsVisible" class="aito-shortcuts"><button v-for="item in ASSISTANT_SHORTCUTS" :key="item.id" type="button" :disabled="busy" @click="chooseShortcut(item)"><q-icon :name="item.icon"/><span>{{item.label}}</span><q-tooltip>{{item.description}}</q-tooltip></button></div>
+        <button class="aito-shortcuts-toggle" type="button" @click="shortcutsVisible=!shortcutsVisible"><q-icon name="bolt"/> Atalhos para começar <q-icon :name="shortcutsVisible?'expand_less':'expand_more'"/></button>
+        <div v-if="shortcutsVisible" class="aito-shortcuts"><button v-for="item in shortcuts" :key="item.id" type="button" :disabled="busy" @click="chooseShortcut(item)"><q-icon :name="item.icon"/><span>{{item.label}}</span><q-tooltip>{{item.description}}</q-tooltip></button></div>
         <div class="aito-composer" :class="{'aito-composer--drag':dragging}">
           <div v-if="attachments.length" class="aito-attachment-heading"><span>{{attachments.length}} / 8 anexos</span><small>Enviados juntos com sua próxima mensagem</small></div>
           <div v-if="attachments.length" class="aito-draft-files"><article v-for="file in attachments" :key="file.id" class="aito-draft-file"><img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.name"/><q-icon v-else :name="file.kind==='image'?'image':'description'" size="26px"/><div><strong :title="file.name">{{file.name}}</strong><small>{{fileSize(file.size)}}</small></div><q-btn flat round dense icon="close" :disable="busy" :aria-label="'Remover anexo '+file.name" @click="attachmentQueue.remove(file.id)"/></article></div>
           <div v-if="uploading" class="aito-upload-progress" role="status"><q-spinner size="14px"/><span>Anexando {{Math.min(attachmentProgress.completed+1,attachmentProgress.total)}} de {{attachmentProgress.total}} arquivo(s)…</span></div>
           <p v-if="attachmentError" class="aito-attachment-error" role="alert">{{attachmentError}}</p>
           <div v-if="recording" class="aito-recording"><span/><strong>Gravando {{Math.floor(recordSeconds/60)}}:{{String(recordSeconds%60).padStart(2,'0')}}</strong><q-btn flat dense no-caps label="Descartar" @click="cancelRecording"/><q-btn unelevated dense no-caps class="aito-primary" icon="stop" label="Transcrever" @click="toggleRecording"/></div>
-          <q-input v-else ref="input" v-model="draft" type="textarea" autogrow borderless :disable="sending||transcribing" :placeholder="configured?'Peça algo, cole prints ou anexe vários arquivos…':'Conecte sua chave OpenAI para começar…'" maxlength="30000" aria-label="Mensagem para Aito I.A" @keydown="keyDown"/>
+          <q-input v-else ref="input" v-model="draft" type="textarea" autogrow borderless :disable="sending||transcribing" :placeholder="profile?.placeholder || 'Escreva sua mensagem…'" maxlength="30000" :aria-label="'Mensagem para ' + agentName" @keydown="keyDown" @blur="resetKeys"/>
           <div class="aito-composer-controls"><input ref="fileInput" type="file" hidden multiple accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.html,.css" @change="attachFiles($event.target.files)"/><q-btn flat round dense icon="add" :loading="uploading" :disable="busy||recording" aria-label="Anexar arquivos ou prints" @click="fileInput?.click()"><q-tooltip>Selecionar vários arquivos · até 8 por mensagem, 20 MB cada e 40 MB por conversa</q-tooltip></q-btn><q-btn v-if="recordingSupported" flat round dense :icon="recording?'stop':'mic_none'" :loading="transcribing" :disable="busy" aria-label="Ditar mensagem" @click="toggleRecording"><q-tooltip>Ditar e revisar antes de enviar</q-tooltip></q-btn><q-space/><q-btn v-if="!configured" flat no-caps dense icon="key" label="Conectar chave" @click="openSettings"/><template v-else-if="canConfigure"><q-btn flat dense no-caps icon="bolt" :label="currentEffort" v-if="usesReasoning" class="aito-effort-button" :disable="busy"><q-popup-proxy class="aito-effort-popup" :style="theme"><section><strong>{{currentEffort}}</strong><small>{{selectedModel}}</small><q-slider v-model="effortIndex" :min="0" :max="effortOptions.length-1" :step="1" markers color="primary" @change="savePreference"/><div><span>Mais rápido</span><span>Mais profundo</span></div></section></q-popup-proxy></q-btn><q-btn flat dense round icon="expand_more" aria-label="Escolher modelo" @click="openSettings"/></template><span v-else class="aito-assigned-model">{{selectedModel}}</span><q-btn round unelevated class="aito-primary" icon="arrow_upward" :disable="busy||recording||(!draft.trim()&&!attachments.length)" :loading="sending" aria-label="Enviar para Aito I.A" @click="send"/></div>
-          <p v-if="!recording" class="aito-attachment-hint">Cole imagens (Ctrl+V), arraste ou selecione até 8 arquivos. Até 20 MB por arquivo e 40 MB por conversa.</p>
         </div>
-        <footer><span>{{transcribing?'Transcrevendo áudio para você revisar…':recording?'Até 2 minutos de áudio por gravação.':'Contexto temporário no Redis. Ações reais exigem sua revisão.'}}</span><span v-if="session.usage.totalTokens" class="aito-composer-cost" @click="logsDialog=true">{{formatAssistantTokens(session.usage.totalTokens)}} tokens</span></footer>
+        <footer v-if="transcribing || session.usage.totalTokens"><span v-if="transcribing" role="status">Transcrevendo áudio…</span><span v-if="session.usage.totalTokens" class="aito-composer-cost" @click="logsDialog=true">{{formatAssistantTokens(session.usage.totalTokens)}} tokens</span></footer>
       </section>
       <div v-if="dragging" class="aito-drop-overlay" @dragover.prevent @dragleave.prevent="dragging=false" @drop.stop="drop"><q-icon name="cloud_upload" size="60px"/><strong>Solte seus arquivos aqui</strong><span>Até 8 prints e documentos na mesma mensagem</span></div>
     </q-card>
   </component>
-  <q-banner v-else-if="embedded" rounded class="aito-embedded-connect">
+  <q-banner v-else-if="inline" rounded class="aito-embedded-connect">
     <template #avatar><q-icon name="auto_awesome" /></template>
     {{ configError || 'Conecte sua chave OpenAI para conversar com o agente.' }}
     <template #action>
@@ -297,6 +344,7 @@ onBeforeUnmount(() => {
       <q-btn v-if="configError" flat no-caps icon="refresh" label="Atualizar" @click="open" />
     </template>
   </q-banner>
+  </Teleport>
 
   <AssistantSettingsDialog v-if="canConfigure" v-model="settingsDialog" @saved="onSettingsSaved" />
 
@@ -309,17 +357,15 @@ onBeforeUnmount(() => {
 .aito-shared-account{background:var(--aito-tint);color:var(--aito-text);font-size:11px;line-height:1.7;margin-bottom:16px}.aito-shared-account .q-icon{color:var(--aito-accent)}.aito-assigned-model{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--aito-muted)}
 
 .aito-config-unavailable{width:520px;height:auto;max-height:90dvh}.aito-config-unavailable h2{font-size:21px;font-weight:700;line-height:1.4;margin:16px 0 10px}.aito-config-unavailable p{font-size:13px;line-height:1.7;color:var(--aito-muted)}.aito-config-unavailable>.q-card__section{padding:24px}.aito-config-unavailable>.q-card__actions{padding:16px 24px;border-top:1px solid var(--aito-line)}.aito-config-unavailable>.q-card__section>.q-icon{color:var(--aito-accent)}.aito-model-notice{background:#fff6e6;color:#755323;border:1px solid #e6d6b6;font-size:12px;line-height:1.7}
-.aito-assistant-float{touch-action:none;cursor:grab!important;position:fixed;right:20px;bottom:calc(42px + env(safe-area-inset-bottom,0px));z-index:1800;display:grid;width:4.15rem;height:4.15rem;padding:0;border:1px solid #13bc9d8c;border-radius:1.15rem;place-items:center;background:linear-gradient(135deg,#13bc9d,#12ad89);box-shadow:0 15px 40px #13bc9d57;cursor:pointer;transition:transform .2s,box-shadow .2s}.aito-assistant-float>img{width:3rem;height:3rem;object-fit:contain}.aito-assistant-float>i{position:absolute;right:5px;top:5px;width:10px;height:10px;background:#42cca4;border-radius:50%;box-shadow:0 0 0 4px #42cca425;animation:aito-pulse 1.5s infinite}.aito-assistant-float:focus-visible{outline:3px solid var(--brand);border-radius:18px}
-.aito-assistant-float.aito-assistant-float--chat{bottom:calc(140px + env(safe-area-inset-bottom,0px))}
 .aito-assistant-shell{background:var(--aito-background);color:var(--aito-text);border:1px solid var(--aito-line);border-radius:22px;box-shadow:0 30px 100px #101b2355;display:flex;flex-direction:column;width:1040px;max-width:96vw;height:min(88dvh,1000px);max-height:94dvh;overflow:hidden;font-family:Inter,"Segoe UI",sans-serif}.aito-assistant-header{display:flex;gap:12px;align-items:center;padding:15px 22px;border-bottom:1px solid var(--aito-line);flex:none}.aito-assistant-header>img{width:48px;height:48px;object-fit:contain}.aito-assistant-header>div{flex:1;min-width:0}.aito-assistant-header strong{display:block;font-size:18px;letter-spacing:-.5px}.aito-assistant-header>div>span{display:block;color:var(--aito-muted);font-size:11px;margin-top:4px}.aito-assistant-header nav{display:flex;gap:4px;flex-shrink:0}.aito-assistant-header .q-btn{color:var(--aito-muted);min-width:40px;min-height:40px}.aito-assistant-thread{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:15px clamp(20px,5vw,75px) 30px;scrollbar-width:thin;scrollbar-color:var(--aito-line) transparent}.aito-assistant-welcome{text-align:center;max-width:570px;margin:40px auto 30px}.aito-welcome-mark{display:grid;place-items:center;width:58px;height:58px;margin:0 auto 22px;border-radius:18px;background:linear-gradient(145deg,#6ce7c626,#94b4ff1c);border:1px solid #74d8bf30;color:var(--aito-accent);font-size:28px}.aito-eyebrow{font-size:9px;letter-spacing:3px;color:var(--aito-accent);font-weight:800}.aito-assistant-welcome h2{font-size:clamp(24px,4vw,36px);line-height:1.3;font-weight:600;letter-spacing:-1.3px;margin:15px 0}.aito-assistant-welcome p{font-size:13px;color:var(--aito-muted);line-height:1.8;margin:0}.aito-initial-loading{flex:1;display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;color:var(--aito-muted)}
 .aito-composer-area{flex:none;padding:8px clamp(16px,4vw,42px) 12px;background:var(--aito-background)}.aito-shortcuts-toggle{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--aito-muted);font-size:10px;cursor:pointer;padding:0 0 10px}.aito-shortcuts-toggle>.q-icon:first-child{color:var(--aito-accent)}.aito-shortcuts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 12px}.aito-shortcuts>button{display:flex;align-items:center;gap:7px;min-width:0;border:1px solid var(--aito-line);border-radius:9px;background:transparent;color:var(--aito-muted);padding:9px 10px;font-size:11px;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}.aito-shortcuts>button:hover{background:var(--aito-tint);border-color:var(--aito-accent)}.aito-shortcuts>button:disabled{opacity:.4;cursor:default}.aito-shortcuts .q-icon{font-size:16px;color:var(--aito-accent)}.aito-shortcuts span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aito-composer{padding:8px 12px 10px;border:1px solid var(--aito-line);background:var(--aito-panel);border-radius:20px;box-shadow:0 2px 16px #00000015}.aito-composer:focus-within{border-color:var(--aito-accent)}.aito-composer :deep(.q-field__control){min-height:58px;padding:4px 7px}.aito-composer :deep(textarea){font-size:14px!important;line-height:1.65!important;max-height:180px!important;color:var(--aito-text)}.aito-composer-controls{display:flex;align-items:center;gap:5px;margin-top:4px}.aito-composer-controls .q-btn{color:var(--aito-muted)}.aito-primary{background:var(--aito-accent)!important;color:white!important}.aito-effort-button{font-size:11px}.aito-composer-area>footer{display:flex;justify-content:space-between;gap:10px;margin-top:8px;color:var(--aito-muted);font-size:9px;text-align:center}.aito-composer-cost{cursor:pointer;white-space:nowrap;color:var(--aito-accent)}.aito-draft-files{display:flex;flex-wrap:wrap;gap:4px;padding:4px}.aito-draft-files .q-chip{background:var(--aito-tint);color:var(--aito-text);max-width:100%;font-size:10px}.aito-draft-files :deep(.q-chip__content){display:block;overflow:hidden;text-overflow:ellipsis}.aito-running{margin:18px 0}.aito-running>div:first-child{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--aito-muted);margin-bottom:10px}.aito-running span{flex:1}.aito-running button{border:0;background:none;color:var(--aito-accent);font-size:11px;cursor:pointer}.aito-error{background:#fff0ee;color:#8c302a;font-size:12px;margin-top:12px;border:1px solid #efc7c2}.aito-error :deep(.q-banner__avatar){min-width:30px}.aito-generated{margin:20px 0}.aito-generated h3{font-size:13px;font-weight:600}.aito-generated h3 .q-icon{margin-right:6px;color:var(--aito-accent)}.aito-generated>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.aito-drop-overlay{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;background:#f1fffbef;backdrop-filter:blur(8px);border:2px dashed var(--aito-accent);color:var(--aito-text);border-radius:20px}.aito-drop-overlay strong{font-size:24px}.aito-drop-overlay span{font-size:13px}.aito-recording{display:flex;align-items:center;gap:10px;padding:14px 7px;font-size:12px}.aito-recording>span{width:9px;height:9px;background:#b23939;border-radius:50%;animation:aito-pulse 1s infinite}.aito-recording strong{flex:1}.aito-recording .q-btn{font-size:10px}
 .aito-effort-popup{background:var(--aito-background)!important;color:var(--aito-text)!important;border:1px solid var(--aito-line)!important;border-radius:14px!important;min-width:290px}.aito-effort-popup section{padding:18px 22px}.aito-effort-popup strong,.aito-effort-popup small{display:block;text-align:center}.aito-effort-popup strong{color:var(--aito-accent);font-size:16px}.aito-effort-popup small{font-size:12px;color:var(--aito-muted);margin-top:5px}.aito-effort-popup section>div{display:flex;justify-content:space-between;color:var(--aito-muted);font-size:9px}
 .aito-settings,.aito-logs{width:660px;height:auto;max-height:90dvh;border-radius:20px}.aito-settings>header,.aito-logs>header{display:flex;gap:10px;align-items:center;padding:20px 22px;border-bottom:1px solid var(--aito-line);flex:none}.aito-settings>header>div,.aito-logs>header>div{flex:1;min-width:0}.aito-settings>header strong,.aito-logs>header strong{display:block;font-size:18px;line-height:1.4}.aito-settings>header span,.aito-logs>header span{display:block;color:var(--aito-muted);font-size:11px;margin-top:4px;line-height:1.6}.aito-usage{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:20px 22px}.aito-usage article{padding:14px;background:var(--aito-panel);border:1px solid var(--aito-line);border-radius:12px;min-width:0}.aito-usage small{font-size:10px;display:block;color:var(--aito-muted)}.aito-usage strong{display:block;font-size:20px;font-weight:600;margin:10px 0;line-height:1.4;overflow-wrap:anywhere}.aito-usage span{display:block;font-size:9px;color:var(--aito-muted);line-height:1.6}.aito-logs-progress{padding:0 22px 15px}.aito-logs-progress>div:first-child{display:flex;justify-content:space-between;font-size:11px;color:var(--aito-muted);margin-bottom:10px}.aito-event-list{overflow:auto;max-height:50dvh;padding:0 22px}.aito-event-list>article{display:flex;gap:10px;padding:13px 0;border-bottom:1px solid var(--aito-line);font-size:12px;line-height:1.6}.aito-event-list>article>.q-icon{font-size:17px;margin-top:2px;color:var(--aito-accent)}.aito-event-list .aito-event--success>.q-icon{color:#217956}.aito-event-list .aito-event--error>.q-icon{color:#b23939}.aito-event-list .aito-event--warning>.q-icon{color:#946112}.aito-event-list time{display:block;font-size:9px;color:var(--aito-muted);margin-top:4px}.aito-event-list>p{font-size:12px;color:var(--aito-muted);padding:30px;text-align:center}.aito-log-note{padding:18px 22px;color:var(--aito-muted);font-size:10px;line-height:1.7;border-top:1px solid var(--aito-line)}
 @keyframes aito-pulse{50%{opacity:.4}}
-.aito-assistant-float:hover{transform:translateY(-2px)}.aito-assistant-float:focus-visible{outline-offset:4px}.aito-assistant-header,.aito-settings>header,.aito-logs>header{background:linear-gradient(110deg,#fff,var(--aito-panel))}.aito-settings :deep(.q-field__control){background:white;border-radius:12px}.aito-settings :deep(.q-field__control:before){border-color:var(--aito-line)}.aito-settings :deep(.q-field__native),.aito-settings :deep(.q-field__label){color:var(--aito-text)}.aito-settings :deep(.q-field__bottom){color:var(--aito-muted)}.aito-composer{background:white}.aito-shortcuts>button{background:white}.aito-usage article{background:white}
-@media(max-width:1023px){.aito-assistant-shell{max-width:100vw;width:100vw;height:100dvh;max-height:100dvh;border-radius:0;border:0}.aito-assistant-header{padding:9px 13px;gap:7px}.aito-assistant-header>img{width:38px;height:38px}.aito-assistant-header strong{font-size:16px}.aito-assistant-header>div>span{font-size:9px}.aito-assistant-header nav{gap:4px}.aito-assistant-header .q-btn{font-size:12px}.aito-assistant-thread{padding:8px 18px 20px}.aito-assistant-welcome{margin:25px auto}.aito-composer-area{padding:7px 12px calc(8px + env(safe-area-inset-bottom,0px))}.aito-composer-area>footer{font-size:8px;line-height:1.5}.aito-shortcuts{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.aito-shortcuts>button{padding:8px 5px;flex-direction:column;gap:6px;text-align:center;font-size:9px}.aito-shortcuts .q-icon{font-size:17px}.aito-composer{border-radius:17px;padding:6px 8px}.aito-composer :deep(textarea){font-size:13px!important;max-height:120px!important}.aito-settings,.aito-logs{height:auto;max-height:94dvh;max-width:94vw;border-radius:18px}.aito-assistant-float{right:12px;bottom:calc(38px + env(safe-area-inset-bottom,0px));width:3.75rem;height:3.75rem}.aito-assistant-float>img{width:3rem;height:3rem;object-fit:contain}.aito-usage{padding:16px;gap:6px}.aito-usage article{padding:10px}.aito-usage strong{font-size:17px}.aito-usage small{font-size:9px}.aito-settings>header,.aito-logs>header{padding:16px}}
+.aito-assistant-header,.aito-settings>header,.aito-logs>header{background:linear-gradient(110deg,#fff,var(--aito-panel))}.aito-settings :deep(.q-field__control){background:white;border-radius:12px}.aito-settings :deep(.q-field__control:before){border-color:var(--aito-line)}.aito-settings :deep(.q-field__native),.aito-settings :deep(.q-field__label){color:var(--aito-text)}.aito-settings :deep(.q-field__bottom){color:var(--aito-muted)}.aito-composer{background:white}.aito-shortcuts>button{background:white}.aito-usage article{background:white}
+@media(max-width:1023px){.aito-assistant-shell{max-width:100vw;width:100vw;height:100dvh;max-height:100dvh;border-radius:0;border:0}.aito-assistant-header{padding:9px 13px;gap:7px}.aito-assistant-header>img{width:38px;height:38px}.aito-assistant-header strong{font-size:16px}.aito-assistant-header>div>span{font-size:9px}.aito-assistant-header nav{gap:4px}.aito-assistant-header .q-btn{font-size:12px}.aito-assistant-thread{padding:8px 18px 20px}.aito-assistant-welcome{margin:25px auto}.aito-composer-area{padding:7px 12px calc(8px + env(safe-area-inset-bottom,0px))}.aito-composer-area>footer{font-size:8px;line-height:1.5}.aito-shortcuts{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.aito-shortcuts>button{padding:8px 5px;flex-direction:column;gap:6px;text-align:center;font-size:9px}.aito-shortcuts .q-icon{font-size:17px}.aito-composer{border-radius:17px;padding:6px 8px}.aito-composer :deep(textarea){font-size:13px!important;max-height:120px!important}.aito-settings,.aito-logs{height:auto;max-height:94dvh;max-width:94vw;border-radius:18px}.aito-usage{padding:16px;gap:6px}.aito-usage article{padding:10px}.aito-usage strong{font-size:17px}.aito-usage small{font-size:9px}.aito-settings>header,.aito-logs>header{padding:16px}}
 @media(max-width:599px){.aito-settings,.aito-logs{height:100dvh;max-height:100dvh;max-width:100vw;border-radius:0}.aito-settings>form{flex:1}.aito-settings-row{align-items:stretch;flex-direction:column;gap:4px}.aito-settings-row>.q-btn{align-self:flex-end}.aito-usage{grid-template-columns:1fr 1fr}.aito-usage article:last-child{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;align-items:center}.aito-usage article:last-child strong{grid-column:2;grid-row:1/3;text-align:right;margin:0}.aito-logs .aito-event-list{flex:1;max-height:none}.aito-composer-controls{gap:1px}.aito-effort-button{font-size:10px}.aito-composer :deep(.q-field__control){min-height:50px}.aito-drop-overlay{border-radius:0}}
-@media(prefers-reduced-motion:reduce){.aito-assistant-float>i,.aito-recording>span{animation:none}}
+@media(prefers-reduced-motion:reduce){.aito-recording>span{animation:none}}
 .aito-attachment-heading{display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:10px;color:var(--aito-muted);padding:4px 5px 8px}.aito-attachment-heading small{font-size:9px}.aito-draft-files{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;max-height:150px;overflow:auto;padding:2px 3px 6px}.aito-draft-file{display:flex;align-items:center;gap:8px;min-width:0;padding:7px;background:var(--aito-tint);border:1px solid var(--aito-line);border-radius:12px}.aito-draft-file>img{width:42px;height:46px;object-fit:cover;border-radius:6px;background:white;flex:none}.aito-draft-file>.q-icon{color:var(--aito-accent);flex:none}.aito-draft-file>div{min-width:0;flex:1}.aito-draft-file strong{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}.aito-draft-file small{display:block;margin-top:4px;font-size:9px;color:var(--aito-muted)}.aito-draft-file .q-btn{min-width:25px;min-height:25px;font-size:10px;color:var(--aito-muted)}.aito-upload-progress{display:flex;align-items:center;gap:8px;padding:7px;font-size:11px;color:var(--aito-accent)}.aito-attachment-error{white-space:pre-line;max-height:85px;overflow:auto;margin:4px;padding:8px;border-radius:8px;background:#fff0ed;color:#9b3636;font-size:11px;line-height:1.6}.aito-attachment-hint{font-size:9px;line-height:1.5;color:var(--aito-muted);margin:3px 6px 2px}@media(max-width:600px){.aito-draft-files{grid-template-columns:repeat(2,minmax(0,1fr));max-height:140px}.aito-draft-file{gap:5px;padding:5px}.aito-draft-file>img{width:30px;height:37px}.aito-draft-file strong{font-size:9px}.aito-attachment-heading{align-items:start;gap:5px}.aito-attachment-heading small{font-size:8px;max-width:62%;text-align:right}.aito-attachment-hint{font-size:8px}}
 
 .aito-embedded{min-width:0}
@@ -331,4 +377,18 @@ onBeforeUnmount(() => {
 .aito-embedded .aito-assistant-header>div>span{font-size:9px}
 .aito-embedded .aito-assistant-header nav{gap:1px}
 .aito-embedded-connect{background:#fff6dd;color:#654820;border:1px solid #eddbab}
+.aito-assistant-shell--campaign{background:linear-gradient(150deg,#f9fdff,#eaf5ff)}
+.aito-assistant-shell--campaign .aito-assistant-header{background:linear-gradient(125deg,#eef8ff,#c9e9ff)}
+.aito-assistant-shell--chatbot{background:linear-gradient(150deg,#fbfffd,#e7faf1)}
+.aito-assistant-shell--chatbot .aito-assistant-header{background:linear-gradient(125deg,#edfff5,#c6efdc)}
+.aito-specialty-mark{flex:none;width:38px;height:38px;border-radius:12px;background:#ffffffa0;color:var(--aito-accent);font-size:22px}
+.aito-floating-panel{position:fixed;left:14px;bottom:calc(82px + env(safe-area-inset-bottom,0px));z-index:4300;width:min(430px,calc(100vw - 28px))}
+.aito-floating-panel .aito-assistant-shell{width:100%;max-width:none;height:min(680px,calc(100dvh - 96px - env(safe-area-inset-bottom,0px)));max-height:none;border-radius:18px;border:1px solid var(--aito-line)}
+.aito-floating-panel .aito-assistant-header{padding:8px 12px}
+.aito-floating-panel .aito-assistant-thread{padding:8px 14px 15px}
+.aito-floating-panel .aito-assistant-welcome{margin:22px auto}
+.aito-floating-panel .aito-assistant-welcome h2,.aito-embedded .aito-assistant-welcome h2{font-size:clamp(1.25rem,5vw,1.75rem)}
+.aito-floating-panel .aito-composer-area{padding:8px 10px 10px}
+.aito-floating-panel .aito-shortcuts,.aito-embedded .aito-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr))}
+
 </style>

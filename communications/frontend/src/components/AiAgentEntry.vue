@@ -44,7 +44,7 @@ onBeforeUnmount(() => window.removeEventListener(ASSISTANT_CONFIG_EVENT, onConfi
 
 <template>
   <q-btn
-    dense round unelevated icon="auto_awesome"
+    dense unelevated no-caps icon="auto_awesome" label="Agente de IA"
     class="agent-entry" :class="{ 'agent-entry--ready': configured, 'agent-entry--pending': configured === false }"
     :aria-label="title" :loading="opening" @click="openAgent"
   >
@@ -54,7 +54,7 @@ onBeforeUnmount(() => window.removeEventListener(ASSISTANT_CONFIG_EVENT, onConfi
 </template>
 
 <style scoped>
-.agent-entry{margin-inline:4px;min-width:36px;min-height:36px;color:#30564d;background:#e9f3f0}
+.agent-entry{margin-inline:4px;min-height:36px;padding-inline:10px;white-space:nowrap;border-radius:10px;color:#30564d;background:#e9f3f0}
 .agent-entry--pending{color:#523b09;background:linear-gradient(145deg,#fff1b3,#efb83e);box-shadow:0 3px 12px #d6a42c35}
 .agent-entry--ready{color:#103f35;background:linear-gradient(145deg,#b2f5d9,#4cceaa);box-shadow:0 3px 12px #26a48030}
 </style>

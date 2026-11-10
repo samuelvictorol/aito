@@ -1,10 +1,11 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MarkerType, VueFlow } from '@vue-flow/core'
 import AdminAssistant from '../components/AdminAssistant.vue'
+import AssistantFloat from '../components/AssistantFloat.vue'
 import FlowBuilderPage from '../modules/whatsapp-web/pages/FlowBuilderPage.vue'
 import FlowNode from '../modules/whatsapp-web/components/FlowNode.vue'
 import FlowSimulator from '../modules/whatsapp-web/components/FlowSimulator.vue'
@@ -17,6 +18,9 @@ import '@vue-flow/core/dist/theme-default.css'
 
 const $q = useQuasar()
 const editor = ref(null)
+const agent = ref(null)
+const editorFullscreen = ref(false)
+const editorSimulationOpen = ref(false)
 const editorState = ref(null)
 const selected = ref(null)
 const flows = ref([])
@@ -66,6 +70,7 @@ const previewMayBePartial = computed(() => {
   return Boolean(flow && (flow.nodes.length >= 100 || flow.edges?.length >= 100))
 })
 const simulatorReady = computed(() => reviewingProposal.value ? !previewMayBePartial.value : Boolean(activeFlow.value?.loaded))
+const simulatorOpen = computed(() => editorSimulationOpen.value || Boolean(proposalSimulation.value))
 const graph = computed(() => {
   const flow = proposal.value?.preview.data
   if (!flow) return { nodes: [], edges: [] }
@@ -140,7 +145,11 @@ async function loadFlows(search = '') {
 }
 
 function setFlow(flow) {
-  if (selected.value?._id !== flow?._id) editorState.value = null
+  if (selected.value?._id !== flow?._id) {
+    closeSimulation()
+    editorFullscreen.value = false
+    editorState.value = null
+  }
   selected.value = flow
   mode.value = 'editor'
   proposalId.value = ''
@@ -212,7 +221,9 @@ function onSaved(flow) {
 }
 
 async function simulate() {
-  if (!simulatorReady.value || !maySimulate || proposalSimulation.value) return
+  if (simulatorOpen.value) { closeSimulation(); return }
+  if (!simulatorReady.value || !maySimulate || actionInProgress.value) return
+  if ($q.screen.lt.md) agent.value?.minimize()
   if (!reviewingProposal.value) {
     editor.value?.simulate()
     return
@@ -228,6 +239,21 @@ async function simulate() {
   const [assets, paymentConfigs] = results.map(result => result.status === 'fulfilled' ? result.value?.data?.items || [] : [])
   Object.assign(current, { assets, paymentConfigs })
 }
+
+function closeSimulation() {
+  editor.value?.closeSimulation()
+  editorSimulationOpen.value = false
+  proposalSimulation.value = null
+}
+
+function onAgentVisibility(open) {
+  if (open && $q.screen.lt.md) closeSimulation()
+}
+
+watch(mode, () => {
+  closeSimulation()
+  editor.value?.exitFullscreen()
+})
 
 async function refreshEditor() {
   if (await editor.value?.reloadIfClean()) notice.value = ''
@@ -273,7 +299,7 @@ onBeforeUnmount(() => { destroyed = true })
       </div>
       <div class="studio-hero-actions">
         <q-btn v-if="maySeeFlows" outline no-caps icon="link" label="Links públicos" @click="loadLinks" />
-        <q-btn v-if="maySimulate" class="studio-simulate" unelevated no-caps icon="smartphone" :label="reviewingProposal ? 'Simular proposta' : 'Abrir simulador'" :disable="!simulatorReady || actionInProgress" @click="simulate" />
+        <q-btn v-if="maySimulate" class="studio-simulate" unelevated no-caps icon="smartphone" :label="simulatorOpen ? 'Fechar simulador' : reviewingProposal ? 'Simular proposta' : 'Abrir simulador'" :disable="!simulatorOpen && (!simulatorReady || actionInProgress)" @click="simulate" />
       </div>
     </header>
 
@@ -300,10 +326,14 @@ onBeforeUnmount(() => { destroyed = true })
           <template #action><q-btn flat no-caps label="Atualizar editor" :disable="activeFlow?.dirty || activeFlow?.saving" @click="refreshEditor" /></template>
         </q-banner>
 
-        <div v-if="selected" v-show="mode === 'editor'" class="studio-builder whatsapp-web-workspace">
-          <FlowBuilderPage ref="editor" :key="selected._id" :flow-id="selected._id" studio :locked="actionInProgress" @state-change="editorState = $event" @saved="onSaved" />
-        </div>
-        <div v-else-if="mode === 'editor'" class="studio-empty">
+        <Teleport to="body" :disabled="!editorFullscreen">
+          <div v-if="selected" v-show="mode === 'editor'" class="studio-builder whatsapp-web-workspace">
+            <FlowBuilderPage ref="editor" :key="selected._id" :flow-id="selected._id" studio :locked="actionInProgress"
+              @state-change="editorState = $event" @saved="onSaved"
+              @fullscreen-change="editorFullscreen = $event" @simulation-change="editorSimulationOpen = $event" />
+          </div>
+        </Teleport>
+        <div v-if="!selected && mode === 'editor'" class="studio-empty">
           <div class="studio-empty-mark"><q-icon name="account_tree" size="32px" /></div>
           <h2>O seu próximo atendimento começa aqui</h2>
           <p>Abra um fluxo existente, crie o primeiro card ou conte ao agente como quer receber seus clientes.</p>
@@ -328,22 +358,28 @@ onBeforeUnmount(() => { destroyed = true })
           </VueFlow>
         </section>
         <nav v-if="maySeeFlows" class="studio-resources" aria-label="Recursos do chatbot">
+          <q-btn v-if="proposal && !reviewingProposal" flat no-caps icon="account_tree" label="Ver proposta no diagrama" @click="showProposal" />
           <q-btn v-if="canArea(user, 'web_catalog')" flat no-caps icon="storefront" label="Catálogo" to="/whatsapp-web/catalog" />
           <q-btn v-if="canArea(user, 'web_integrations')" flat no-caps icon="hub" label="Integrações e perfis de IA" to="/whatsapp-web/integrations" />
           <q-btn v-if="canArea(user, 'web_connection')" flat no-caps icon="qr_code_2" label="Conexão WhatsApp" to="/whatsapp-web/connection" />
         </nav>
       </section>
 
-      <aside class="studio-agent" aria-label="Agente do chatbot">
-        <q-btn v-if="proposal" class="studio-jump" outline no-caps color="primary" icon="account_tree" label="Ver proposta no diagrama" @click="showProposal" />
-        <AdminAssistant embedded scope="chatbot" :workspace-context="contextText" :action-allowed="canApplyAction" @actions-updated="onActionsUpdated" @action-applied="onActionApplied" />
-      </aside>
     </div>
+    <AdminAssistant ref="agent" embedded floating scope="chatbot" :workspace-context="contextText" :action-allowed="canApplyAction"
+      @actions-updated="onActionsUpdated" @action-applied="onActionApplied" @visibility-change="onAgentVisibility" />
+    <Teleport to="body">
+      <AssistantFloat v-if="maySimulate" kind="simulator" :expanded="simulatorOpen" :disabled="!simulatorOpen && !simulatorReady"
+        :label="simulatorOpen ? 'Fechar simulador' : simulatorReady ? 'Abrir simulador' : 'Abra um fluxo para simular'"
+        :loading="!simulatorOpen && actionInProgress" @toggle="simulate">
+        <q-icon :name="simulatorOpen ? 'close' : 'smartphone'" />
+      </AssistantFloat>
+    </Teleport>
 
     <FlowSimulator
       v-if="proposalSimulation"
       v-bind="proposalSimulation"
-      detached
+      detached docked
       preview-only
       @close="proposalSimulation = null"
     />
@@ -378,21 +414,18 @@ onBeforeUnmount(() => { destroyed = true })
 </template>
 
 <style scoped>
-.chatbot-studio { max-width: 1660px; margin: auto; padding: clamp(12px, 2vw, 26px); color: #13352d; }
-.studio-hero { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 16px; padding: clamp(18px, 3vw, 35px); border-radius: 24px; background: radial-gradient(ellipse at top right, #2b8170, transparent 65%), #103c35; color: #f4fffc; }
-.studio-back { margin: -8px 0 16px; color: #c4f7e9; }
+.chatbot-studio { max-width: 1660px; margin: auto; padding: clamp(12px, 2vw, 26px); padding-bottom: 90px; color: #13352d; background: linear-gradient(155deg,#f8fffc,#ebf9f2); }
+.studio-hero { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 16px; padding: clamp(18px, 3vw, 35px); border: 1px solid #b9e6d2; border-radius: 24px; background: radial-gradient(ellipse at top right, #a1e3cb, transparent 69%), linear-gradient(135deg,#f4fff9,#c5efdc); color: #143d30; }
+.studio-back { margin: -8px 0 16px; color: #1c5d48; }
 .studio-badges, .studio-hero-actions, .studio-resources, .studio-modes { display: flex; flex-wrap: wrap; gap: 8px; }
-.studio-badges span { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; background: #e4fff01b; border: 1px solid #d5ffeb3e; padding: 5px 10px; font-size: .75rem; font-weight: 700; }
+.studio-badges span { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; background: #f7fffbba; border: 1px solid #8ccdb4; padding: 5px 10px; font-size: .75rem; font-weight: 700; }
 .studio-hero h1 { margin: 10px 0 5px; font-size: clamp(1.9rem, 4vw, 3.25rem); line-height: 1.12; font-weight: 800; letter-spacing: -.04em; }
-.studio-hero p { max-width: 510px; margin: 0; color: #d3f1e7; }
-.studio-simulate { background: #aff5cf; color: #113c2e; font-weight: 750; }
-.studio-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 16px; align-items: start; }
-.studio-workspace, .studio-agent { min-width: 0; }
+.studio-hero p { max-width: 510px; margin: 0; color: #315e51; }
+.studio-simulate { background: #18765b; color: white; font-weight: 750; }
+.studio-workspace { min-width: 0; }
 .studio-picker { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .studio-picker .q-select { flex: 1; min-width: 0; }
 .studio-builder { padding: 0; }
-.studio-agent { position: sticky; top: 76px; }
-.studio-jump { display: none; }
 .studio-empty, .studio-proposal { border: 1px solid #cee8e0; border-radius: 18px; background: #fafffd; overflow: hidden; }
 .studio-proposal { scroll-margin-top: 76px; }
 .studio-empty { display: grid; min-height: 360px; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
@@ -413,11 +446,6 @@ onBeforeUnmount(() => { destroyed = true })
 .studio-dialog { width: min(620px, 100%); max-width: calc(100vw - 30px); }
 .studio-dialog p { margin-top: 8px; }
 .studio-url { overflow-wrap: anywhere; user-select: text; }
-@media (max-width: 1050px) {
-  .studio-grid { grid-template-columns: minmax(0, 1fr); }
-  .studio-agent { position: static; }
-  .studio-jump { display: inline-flex; margin-bottom: 12px; }
-}
 @media (max-width: 620px) {
   .studio-hero { align-items: stretch; flex-direction: column; }
   .studio-hero-actions .q-btn { flex: 1 0 auto; }

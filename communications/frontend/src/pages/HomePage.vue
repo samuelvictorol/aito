@@ -1,7 +1,7 @@
 <script setup>
 import PortableConfigurationBackup from '../components/PortableConfigurationBackup.vue'
 const backupOpen=ref(false)
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { copyToClipboard, useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
@@ -15,6 +15,8 @@ import ContextHelp from '../components/ContextHelp.vue'
 import WhatsappNotificationEmails from '../components/WhatsappNotificationEmails.vue'
 import BrowserNotificationsCard from '../components/BrowserNotificationsCard.vue'
 import AdminEmailSecurityCard from '../components/AdminEmailSecurityCard.vue'
+import AdminCredentialsAction from '../components/AdminCredentialsAction.vue'
+import { inPrototype } from '../services/prototype-runtime.js'
 import { useWhiteLabel } from '../services/whitelabel.js'
 const { branding } = useWhiteLabel()
 import { useAppStore } from '../stores/app.js'
@@ -54,6 +56,13 @@ const DEFAULT_TELEGRAM_MESSAGES = Object.freeze({
 
 const $q = useQuasar()
 const auth = useAuthStore()
+const gmailOpen = ref(false)
+async function showCredentialPrerequisite(reason) {
+  if (reason === 'gmail-required') gmailOpen.value = true
+  await nextTick()
+  const target = reason === 'gmail-required' ? 'gmail-configuration' : 'admin-email-security'
+  document.getElementById(target)?.scrollIntoView({ block: 'center' })
+}
 const canConfigureSettings = computed(() => canAction(auth.user, 'settings', 'configure'))
 const canManageCredentials = computed(() => canAction(auth.user, 'settings', 'credentials'))
 const router = useRouter()
@@ -521,6 +530,7 @@ onBeforeUnmount(() => {
       icon="space_dashboard"
     >
       <template #actions>
+        <AdminCredentialsAction v-if="auth.user?.role === 'admin' && !inPrototype()" host-management-url="/admin" @configure="showCredentialPrerequisite" />
         <q-btn v-if="!auth.isCollaborator" outline color="primary" icon="import_export" label="Exportar / importar JSON" no-caps @click="backupOpen=true"/>
         <q-btn outline color="primary" icon="refresh" label="Atualizar" no-caps :loading="loading" @click="loadDashboard" />
       </template>
@@ -754,6 +764,8 @@ onBeforeUnmount(() => {
         </q-expansion-item>
         <q-separator />
         <q-expansion-item
+          id="gmail-configuration"
+          v-model="gmailOpen"
           icon="mdi-gmail"
           label="Gmail"
           :caption="app.isChannelEnabled('email') ? 'Configurado e disponível' : undefined"

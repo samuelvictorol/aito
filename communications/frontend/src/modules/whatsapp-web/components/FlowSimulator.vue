@@ -11,6 +11,7 @@ const props = defineProps({
   assets: Array,
   paymentConfigs: { type: Array, default: () => [] },
   detached: Boolean,
+  docked: Boolean,
   previewOnly: Boolean,
 })
 const emit = defineEmits(['close', 'step'])
@@ -137,8 +138,8 @@ onBeforeUnmount(() => { feedObserver?.disconnect(); reset() })
 </script>
 <template>
   <Teleport to="body" :disabled="!detached">
-  <div class="sim-overlay" @click.self="emit('close')">
-    <section class="sim-dialog" role="dialog" aria-modal="true" aria-label="Simular fluxo" @keydown.esc.stop="emit('close')">
+  <div class="sim-overlay" :class="{ 'sim-overlay--docked': docked }" @click.self="emit('close')">
+    <section class="sim-dialog" :role="docked ? 'region' : 'dialog'" :aria-modal="!docked || undefined" aria-label="Simular fluxo" @keydown.esc.stop="emit('close')">
       <header class="sim-tools"><b>{{ previewOnly ? 'Simular proposta' : 'Simular fluxo' }}</b><button title="Respostas de teste das APIs" @click="optionsOpen = !optionsOpen"><Braces :size="18" /></button><button title="Reiniciar conversa" @click="reset"><RotateCcw :size="18" /></button><button title="Fechar simulador" @click="emit('close')"><X :size="18" /></button></header>
       <div v-if="optionsOpen" class="fixture-editor">
         <label><input v-model="aiLive" :disabled="prototype || previewOnly" type="checkbox">{{ prototype || previewOnly ? 'IA fictícia · sem consumo de créditos' : 'Usar IA real (consome créditos OpenAI)' }}</label>
@@ -200,3 +201,12 @@ onBeforeUnmount(() => { feedObserver?.disconnect(); reset() })
 </style>
 
 <style scoped src="../flow-simulator-mobile.css"></style>
+
+<style scoped>
+.sim-overlay--docked{inset:auto 14px calc(82px + env(safe-area-inset-bottom,0px)) auto;z-index:4250;display:block;padding:0;background:transparent;width:min(400px,calc(100vw - 28px))}
+.sim-overlay--docked .sim-dialog{width:100%;height:auto;max-height:calc(100dvh - 96px - env(safe-area-inset-bottom,0px));overflow:auto;border-radius:20px;background:#f0f2f5;box-shadow:0 15px 44px #103c3c38}
+.sim-overlay--docked .sim-tools{min-height:40px;padding:5px 9px;color:#244f45;background:linear-gradient(120deg,#f4fff9,#cfece0)}
+.sim-overlay--docked .sim-tools button{min-height:32px;min-width:32px;height:32px}
+.sim-overlay--docked .phone{height:min(660px,calc(100dvh - 144px - env(safe-area-inset-bottom,0px)));min-height:260px;flex:none;border:6px solid #27352f;border-radius:25px;box-shadow:none}
+.sim-overlay--docked .phone-status{display:flex}
+</style>

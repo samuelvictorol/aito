@@ -8,7 +8,7 @@ const $q = useQuasar()
 const endpoint = '/desktop-webhook-console'
 const tokenKinds = [
   { value: 'verify', label: 'Verificação da Meta' },
-  { value: 'integration', label: 'Integração externa' },
+  { value: 'integration', label: 'Integração anterior' },
 ]
 const eventKinds = [
   { value: 'relay', label: 'Entregas do relay', icon: 'mdi-transfer' },
@@ -29,6 +29,7 @@ const createdToken = ref(null)
 const eventDialog = ref(false)
 const openedEvent = ref(null)
 const revoking = ref(null)
+const rotating = ref(false)
 let socket, poll, debounce, expiryTimer
 let disposed = false
 let listRequest = 0
@@ -84,7 +85,8 @@ function eventLabel(event) {
   const kind = event.field || event.kind || event.source
   return {
     verify: 'Validação do endereço',
-    integration: 'Integração externa',
+    integration: 'Integração anterior',
+    infinitepay: 'Pagamento InfinitePay confirmado',
     meta: 'WhatsApp Cloud',
     messages: 'Mensagens',
     message_template_status_update: 'Atualização de template',
@@ -313,6 +315,32 @@ async function createToken() {
   }
 }
 
+function rotateWebhook() {
+  const slug = selectedSlug.value
+  if (!detail.value?.canRotate || rotating.value) return
+  $q.dialog({
+    title: 'Gerar outro endereço?',
+    message: 'O endereço anterior será invalidado. Atualize a Meta e confira pedidos pendentes que ainda usam o endereço antigo.',
+    cancel: true,
+  }).onOk(async () => {
+    if (disposed || slug !== selectedSlug.value || rotating.value) return
+    rotating.value = true
+    try {
+      const { data } = await api.post(urlFor(slug, '/rotate'), {}, config())
+      if (disposed || slug !== selectedSlug.value) return
+      if (detail.value) detail.value.url = data.data.url
+      void loadDetails(slug)
+      $q.notify({ type: 'positive', message: 'Novo endereço gerado.' })
+    } catch (error) {
+      if (!disposed && !handleDenied(slug, error)) {
+        $q.notify({ type: 'negative', message: failure(error, 'Não foi possível gerar outro endereço.') })
+      }
+    } finally {
+      rotating.value = false
+    }
+  })
+}
+
 function confirmRevocation(token) {
   const slug = selectedSlug.value
   $q.dialog({
@@ -458,19 +486,20 @@ onBeforeUnmount(() => {
       <div class="webhook-console__columns">
         <section class="webhook-console__panel">
           <header class="webhook-console__panel-header">
-            <q-icon name="mdi-link-variant" size="24px" /><div><h2>Endereço de recebimento</h2><p>Use esta URL HTTPS para configurar a Meta ou sua integração.</p></div>
+            <q-icon name="mdi-link-variant" size="24px" /><div><h2>Endereço de recebimento</h2><p>Use esta URL no portfólio da Meta. O checkout InfinitePay configura o callback por pedido.</p></div>
           </header>
           <div v-if="webhookUrl" class="webhook-console__url">
             <code>{{ webhookUrl }}</code>
             <q-btn flat round color="teal-3" icon="mdi-content-copy" aria-label="Copiar endereço do webhook" @click="copy(webhookUrl, 'Endereço')"><q-tooltip>Copiar endereço</q-tooltip></q-btn>
           </div>
           <div v-else class="webhook-console__placeholder">O endereço fica disponível quando o Desktop registra a instalação.</div>
+          <q-btn v-if="detail?.canRotate" class="q-mt-sm" flat no-caps color="teal-3" icon="mdi-refresh" label="Gerar outro endereço" :loading="rotating" @click="rotateWebhook" />
         </section>
 
         <section class="webhook-console__panel">
           <header class="webhook-console__panel-header">
             <q-icon name="mdi-key-chain-variant" size="24px" />
-            <div><h2>Tokens</h2><p>Crie chaves para a verificação da Meta e integrações externas.</p></div>
+            <div><h2>Tokens</h2><p>Gere ou revogue tokens usados para verificar a URL na Meta.</p></div>
             <q-btn unelevated no-caps color="teal-4" text-color="black" icon="mdi-plus" label="Novo token" :disable="!manageable" @click="openTokenDialog" />
           </header>
           <div v-if="loading.details && !detail" class="webhook-console__placeholder" role="status"><q-spinner color="teal-3" /> Consultando instalação…</div>
@@ -524,9 +553,7 @@ onBeforeUnmount(() => {
         <q-form v-else @submit.prevent="createToken">
           <q-card-section class="webhook-console__form">
             <q-input v-model="tokenDraft.name" outlined dark autofocus label="Nome do token" maxlength="80" :rules="[value => !!value.trim() || 'Informe um nome.']" />
-            <q-select v-model="tokenDraft.kind" :options="tokenKinds" outlined dark emit-value map-options label="Finalidade" />
-            <p v-if="tokenDraft.kind === 'verify'">Informe o mesmo token no campo de verificação do webhook da Meta.</p>
-            <p v-else>Envie o token no cabeçalho <code>Authorization: Bearer</code> ao chamar este webhook.</p>
+            <p>Informe o mesmo token no campo de verificação do webhook da Meta.</p>
             <q-input v-model="tokenDraft.token" outlined dark type="password" label="Token personalizado (opcional)" maxlength="512" autocomplete="off" hint="Deixe em branco para gerar um token seguro." />
             <p v-if="errors.create" class="webhook-console__error" role="alert">{{ errors.create }}</p>
           </q-card-section>

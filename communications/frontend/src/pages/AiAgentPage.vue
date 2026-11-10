@@ -1,18 +1,19 @@
 <script setup>
+import { fabMeta } from '@quasar/extras/fontawesome-v6'
 import { ref } from 'vue'
 import AssistantSettingsDialog from '../components/AssistantSettingsDialog.vue'
 
 const settings = ref(false)
 const workspaces = [
   {
-    name: 'ai-campaigns', icon: 'campaign', marker: '01 · Campanhas',
+    name: 'ai-campaigns', icon: fabMeta, marker: '01 · Campanhas',
     title: 'Disparo em Massa',
     description: 'Planeje com o agente, refine os templates e confira a prévia de cada canal antes de enfileirar.',
     badges: ['E-mail', 'Telegram', 'WhatsApp API oficial'],
     steps: ['Definir o público e o conteúdo', 'Revisar por canal', 'Acompanhar as entregas'],
   },
   {
-    name: 'ai-chatbot', icon: 'account_tree', marker: '02 · Atendimento',
+    name: 'ai-chatbot', icon: 'qr_code_2', marker: '02 · Atendimento',
     title: 'Criar ChatBot',
     description: 'Desenhe o atendimento com o agente, revise as conexões no mapa e teste a conversa no simulador.',
     badges: ['WhatsApp QR Code', 'IA'],
@@ -26,7 +27,7 @@ const workspaces = [
     <section class="agent-intro">
       <div class="agent-intro__label"><q-icon name="auto_awesome" /> Aito I.A</div>
       <h1>Agente de IA</h1>
-      <p>Escolha uma bancada e trabalhe com o agente ao lado. Veja o que está sendo preparado e revise antes de aplicar.</p>
+      <p>Escolha um agente para montar campanhas ou criar o atendimento pelo WhatsApp.</p>
       <q-btn outline no-caps icon="tune" label="Configurar OpenAI" @click="settings = true" />
       <div class="agent-intro__graphic" aria-hidden="true"><q-icon name="auto_awesome" /></div>
     </section>
@@ -38,7 +39,7 @@ const workspaces = [
         <div class="agent-workspace__badges"><q-badge v-for="badge in item.badges" :key="badge" outline :label="badge" /></div>
         <p>{{ item.description }}</p>
         <ul><li v-for="step in item.steps" :key="step"><q-icon name="check" />{{ step }}</li></ul>
-        <q-btn unelevated no-caps color="primary" :label="item.title" icon-right="arrow_forward" :to="{ name: item.name }" />
+        <q-btn unelevated no-caps :label="item.title" icon-right="arrow_forward" :to="{ name: item.name }" />
       </article>
     </div>
     <AssistantSettingsDialog v-model="settings" />
@@ -54,16 +55,16 @@ const workspaces = [
 .agent-intro p{max-width:560px;font-size:clamp(.95rem,1.6vw,1.12rem);line-height:1.6;color:#d3efe5;margin:0 0 22px}
 .agent-intro__graphic{z-index:-1;position:absolute;inset:auto 4% -26% auto;font-size:clamp(130px,32vw,340px);color:#b4ffe729;line-height:1;transform:rotate(-10deg)}
 .agent-workspaces{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}
-.agent-workspace{padding:clamp(20px,3vw,32px);border:1px solid #d3e8e1;border-radius:22px;background:#fcfffd;box-shadow:0 12px 30px #1f54440c;display:flex;align-items:flex-start;flex-direction:column}
-.agent-workspace__icon{display:grid;place-items:center;width:50px;height:50px;font-size:25px;background:#daf5e8;color:#15705a;border-radius:15px;margin-bottom:18px}
-.agent-workspace:nth-child(2) .agent-workspace__icon{background:#e8eefc;color:#4a5fa0}
+.agent-workspace{--agent-accent:#145b9c;--agent-tint:#d9eeff;--agent-border:#c1def3;padding:clamp(20px,3vw,32px);border:1px solid var(--agent-border);border-radius:22px;background:linear-gradient(145deg,#faffff,var(--agent-tint));box-shadow:0 12px 30px #1f54440c;display:flex;align-items:flex-start;flex-direction:column}
+.agent-workspace:nth-child(2){--agent-accent:#14664e;--agent-tint:#d9f5e7;--agent-border:#bae6d1}
+.agent-workspace__icon{display:grid;place-items:center;width:50px;height:50px;font-size:25px;background:#ffffffaa;color:var(--agent-accent);border-radius:15px;margin-bottom:18px}
 .agent-workspace__marker{color:#526d65}
 .agent-workspace h2{font-size:clamp(1.35rem,3vw,2.1rem);line-height:1.15;font-weight:750;margin:8px 0 12px}
-.agent-workspace__badges{display:flex;flex-wrap:wrap;gap:7px;color:#236552}
+.agent-workspace__badges{display:flex;flex-wrap:wrap;gap:7px;color:var(--agent-accent)}
 .agent-workspace p{color:#526d65;line-height:1.6;margin:16px 0}
 .agent-workspace ul{list-style:none;padding:0;margin:0 0 22px;display:grid;gap:8px;color:#38574d}
 .agent-workspace li{display:flex;gap:8px;align-items:center}
-.agent-workspace li .q-icon{color:#237f67}
-.agent-workspace>.q-btn{margin-top:auto}
+.agent-workspace li .q-icon{color:var(--agent-accent)}
+.agent-workspace>.q-btn{margin-top:auto;background:var(--agent-accent);color:#fff}
 @media(max-width:680px){.agent-workspaces{grid-template-columns:1fr}.agent-intro,.agent-workspace{border-radius:17px}}
 </style>

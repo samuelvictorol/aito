@@ -1,5 +1,6 @@
 <script setup>
 import { nextTick, ref } from 'vue'
+import { createAssistantComposerKeys } from '../../services/assistant-composer-keys.js'
 const dialog=ref(false),draft=ref(''),files=ref([]),thread=ref(null),messages=ref([]),preview=ref('')
 const capabilities=[
   {icon:'dashboard_customize',title:'Templates a partir de prints',text:'Interpreta idioma, categoria, variáveis e botões; prepara clones e sites para revisão.',prompt:'Como você cria e clona templates a partir dos prints oficiais da Meta?'},
@@ -9,10 +10,12 @@ const capabilities=[
   {icon:'manage_search',title:'Consultar e organizar',text:'Consulta registros, contatos e histórico conforme as permissões do perfil.',prompt:'Como você consulta contatos, histórico, logs e permissões?'},
   {icon:'mic',title:'Texto, áudio e arquivos',text:'No app real, usa áudio, prints e documentos para entender pedidos e gerar conteúdos.',prompt:'Como funcionam áudio, imagens, documentos, geração de arquivos e o consumo de tokens?'},
 ]
+const { keydown, reset } = createAssistantComposerKeys(answer)
 function open(){dialog.value=true}
 defineExpose({open})
 function answer(){
   if(!draft.value.trim()&&!files.value.length)return
+  reset()
   const text=draft.value.trim()||'Analise estes prints',names=files.value.map(file=>file.name)
   messages.value.push({role:'user',text,names})
   const lower=text.toLowerCase()
@@ -36,7 +39,7 @@ function explainCapability(value){draft.value=value;answer()}
     <q-banner class="demo-ai-notice">Respostas de exemplo. Nenhuma ação é executada e nenhum arquivo é enviado.</q-banner>
     <div ref="thread" class="demo-ai-thread"><section v-if="!messages.length" class="demo-ai-welcome"><q-icon name="auto_awesome"/><h2>Seu agente dentro da operação.</h2><p>Conheça as principais funcionalidades do Aito I.A. No aplicativo real ele usa a credencial OpenAI configurada e executa ações autorizadas após a revisão.</p><div class="demo-ai-capabilities"><button v-for="item in capabilities" :key="item.title" @click="explainCapability(item.prompt)"><q-icon :name="item.icon"/><strong>{{item.title}}</strong><span>{{item.text}}</span><small>Ver exemplo <q-icon name="arrow_forward"/></small></button></div></section><article v-for="(message,index) in messages" :key="index" :class="['demo-ai-message',message.role]"><small>{{message.role==='user'?'Você':'Aito I.A · exemplo'}}</small><p>{{message.text}}</p><span v-for="name in message.names||[]" :key="name" class="demo-ai-file"><q-icon name="attach_file"/> {{name}}</span></article>
       <section v-if="preview" class="demo-ai-preview"><q-badge outline color="primary">REVISÃO ILUSTRATIVA</q-badge><h3>{{({template:'Cadastrar template de confirmação',campaign:'Preparar campanha por grupo',flow:'Criar fluxo de atendimento',settings:'Configurar canal com segurança'})[preview]}}</h3><template v-if="preview==='template'"><p v-pre>Nome: appointment_reminder · pt_BR · Utilidade<br/>Cabeçalho: Seu agendamento<br/>Corpo: Olá {{1}}, seu atendimento será em {{2}}.<br/>Variáveis: nome e data, ambas dinâmicas.</p></template><p v-else-if="preview==='campaign'">Canal: WhatsApp Cloud · Grupo: Clientes<br/>Template: Lembrete de agendamento<br/>Público fictício: 120 contatos · sem envio real.</p><p v-else>Dados e ações seriam apresentados em um cartão de revisão, respeitando as permissões e validações da plataforma.</p><q-btn outline no-caps color="primary" label="Execução indisponível no protótipo" disable/></section>
-    </div><section class="demo-ai-composer"><div class="demo-ai-shortcuts"><q-btn flat dense no-caps label="Cadastrar por print" @click="shortcut('Como você cadastra um template a partir de prints oficiais?')"/><q-btn flat dense no-caps label="Criar fluxograma" @click="shortcut('Como você cria um fluxograma completo?')"/><q-btn flat dense no-caps label="Preparar campanha" @click="shortcut('Como você prepara uma campanha para grupos?')"/></div><q-input v-model="draft" outlined autogrow type="textarea" maxlength="1500" label="Pergunte sobre o agente (simulação)" @keydown.ctrl.enter.prevent="answer"/><div class="demo-ai-bottom"><q-file v-model="files" multiple outlined dense label="Ver anexos localmente" accept="image/*,.pdf,.txt" :max-files="8"/><q-btn round color="primary" icon="arrow_upward" aria-label="Ver resposta simulada" :disable="!draft.trim()&&!files.length" @click="answer"/></div><small>Não informe dados pessoais ou credenciais. Anexos ficam apenas neste dispositivo durante a simulação.</small></section>
+    </div><section class="demo-ai-composer"><div class="demo-ai-shortcuts"><q-btn flat dense no-caps label="Cadastrar por print" @click="shortcut('Como você cadastra um template a partir de prints oficiais?')"/><q-btn flat dense no-caps label="Criar fluxograma" @click="shortcut('Como você cria um fluxograma completo?')"/><q-btn flat dense no-caps label="Preparar campanha" @click="shortcut('Como você prepara uma campanha para grupos?')"/></div><q-input v-model="draft" outlined autogrow type="textarea" maxlength="1500" label="Pergunte sobre o agente (simulação)" @keydown="keydown" @blur="reset"/><div class="demo-ai-bottom"><q-file v-model="files" multiple outlined dense label="Ver anexos localmente" accept="image/*,.pdf,.txt" :max-files="8"/><q-btn round color="primary" icon="arrow_upward" aria-label="Ver resposta simulada" :disable="!draft.trim()&&!files.length" @click="answer"/></div><small>Não informe dados pessoais ou credenciais. Anexos ficam apenas neste dispositivo durante a simulação.</small></section>
   </q-card></q-dialog>
 </template>
 <style scoped>
