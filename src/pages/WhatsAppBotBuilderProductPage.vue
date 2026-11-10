@@ -1,100 +1,437 @@
 <script setup>
 import 'src/css/solutions-polish.css'
-import MultichannelBenefits from 'components/MultichannelBenefits.vue'
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMeta } from 'quasar'
+import { description as siteDescription } from '../../package.json'
+import AuthDialog from 'components/AuthDialog.vue'
+import DesktopSolutionFeatures from 'components/DesktopSolutionFeatures.vue'
 import IAChatComponent from 'components/IAChatComponent.vue'
-import SolutionMediaFrame from 'components/SolutionMediaFrame.vue'
-import KitTeamSection from 'components/KitTeamSection.vue'
-import SolutionsInteractiveShowcase from 'components/SolutionsInteractiveShowcase.vue'
-import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
 import KitProductCart from 'components/KitProductCart.vue'
 import KitSystemRequirements from 'components/KitSystemRequirements.vue'
-import { defaultProductCatalog, productTermLabel, productLicenseTerm,useProductCart } from 'src/services/product-cart'
+import KitTeamSection from 'components/KitTeamSection.vue'
+import SolutionMediaFrame from 'components/SolutionMediaFrame.vue'
+import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
+import { defaultProductCatalog, productTermLabel, useProductCart } from 'src/services/product-cart'
 import { solutionsMedia, solutionDemos } from 'src/data/whatsappSolutionsMedia'
-import { botBuilderHeroVideo } from 'src/data/landingHeroVideo'
-useMeta({ title: 'Kit AitoNotify + WhatsApp BotBuilder Desktop | AitoSoftwares', meta: { description: { name: 'description', content: 'Aplicativo Desktop pronto para Windows: atendimento, BotBuilder, IA e notificações multicanal. Instalador e token de uso com prazo definido na oferta. Código-fonte vendido separadamente.' } }, link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/whatsapp-solucoes' } } })
-const assistantOpen = ref(false), productPage = ref(null), checkout = ref(null), catalog = ref(defaultProductCatalog()), activeSlide = ref('cloud')
-const planCart=useProductCart()
+import { botBuilderHeroVideo, desktopSolutionVideos } from 'src/data/landingHeroVideo'
+import { desktopSolutions, desktopSolutionsFaq, desktopSolutionsSeo } from 'src/data/desktopSolutions'
+
+const router = useRouter()
+const assistantOpen = ref(false)
+const trialAuthOpen = ref(false)
+const checkout = ref(null)
+const catalog = ref(defaultProductCatalog())
+const activeSlide = ref('cloud')
+const planCart = useProductCart()
+const productsPath = '/app?tab=products'
+const prototypeUrl = '/whatsapp-solucoes/teste-gratis'
+
 const offer = computed(() => catalog.value.desktop)
-const desktopTerm = computed(() => productTermLabel(offer.value)), cloudTerm = computed(() => productTermLabel(catalog.value.cloud)), desktopLicense = computed(() => productLicenseTerm(offer.value))
-const productVideo = computed(() => ({ src: offer.value.media?.heroVideo || botBuilderHeroVideo.src, poster: offer.value.media?.heroPoster || botBuilderHeroVideo.poster }))
-const demos = solutionDemos, prototypeUrl = '/whatsapp-solucoes/teste-gratis'
-const money = cents => cents == null ? 'Consulte disponibilidade' : (Number(cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-function buy(months) { if(Number.isInteger(months))planCart.setDesktopMonths(months);checkout.value?.openCart('desktop') }
-function openCustomerLogin() { checkout.value?.openLogin() }
-function buyBoth() { checkout.value?.openCart('cloud'); checkout.value?.openCart('desktop') }
-function scrollToProductSection(event) {
- const anchor = event.target.closest?.('a[href^="#"]'), target = anchor && document.getElementById(anchor.getAttribute('href').slice(1))
- if (!target) return
- event.preventDefault(); target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
- window.history.replaceState(window.history.state, '', anchor.getAttribute('href'))
-}
-let revealObserver
+const cloudTerm = computed(() => productTermLabel(catalog.value.cloud))
+const productVideo = computed(() => ({
+  src: offer.value.media?.heroVideo || botBuilderHeroVideo.src,
+  poster: offer.value.media?.heroPoster || botBuilderHeroVideo.poster,
+}))
+const demos = [
+  ...solutionDemos,
+  { key: 'flow', tab: 'Fluxos', title: 'Do desenho à conversa', copy: 'Conecte as etapas do bot e teste o caminho do cliente antes de publicar.', media: 'botFlow', image: '/whatsapp-solutions/experience/botbuilder-clinic.webp' },
+]
+const modules = [
+  { id: 'notificacoes', tone: 'blue', icon: 'mdi-bullhorn-outline', title: 'AitoNotify', text: 'Disparos em massa em vários canais.' },
+  { id: 'chatbots', tone: 'green', icon: 'mdi-qrcode', title: 'WhatsApp BotBuilder', text: 'Chatbots e atendimento em equipe.' },
+  { id: 'agentes', tone: 'gold', icon: 'mdi-auto-fix', title: 'Aito I.A.', text: 'Agentes que operam o painel com você.' },
+]
+
+const seo = computed(() => desktopSolutionsSeo(offer.value))
+useMeta(() => seo.value)
+
+// Quasar manages the product description while this route is open.
+let genericDescription
 onMounted(() => {
- if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return
- revealObserver = new IntersectionObserver(entries => { entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('is-revealed'); revealObserver.unobserve(entry.target) } }) }, { threshold: .06, rootMargin: '0px 0px -30px 0px' })
- productPage.value?.$el?.querySelectorAll('section').forEach(section => { if (section.getBoundingClientRect().top >= window.innerHeight - 30) { section.classList.add('product-reveal'); revealObserver.observe(section) } })
+  const staticMeta = document.head.querySelectorAll('[data-desktop-seo]')
+  genericDescription = document.head.querySelector('meta[name="description"]:not([data-qmeta], [data-desktop-seo])')
+  if (!genericDescription) {
+    genericDescription = document.createElement('meta')
+    genericDescription.name = 'description'
+    genericDescription.content = siteDescription
+  }
+  genericDescription.remove()
+  staticMeta.forEach(element => element.remove())
 })
-onBeforeUnmount(() => revealObserver?.disconnect())
+onBeforeUnmount(() => {
+  if (genericDescription) document.head.appendChild(genericDescription)
+  if (document.title === seo.value.title) document.title = 'AITOSOFTWARES'
+})
+
+function money(cents) {
+  return cents == null ? 'Consulte disponibilidade' : (Number(cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function buy(months) {
+  if (Number.isInteger(months)) planCart.setDesktopMonths(months)
+  checkout.value?.openCart('desktop')
+}
+
+function buyBoth() {
+  checkout.value?.openCart('cloud')
+  checkout.value?.openCart('desktop')
+}
+
+function openProducts() {
+  trialAuthOpen.value = false
+  return router.push(productsPath)
+}
+
+function startTrial() {
+  if (localStorage.getItem('aito_user_token')) return openProducts()
+  trialAuthOpen.value = true
+}
+
+function scrollToProductSection(event) {
+  const anchor = event.target.closest?.('a[href^="#"]')
+  const target = anchor && document.getElementById(anchor.hash.slice(1))
+  if (!target) return
+  event.preventDefault()
+  target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+  window.history.replaceState(window.history.state, '', anchor.hash)
+}
 </script>
+
 <template>
-<q-layout view="hHh lpR fFf"><q-page-container><q-page ref="productPage" class="product solutions-product" @click="scrollToProductSection">
+  <q-layout view="hHh lpR fFf">
+    <q-page-container>
+      <q-page class="product solutions-product" @click="scrollToProductSection">
+        <header class="solutions-navbar">
+          <router-link to="/" class="brand solutions-brand" aria-label="AitoSoftwares, página inicial">
+            <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
+            <span>AITO<span>SOFTWARES</span></span>
+          </router-link>
+          <nav aria-label="Navegação do produto">
+            <a href="#pacote">O kit</a>
+            <a href="#requisitos">Requisitos</a>
+            <a href="#planos">Planos</a>
+            <a href="#simulador-chatbot" class="nav-simulator">Testar o bot</a>
+            <button type="button" class="customer-login" @click="checkout?.openLogin()"><q-icon name="mdi-account-outline" /> Área do cliente</button>
+            <a class="nav-trial" href="#teste-desktop">7 dias grátis <q-icon name="mdi-arrow-down" /></a>
+          </nav>
+        </header>
 
-<header class="solutions-navbar"><router-link to="/" class="brand solutions-brand"><img src="/aito-logo-restored.png" alt="" width="34" height="34"/><span>AITO<span>SOFTWARES</span></span></router-link><nav aria-label="Navegação do produto"><a href="#pacote">O kit</a><a href="#equipe">Sua equipe</a><a href="#demonstracao">Por dentro</a><a href="#requisitos">Requisitos</a><a href="#chatbots" class="nav-simulator">Testar o bot</a><button type="button" class="customer-login" @click="openCustomerLogin"><q-icon name="mdi-account-outline"/> Área do cliente</button><a class="nav-trial" :href="prototypeUrl" target="_blank" rel="noopener noreferrer">Experimentar grátis <q-icon name="mdi-arrow-top-right"/></a></nav></header>
-<main class="hero solutions-hero"><div class="hero-video"><LandingVideoMonitor :video="productVideo" title="Conheça o AitoNotify + WhatsApp BotBuilder" eyebrow="VEJA A OPERAÇÃO ACONTECER" headline="Da primeira mensagem ao próximo passo." description="Notificações, atendimento e automação em um só ecossistema."/></div><div class="copy"><span class="kit-label">AITONOTIFY + WHATSAPP BOTBUILDER</span><span class="eyebrow">NOTIFIQUE. CONVERSE. AUTOMATIZE.</span><h1>Automatize o atendimento.<br/><em>Escale suas notificações.</em></h1><p>Seu aplicativo pronto para Windows. Chatbots com IA, atendimento em equipe e notificações pela API oficial. Instale, configure e escolha seu plano de 1, 6 ou 12 meses.</p><div class="hero-actions"><a class="trial-cta" href="#chatbots" data-funnel="interest_chatbots"><q-icon name="mdi-robot-outline"/><span>Testar um chatbot agora</span></a><a class="trial-cta notifications-cta" href="#notificacoes" data-funnel="interest_notifications"><q-icon name="mdi-bullhorn-outline"/><span>Quero notificações em massa<small>Pela API oficial da Meta</small></span></a></div><div class="trust"><q-icon name="mdi-monitor-eye"/> Instalador Windows · planos de 1, 6 e 12 meses · configuração guiada.</div><div class="highlights"><span>API oficial + BotBuilder</span><span>Equipe com login individual</span><span>Sua marca no painel</span></div></div></main>
-<section id="pacote" class="solution-package"><div class="section-heading"><span class="eyebrow">UM KIT. CANAIS CONECTADOS. PAPÉIS BEM DEFINIDOS.</span><h2>A mensagem chega.<br/><em>Sua operação continua.</em></h2><p>Notificações por WhatsApp oficial, e-mail e Telegram para chegar. BotBuilder e IA para continuar a conversa. Tudo no mesmo aplicativo.</p></div><div class="solution-pair"><article id="visao-notificacoes"><span class="solution-number">01 / NOTIFICAÇÕES MULTICANAL</span><q-icon name="mdi-cloud-check-outline" size="42px"/><h3>Alcance com organização.</h3><p>Envie avisos, atualizações e campanhas para contatos autorizados pelo WhatsApp Cloud API, Telegram e Gmail. Revise o conteúdo, programe os envios e acompanhe o resultado por canal.</p><ul><li>API oficial da Meta e templates com variáveis.</li><li>Grupos de contatos, convites e consentimento.</li><li>Filas, agendamentos e recorrências.</li><li>Status e tentativas por contato e canal.</li></ul><small>Os envios pela Cloud API seguem os modelos, a qualidade e os limites da conta Meta.</small></article><article id="visao-chatbots"><span class="solution-number">02 / WHATSAPP WEB + BOTBUILDER</span><q-icon name="mdi-sitemap-outline" size="42px"/><h3>Atendimento com continuidade.</h3><p>Conecte uma sessão por QR Code, desenhe o fluxo e deixe o bot organizar a chegada do cliente. A IA apoia a conversa e sua equipe assume com o histórico no mesmo painel.</p><ul><li>Editor visual, simulador e importação de fluxos.</li><li>Triagem, responsáveis e assinaturas opcionais.</li><li>Catálogo, pedidos, arquivos e ações integradas.</li><li>Uma sessão no computador, vários acessos autorizados da equipe.</li></ul><small>A sessão WhatsApp Web é uma modalidade não oficial, independente do número conectado à Cloud API.</small></article></div><div class="operations-overview"><SolutionMediaFrame :src="offer.media?.overview || solutionsMedia.overview" title="Central de canais e configurações"/><p>WhatsApp Cloud, Telegram e Gmail, alertas de mensagens, proteção por e-mail e configurações da operação em um painel com sua identidade.</p></div></section>
-<MultichannelBenefits/>
-<SolutionsInteractiveShowcase :bot-flow-image="offer.media?.botFlow"/>
-<KitTeamSection :image="offer.media?.teamAccess || solutionsMedia.web"/>
-<section id="demonstracao" class="solution-demonstration"><div class="section-heading"><span class="eyebrow">VEJA O PRODUTO POR DENTRO</span><h2>Do conteúdo ao atendimento.<br/><em>Cada etapa à vista.</em></h2><p>Explore as telas de campanhas, templates, entregas e conversas. Toque na moldura para ampliar os detalhes.</p></div><q-carousel v-model="activeSlide" animated swipeable arrows infinite class="solutions-carousel" control-color="teal-3"><q-carousel-slide v-for="demo in demos" :key="demo.key" :name="demo.key" class="solution-slide"><div class="slide-copy"><span class="eyebrow">{{ String(demos.indexOf(demo) + 1).padStart(2, '0') }} / POR DENTRO DO AITONOTIFY</span><h3>{{ demo.title }}</h3><p>{{ demo.copy }}</p></div><SolutionMediaFrame :src="demo.key==='review'?solutionsMedia.review:offer.media?.[demo.media] || demo.image" :title="demo.title"/></q-carousel-slide></q-carousel><div class="demo-tabs" role="group" aria-label="Escolher captura do produto"><button v-for="demo in demos" :key="demo.key" type="button" :aria-pressed="activeSlide === demo.key" :aria-label="`Ver captura: ${demo.title}`" @click="activeSlide = demo.key">{{ demo.tab }}</button></div><p class="demo-note">Capturas de demonstração com dados pessoais e identificadores ocultados quando necessário.</p></section>
-<section class="solution-mobile"><div><span class="eyebrow">UMA OPERAÇÃO QUE ACOMPANHA VOCÊ.</span><h2>Seu atendimento<br/><em>também cabe no bolso.</em></h2><p>O aplicativo roda no seu Windows. Para colaboradores remotos, configure o acesso HTTPS protegido por ngrok e use o painel no navegador do celular.</p><ul class="feature-list"><li>Atalhos para WhatsApp Web, Cloud, Telegram e Gmail.</li><li>Conversas e ferramentas de atendimento no navegador.</li><li>Assistente Aito IA para apoiar conteúdo, fluxos e configurações.</li><li>Envie arquivos ou prints e use os atalhos do assistente para agilizar tarefas.</li></ul><small>O computador e o aplicativo precisam permanecer ligados. O acesso remoto e as notificações dependem da configuração HTTPS e da compatibilidade do navegador. IA utiliza sua própria conta e créditos.</small></div><div class="mobile-frames"><div><SolutionMediaFrame :src="offer.media?.mobilePush || solutionsMedia.mobile" phone title="Todos os canais no celular"/><p class="mobile-caption">Escolha o canal e continue de onde parou.</p></div><div><SolutionMediaFrame :src="offer.media?.mobileAssistant || solutionsMedia.assistant" phone title="Assistente Aito IA"/><p class="mobile-caption">Conteúdo, fluxos e configurações com apoio de IA.</p></div></div></section>
+        <section class="hero solutions-hero">
+          <div class="hero-video">
+            <LandingVideoMonitor :video="productVideo" title="Apresentação do Kit Desktop" eyebrow="CONHEÇA O KIT DESKTOP"
+              headline="Da primeira mensagem ao próximo passo." description="Notificações, atendimento e automação em um só aplicativo." />
+          </div>
+          <div class="copy">
+            <span class="kit-label">AITONOTIFY + WHATSAPP BOTBUILDER</span>
+            <h1>Atenda melhor.<br /><em>Avise no canal certo.</em></h1>
+            <p>{{ desktopSolutions.intro }}</p>
+            <div class="hero-actions">
+              <a class="trial-cta" href="#teste-desktop"><q-icon name="mdi-download-outline" /><span>Experimentar 7 dias</span></a>
+              <a class="trial-cta simulator-cta" href="#simulador-chatbot" data-funnel="interest_chatbots"><q-icon name="mdi-gesture-tap" /><span>Testar um bot aqui</span></a>
+            </div>
+            <div class="trust"><q-icon name="mdi-microsoft-windows" /> Windows 10 e 11 · instalação guiada</div>
+            <div class="highlights"><span>WhatsApp oficial e Web</span><span>Gmail e Telegram</span><span>Agentes de IA</span></div>
+          </div>
+        </section>
 
-<KitSystemRequirements />
-<section class="distribution-section"><span class="eyebrow">SEU PRODUTO. PRONTO PARA CONFIGURAR.</span><h2>Instale no Windows.<br/>Comece pelo painel.</h2><p>O Desktop entrega o aplicativo executável. Você configura canais, equipe, templates, campanhas e fluxos pelo próprio sistema.</p><div class="solution-pair"><article><q-icon name="mdi-microsoft-windows" size="36px"/><h3>Instalador completo</h3><p>Windows 10 e 11 de 64 bits. Banco e filas locais no modo padrão, sem Docker ou Node.js para instalar à parte. Onboarding em Português, English e Español.</p><small>O aplicativo precisa ficar aberto para executar atendimentos e programações.</small></article><article><q-icon name="mdi-shield-key-outline" size="36px"/><h3>Seu token {{desktopTerm}}</h3><p>A compra libera uma licença Desktop com token {{desktopTerm}} a partir da emissão. O prazo aparece no painel. Quando aplicável, a renovação é contratada separadamente pelas condições vigentes.</p><small>Não inclui arquivos de código-fonte nem licença de implantação Cloud.</small></article></div></section><section id="planos" class="solution-plans"><div class="section-heading"><span class="eyebrow">O PACOTE É COMPLETO. A ESCOLHA É SUA.</span><h2>Comece do jeito que faz sentido<br/><em>para sua empresa.</em></h2><p>Aplicativo pronto para usar, com token Desktop {{desktopTerm}}. O código-fonte é outro produto, comprado separadamente.</p></div><div class="plans-grid"><article v-for="plan in (offer.desktopPlans||[])" :key="plan.months" class="plan-card plan-card--source"><div class="kit-plan-identity"><img src="/whatsapp-solutions/product-kit.webp" alt="Kit AitoNotify + WhatsApp BotBuilder" width="128" height="192" loading="lazy"/><div><span class="plan-chip">APLICATIVO PRONTO PARA WINDOWS</span><h3>Kit Desktop · {{plan.label}}</h3><p>Configure sua operação pelo painel, sem precisar editar código.</p><span class="kit-plan-platform"><q-icon name="mdi-microsoft-windows"/> Windows 10 e 11 · token por {{plan.months}} mês(es)</span></div></div><div class="price"><strong>{{ money(plan.priceCents) }}</strong><span>Token Desktop por {{plan.months}} mês(es) · uma instalação ativa</span></div><ul><li>AitoNotify + WhatsApp BotBuilder com API oficial e BotBuilder.</li><li>E-mail pelo Gmail e Telegram com templates e agendamentos.</li><li>Token exclusivo do Desktop, por {{plan.months}} mês(es).</li><li>Instalador .exe para Windows pronto para configurar.</li><li>Guias de instalação e configuração.</li></ul><q-btn unelevated no-caps color="teal-6" size="lg" label="Adicionar Desktop ao carrinho" icon="mdi-cart-plus" :disable="!offer.available||!plan.enabled" @click="buy(plan.months)"/><small>Checkout InfinitePay. O download é liberado após a confirmação do pagamento.</small></article></div><p class="plans-footnote">Hospedagem, serviços de IA e eventuais cobranças da Meta são considerados à parte, conforme o plano e a configuração contratados.</p></section>
-<section class="product-upsell" aria-labelledby="source-upsell"><div><span class="eyebrow">QUER IR ALÉM DO APLICATIVO PRONTO?</span><h2 id="source-upsell">Seu próximo projeto começa<br/><em>com o código-fonte.</em></h2><p>Compre o Código-fonte Whitelabel para editar, integrar e publicar sua própria versão na nuvem. Projeto documentado para navegar na arquitetura e trabalhar com ferramentas como OpenAI Codex e Claude.</p><div class="product-upsell__facts"><span><q-icon name="mdi-code-braces"/> Código editável</span><span><q-icon name="mdi-cloud-key-outline"/> Token Cloud {{cloudTerm}}</span><span><q-icon name="mdi-key-chain"/> Produto e licença separados</span></div></div><div class="product-upsell__actions"><small>Produto Código-fonte Whitelabel</small><strong>{{money(catalog.cloud.priceCents)}}</strong><q-btn unelevated no-caps color="teal-7" label="Levar Desktop + código-fonte" icon="mdi-cart-plus" :disable="!offer.available || !catalog.cloud.available" @click="buyBoth"/><router-link to="/whatsapp-solucoes-whitelabel">Conhecer a versão Whitelabel <q-icon name="mdi-arrow-right"/></router-link></div></section><section id="instalacao" class="guide"><span class="eyebrow">DA COMPRA À PRIMEIRA OPERAÇÃO</span><h2>Seu próximo passo já está desenhado.</h2><div class="steps"><article><b>01</b><h3>Escolha como começar</h3><p>Escolha o Desktop e revise o carrinho no checkout seguro.</p></article><article><b>02</b><h3>Receba o acesso certo</h3><p>Após a confirmação, sua conta recebe o instalador e o token Desktop {{desktopTerm}}.</p></article><article><b>03</b><h3>Conecte, personalize, opere</h3><p>Configure os canais, prepare os templates e publique os fluxos adequados à sua operação.</p></article></div><details><summary>O pacote inclui as duas soluções de WhatsApp?</summary><p>Sim. AitoNotify + WhatsApp BotBuilder reúne o módulo para a API oficial da Meta e o BotBuilder com sessão WhatsApp Web. As conexões usam números independentes, com gestão integrada de contatos e permissões.</p></details><details><summary>Minha equipe pode acessar o mesmo WhatsApp com logins diferentes?</summary><p>Sim. No WhatsApp Web do kit AitoNotify + WhatsApp BotBuilder, cada colaborador pode ter seu próprio login e identificação nas respostas. A sessão é conectada uma vez por QR Code no computador. O acesso remoto dos atendentes usa o endereço HTTPS configurado para colaboradores. Amplie sua equipe dimensionando os acessos simultâneos conforme a infraestrutura e o plano da sua instalação.</p></details><details><summary>O disparo pela API oficial elimina o risco de bloqueio?</summary><p>A API oficial é o caminho para uma operação profissional com mais segurança. A AITO desenvolve a integração com base na documentação oficial da Meta, usando a Cloud API, modelos aprovados e contatos autorizados. Os envios utilizam a infraestrutura oficial e continuam sujeitos à capacidade e aos limites da sua conta. Com conteúdo adequado, consentimento e acompanhamento da qualidade, sua empresa tem uma base sólida para crescer com menor risco. Conteúdos indevidos, reclamações, falta de autorização e descumprimento das políticas podem gerar restrições; a decisão final permanece com a Meta.</p></details><details><summary>O que recebo na compra do Desktop?</summary><p>O instalador Windows .exe, o guia help-me em três idiomas e um token exclusivo do Desktop, {{desktopTerm}}. Configure os canais e suas credenciais no assistente e no painel. A API oficial exige sua conta Meta; a IA usa sua própria chave e créditos. Código-fonte e implantação Cloud são vendidos em outro produto.</p></details><details><summary>Também posso enviar e-mails e mensagens no Telegram?</summary><p>Sim. Além das duas soluções de WhatsApp, o aplicativo inclui Gmail/e-mail e Telegram. Crie conteúdos próprios por canal, selecione os contatos autorizados e programe avisos, lembretes ou campanhas. Você configura suas contas e permissões no painel; as regras e limites de cada provedor continuam valendo.</p></details><details><summary>Qual é a validade da licença Desktop?</summary><p>Esta oferta entrega um token {{desktopTerm}}. {{desktopLicense.permanent?"Não há vencimento programado nesta oferta.":"Escolha 1, 6 ou 12 meses de calendário."}} A validade aparece em Meus produtos e no aplicativo. Quando aplicável, a renovação é separada, de acordo com a oferta vigente. Compras anteriores mantêm as condições registradas no pedido.</p></details><details><summary>Posso mudar o logo, cores e telas?</summary><p>O Desktop permite os ajustes de marca e recursos disponibilizados no painel. Alterações de código e desenvolvimento de novas integrações exigem a compra separada do produto Código-fonte Whitelabel.</p></details></section>
-<footer>Kit AitoNotify + WhatsApp BotBuilder · AitoSoftwares <router-link to="/app?tab=products">Já comprei: acessar meus produtos →</router-link></footer>
-<KitProductCart ref="checkout" product-type="desktop" @catalog="value=>catalog=value"/>
-<aside class="product-action-dock" aria-label="Ações do produto">
-  <button type="button" class="kit-buy-float" @click="buy"><q-icon name="mdi-cart-outline"/><span>Comprar Desktop</span></button>
-  <a class="floating-prototype" :href="prototypeUrl" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-play-circle"/><span>Testar demonstração</span></a>
-  <button class="product-assistant" type="button" aria-label="Tirar dúvidas com o assistente AITO" @click="assistantOpen = true"><img src="/ia.gif" alt="" width="42" height="42" /></button>
-</aside>
-<q-dialog v-model="assistantOpen"><IAChatComponent @close="assistantOpen = false" /></q-dialog>
+        <section id="pacote" class="solution-package">
+          <div class="section-heading">
+            <span class="eyebrow">TRÊS FERRAMENTAS NO MESMO APLICATIVO</span>
+            <h2>Menos abas. <em>Mais trabalho resolvido.</em></h2>
+          </div>
+          <div class="module-links">
+            <a v-for="module in modules" :key="module.id" :href="'#' + module.id" :class="'module-link--' + module.tone">
+              <q-icon :name="module.icon" aria-hidden="true" />
+              <span><strong>{{ module.title }}</strong><small>{{ module.text }}</small></span>
+              <q-icon name="mdi-arrow-down" aria-hidden="true" />
+            </a>
+          </div>
+        </section>
 
-</q-page></q-page-container></q-layout>
+        <DesktopSolutionFeatures />
+        <KitTeamSection :image="offer.media?.teamAccess || solutionsMedia.web" />
+
+        <section id="demonstracao" class="solution-demonstration">
+          <div class="section-heading">
+            <span class="eyebrow">POR DENTRO DO DESKTOP</span>
+            <h2>Veja como o trabalho <em>fica organizado.</em></h2>
+            <p>Escolha uma tela e toque na moldura para ampliar os detalhes.</p>
+          </div>
+          <q-carousel v-model="activeSlide" animated swipeable arrows infinite class="solutions-carousel" control-color="teal-3">
+            <q-carousel-slide v-for="(demo, index) in demos" :key="demo.key" :name="demo.key" class="solution-slide">
+              <div class="slide-copy">
+                <span class="eyebrow">{{ String(index + 1).padStart(2, '0') }} / POR DENTRO DO DESKTOP</span>
+                <h3>{{ demo.title }}</h3><p>{{ demo.copy }}</p>
+              </div>
+              <SolutionMediaFrame :src="demo.key === 'review' ? solutionsMedia.review : offer.media?.[demo.media] || demo.image" :title="demo.title" />
+            </q-carousel-slide>
+          </q-carousel>
+          <div class="demo-tabs" role="group" aria-label="Escolher captura do produto">
+            <button v-for="demo in demos" :key="demo.key" type="button" :aria-pressed="activeSlide === demo.key"
+              :aria-label="'Ver captura: ' + demo.title" @click="activeSlide = demo.key">{{ demo.tab }}</button>
+          </div>
+          <p class="demo-note">Telas de demonstração com dados fictícios ou ocultados.</p>
+        </section>
+
+        <section class="solution-mobile">
+          <div>
+            <span class="eyebrow">ATENDIMENTO NO NAVEGADOR</span>
+            <h2>Seu time também atende <em>pelo celular.</em></h2>
+            <p>O aplicativo roda no seu Windows. Com acesso remoto HTTPS configurado, os colaboradores usam o painel pelo navegador e entram com seus próprios logins.</p>
+            <small>O computador precisa ficar ligado e com o aplicativo em execução.</small>
+          </div>
+          <div class="mobile-frames">
+            <div><SolutionMediaFrame :src="offer.media?.mobilePush || solutionsMedia.mobile" phone title="Todos os canais no celular" /><p class="mobile-caption">Escolha o canal e continue o atendimento.</p></div>
+            <div><SolutionMediaFrame :src="offer.media?.mobileAssistant || solutionsMedia.assistant" phone title="Assistente Aito IA" /><p class="mobile-caption">Conteúdo, fluxos e configurações com apoio da IA.</p></div>
+          </div>
+        </section>
+
+        <section id="instalacao" class="guide installation">
+          <div>
+            <span class="eyebrow">PASSO A PASSO</span>
+            <h2>Instale. Conecte. Comece.</h2>
+            <ol class="quick-steps">
+              <li>Baixe o instalador em Meus produtos.</li>
+              <li>Ative a licença e siga a configuração guiada.</li>
+              <li>Conecte seus canais e teste o primeiro fluxo ou envio.</li>
+            </ol>
+          </div>
+          <LandingVideoMonitor :video="desktopSolutionVideos.installation" title="Guia de instalação" eyebrow="PASSO A PASSO"
+            headline="Seu primeiro acesso, do começo ao fim." description="Do download à configuração dos canais." />
+        </section>
+
+        <KitSystemRequirements />
+
+        <section id="teste-desktop" class="desktop-trial" aria-labelledby="desktop-trial-title">
+          <div>
+            <span class="eyebrow"><q-icon name="mdi-gift-outline" /> KIT DESKTOP COMPLETO</span>
+            <h2 id="desktop-trial-title">7 dias grátis no seu Windows.</h2>
+            <p>Crie sua primeira conta, confirme o cadastro e resgate o teste em Meus produtos. Baixe o instalador e use todos os módulos com a licença de teste.</p>
+            <button class="trial-cta" type="button" @click="startTrial"><q-icon name="mdi-download-outline" /> Começar meu teste</button>
+            <small>Sem cartão. Uma oferta por novo cliente elegível, sem licença ativa. Os 7 dias começam quando você resgata.</small>
+          </div>
+          <img src="/whatsapp-solutions/product-kit.webp" alt="Kit AitoNotify + WhatsApp BotBuilder" width="128" height="192" loading="lazy" />
+        </section>
+
+        <section id="planos" class="solution-plans">
+          <div class="section-heading">
+            <span class="eyebrow">ESCOLHA SEU PRAZO</span>
+            <h2>O mesmo Kit Desktop <em>em todos os planos.</em></h2>
+            <p>Já tem licença ativa? Ao renovar, o prazo comprado é somado à data de vencimento. Seus dias restantes continuam valendo.</p>
+          </div>
+          <div class="plans-grid">
+            <article v-for="plan in (offer.desktopPlans || [])" :key="plan.months" class="plan-card plan-card--source">
+              <div class="kit-plan-identity">
+                <img src="/whatsapp-solutions/product-kit.webp" alt="" width="128" height="192" loading="lazy" />
+                <div><span class="plan-chip">KIT DESKTOP</span><h3>{{ plan.label }}</h3><span class="kit-plan-platform"><q-icon name="mdi-microsoft-windows" /> Windows 10 e 11</span></div>
+              </div>
+              <div class="price"><strong>{{ money(plan.priceCents) }}</strong><span>{{ plan.months === 1 ? '1 mês' : plan.months + ' meses' }} · Uma instalação ativa</span></div>
+              <ul><li>WhatsApp oficial, BotBuilder e atendimento em equipe.</li><li>Campanhas no Gmail, Telegram e WhatsApp oficial.</li><li>Agentes de IA, instalador e guia de configuração.</li></ul>
+              <q-btn unelevated no-caps color="teal-6" label="Adicionar ao carrinho" icon="mdi-cart-plus"
+                :disable="!offer.available || !plan.enabled" @click="buy(plan.months)" />
+              <small>Pagamento pela InfinitePay. Download após a confirmação.</small>
+            </article>
+          </div>
+          <p class="plans-footnote">Tarifas da Meta, créditos de IA e serviços externos seguem os valores de cada provedor.</p>
+        </section>
+
+        <section class="product-upsell" aria-labelledby="source-upsell">
+          <div>
+            <span class="eyebrow">CÓDIGO-FONTE WHITELABEL</span>
+            <h2 id="source-upsell">Quer publicar <em>na sua nuvem?</em></h2>
+            <p>O Whitelabel é vendido separadamente. Receba o código-fonte para editar, integrar e publicar sua própria versão.</p>
+            <div class="product-upsell__facts"><span><q-icon name="mdi-code-braces" /> Código editável</span><span><q-icon name="mdi-cloud-key-outline" /> Token Cloud {{ cloudTerm }}</span></div>
+          </div>
+          <div class="product-upsell__actions">
+            <small>Produto Código-fonte Whitelabel</small><strong>{{ money(catalog.cloud.priceCents) }}</strong>
+            <q-btn unelevated no-caps color="teal-7" label="Levar Desktop + código-fonte" icon="mdi-cart-plus"
+              :disable="!offer.available || !catalog.cloud.available" @click="buyBoth" />
+            <router-link to="/whatsapp-solucoes-whitelabel">Conhecer a versão Whitelabel <q-icon name="mdi-arrow-right" /></router-link>
+          </div>
+        </section>
+
+        <section class="guide" aria-labelledby="desktop-faq">
+          <span class="eyebrow">PERGUNTAS FREQUENTES</span>
+          <h2 id="desktop-faq">Antes de instalar</h2>
+          <details v-for="item in desktopSolutionsFaq" :key="item.question"><summary>{{ item.question }}</summary><p>{{ item.answer }}</p></details>
+        </section>
+
+        <footer>Kit AitoNotify + WhatsApp BotBuilder · AitoSoftwares <router-link :to="productsPath">Já comprei: acessar meus produtos →</router-link></footer>
+        <KitProductCart ref="checkout" product-type="desktop" @catalog="value => catalog = value" />
+        <AuthDialog v-model="trialAuthOpen" initial-mode="register" audience="user" :return-path="productsPath"
+          :show-project-login="false" @authenticated="openProducts" />
+        <aside class="product-action-dock" aria-label="Ações do produto">
+          <a class="kit-buy-float" href="#planos"><q-icon name="mdi-cart-outline" /><span>Ver planos</span></a>
+          <a class="floating-prototype" :href="prototypeUrl" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-play-circle" /><span>Explorar por dentro</span></a>
+          <button class="product-assistant" type="button" aria-label="Tirar dúvidas com o assistente AITO" @click="assistantOpen = true"><img src="/ia.gif" alt="" width="42" height="42" /></button>
+        </aside>
+        <q-dialog v-model="assistantOpen"><IAChatComponent @close="assistantOpen = false" /></q-dialog>
+      </q-page>
+    </q-page-container>
+  </q-layout>
 </template>
 <style scoped>
-.product { animation: product-load 650ms ease both; }
-.product-reveal { opacity: 0; transform: translateY(28px); transition: opacity 750ms ease, transform 750ms cubic-bezier(.2,.65,.3,1); }
-.product-reveal.is-revealed { opacity: 1; transform: none; }
+.solutions-product {
+  --nav-clearance: 98px;
+  color: #effffb;
+  background: radial-gradient(ellipse at 70% 2%, #154e3f70, transparent 28%), #030f11;
+  padding: 82px max(18px, calc((100vw - 1200px) / 2)) 124px;
+  animation: product-load 500ms ease both;
+}
 @keyframes product-load { from { opacity: 0; } to { opacity: 1; } }
-@media(prefers-reduced-motion: reduce) { .product { animation: none; } .product-reveal { opacity: 1; transform: none; transition: none; } }
-.product{color:#effffb;background:radial-gradient(ellipse at 75% 12%,#0b4e414d,transparent 40%),linear-gradient(#1b494522 1px,transparent 1px),linear-gradient(90deg,#1b494522 1px,transparent 1px),#030c0e;background-size:auto,78px 78px,78px 78px,auto;padding:0 max(20px,calc((100vw - 1200px)/2)) 120px}.product header{display:flex;align-items:center;justify-content:space-between;padding:24px 0;border-bottom:1px solid #244d42}.brand{font-weight:900;letter-spacing:.1em}.brand span{color:#46dbc0}.product a{color:#90efd9;text-decoration:none}.hero{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:50px;padding:80px 0 65px}.eyebrow{font-size:11px;letter-spacing:.14em;color:#7febd3;font-weight:800}.product h1{font-size:clamp(38px,4.6vw,64px);line-height:1.08;letter-spacing:-.045em;margin:22px 0}.product h1 em{font-style:normal;color:#65e1c1}.product p{color:#abc6be;line-height:1.75;font-size:16px}.price{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin:25px 0}.price s{color:#829e94}.price strong{color:#b0ffe5;font-size:36px;font-weight:800}.price span{flex-basis:100%;font-size:12px;color:#adc7bf}.trust{display:flex;gap:7px;align-items:center;margin:16px 0;font-size:11px;color:#b0cfc1}.highlights{display:flex;gap:8px;flex-wrap:wrap}.highlights span{font-size:11px;padding:7px 10px;border:1px solid #295349;border-radius:20px}.hero-video{min-width:0}.builder-preview{display:grid;grid-template-columns:.9fr 1.1fr;align-items:center;gap:55px;padding:45px 0 65px;border-top:1px solid #244d42}.builder-preview h2{font-size:clamp(28px,3vw,40px);line-height:1.2;letter-spacing:-.03em}.builder-preview__copy>a{display:inline-flex;gap:10px;font-size:13px;font-weight:600}.hero-devices{position:relative;padding:30px 0 100px}.laptop{width:100%;filter:drop-shadow(0 30px 25px #0008)}.screen{aspect-ratio:16/10;border:9px solid #20312f;border-bottom-width:15px;border-radius:15px 15px 0 0;background:#0a2223;overflow:hidden}.laptop-base{height:12px;margin:0 -12px;background:linear-gradient(#63756f,#2d3c37);border-radius:0 0 60% 60%}.phone{width:145px;height:294px;background:#0a2223;border:7px solid #293732;border-radius:26px;overflow:hidden;box-shadow:0 15px 45px #0008;position:relative}.hero-devices .phone{position:absolute;right:-10px;bottom:40px;transform:rotate(5deg)}.phone-camera{position:absolute;top:7px;left:50%;transform:translateX(-50%);width:38px;height:8px;border-radius:10px;background:#020705;z-index:1}.screen img{width:100%;height:100%;object-fit:cover;object-position:top}.phone img{width:100%;height:100%;object-fit:cover;object-position:top}.screen-placeholder{display:grid;height:100%;align-content:center;justify-items:center;gap:14px;color:#70d4bc;text-align:center;padding:16px}.screen-placeholder strong{font-size:clamp(12px,2vw,19px)}.screen-placeholder span{font-size:10px;color:#8faca2}.phone .screen-placeholder strong{font-size:13px}.device-note{display:block;margin-top:23px;font-size:11px;color:#8eaea1;max-width:65%}.benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:25px 0 70px}.benefits article{background:#0b2022;border:1px solid #284940;border-radius:16px;padding:25px}.benefits .q-icon{color:#80e3c9;font-size:30px}.benefits h2{font-size:21px;line-height:1.35;margin:18px 0 10px}.benefits p{font-size:14px}.showcase{display:grid;grid-template-columns:1fr 1fr;gap:45px;align-items:center;padding:70px 0;border-top:1px solid #244d42}.showcase h2,.guide h2{font-size:clamp(28px,3vw,40px);line-height:1.2;letter-spacing:-.03em}.second-devices{display:flex;align-items:center;gap:15px}.second-devices .phone{flex:0 0 135px;transform:rotate(-5deg)}.second-devices .laptop{flex:1;min-width:0}.guide{padding:65px 0;border-top:1px solid #244d42}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:25px}.steps b{color:#73d4b4;font-size:32px}.steps h3{font-size:19px;margin:15px 0 8px}.steps p{font-size:14px}.guide details{padding:20px 0;color:#b2d9cb}.guide summary{cursor:pointer}.product footer{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;font-size:12px;color:#85b1a0;border-top:1px solid #244d42;padding-top:25px}.buy-floating{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:24px;padding:12px 16px;background:#102e2df2;border:1px solid #448774;border-radius:15px;backdrop-filter:blur(12px);box-shadow:0 10px 35px #0009;max-width:calc(100vw - 24px)}.buy-floating span{display:grid;white-space:nowrap}.buy-floating small{font-size:10px;color:#c3e4d6}.buy-floating strong{font-size:20px}.buy-floating .q-btn{white-space:nowrap}.checkout-card{background:#102c2e;color:#effffb;width:520px;max-width:94vw;border:1px solid #568778;border-radius:16px}.checkout-head{display:flex;justify-content:space-between;align-items:center}.checkout-head h3{font-size:22px;margin:0}.checkout-card p{color:#bedacf;font-size:14px;line-height:1.7}.checkout-card .status{border:1px solid #395f53;background:#173b31;padding:14px;border-radius:9px}@media(max-width:900px){.hero{grid-template-columns:1fr;gap:28px;padding:30px 0 50px}.hero-video{width:min(600px,100%);margin:0 auto}.builder-preview{grid-template-columns:1fr;gap:12px;padding:40px 0}.hero-devices{max-width:550px;width:100%;margin:auto;padding:20px 15px 70px}.benefits{grid-template-columns:1fr}.showcase{grid-template-columns:1fr;padding:45px 0}.second-devices{max-width:600px}.steps{grid-template-columns:1fr;gap:15px}.steps article{border-bottom:1px solid #244d42;padding:15px 0}.product header a{font-size:12px}.buy-floating{gap:12px;padding:10px}.buy-floating strong{font-size:18px}.buy-floating small{max-width:120px;white-space:normal}.product h1{max-width:650px}.guide{padding:45px 0}}
+.solutions-product a { color: #a5f5d9; }
+.solutions-product section[id], .solutions-product :deep(.kit-team) { scroll-margin-top: var(--nav-clearance); }
+.solutions-product a:focus-visible, .solutions-product button:focus-visible { outline: 2px solid #a5f5d9; outline-offset: 3px; }
 
-.ai-emblem{display:block;width:76px;height:76px;object-fit:contain;margin:-18px 0 -10px}.hero-devices{padding-bottom:140px}.hero-devices .phone{width:185px;height:auto;aspect-ratio:720/1360;bottom:16px;right:-6px;transform:rotate(3deg)}.device-note{position:absolute;left:0;bottom:0;max-width:65%;color:#a9c8bc;font-size:11px;line-height:1.5}.phone-camera{pointer-events:none;top:0;height:5px}.second-devices{position:relative;display:block;padding-bottom:120px}.second-devices .phone{position:absolute;right:-8px;bottom:0;width:170px;height:auto;aspect-ratio:720/1360;transform:rotate(3deg)}.second-devices .laptop{width:100%}.demo-note{margin:0!important;text-align:center;font-size:11px!important;color:#88aea1!important}.feature-list{display:grid;gap:10px;padding-left:20px;color:#b6d8c9;line-height:1.6;font-size:14px;margin:22px 0 28px}.adapt-section,.technical-section{padding:75px 0;border-top:1px solid #244d42;margin-top:35px}.section-heading{max-width:800px;margin:0 auto 32px;text-align:center}.section-heading h2{font-size:clamp(28px,3.2vw,42px);line-height:1.2;letter-spacing:-.03em;margin:18px 0}.adapt-preview{overflow:hidden;border:8px solid #263e38;border-radius:16px;background:#e9f3ee;box-shadow:0 25px 65px #0006;aspect-ratio:16/10}.adapt-details{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:30px}.adapt-details h3{font-size:20px;line-height:1.35;margin:0 0 12px}.adapt-details p{font-size:14px}.assistant-links{display:flex;gap:20px;font-size:13px}.technical-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.technical-grid article{padding:26px;border:1px solid #2a5145;border-radius:16px;background:#0a2224}.technical-grid .q-icon{color:#79e3c6;font-size:30px}.technical-grid h3{font-size:19px;line-height:1.4;margin:16px 0 12px}.technical-grid p{font-size:14px;margin:0 0 20px}.technical-grid small{font-size:11px;color:#75c7ac}.render-strip{display:flex;align-items:center;gap:20px;margin-top:24px;padding:24px;border:1px solid #397d66;border-radius:16px;background:linear-gradient(120deg,#144338,#0b2729)}.render-strip>.q-icon{font-size:32px;color:#8aeacb}.render-strip>div{flex:1}.render-strip strong{font-size:18px}.render-strip p{font-size:13px;margin:8px 0 0}.screen :deep(img),.phone :deep(img){object-fit:contain}.product-assistant{position:fixed;right:22px;bottom:110px;z-index:101;display:grid;place-items:center;width:60px;height:60px;padding:0;border:1px solid #65e1c1;border-radius:20px;background:linear-gradient(145deg,#60e9c9,#079a80);box-shadow:0 12px 32px #002c2680;cursor:pointer}.product-assistant:focus-visible{outline:3px solid #bdffe9;outline-offset:4px}.product-assistant img{object-fit:contain;pointer-events:none}.product header .brand{display:flex;align-items:center;gap:8px}.product header nav{display:flex;align-items:center;gap:22px;font-size:12px}.product section[id]{scroll-margin-top:24px}
-@media(max-width:900px){.technical-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.showcase{gap:30px}.second-devices{width:min(580px,100%);margin:auto}.adapt-section,.technical-section{padding:45px 0}}
-@media(max-width:600px){.hero-devices{padding:10px 10px 165px}.hero-devices .phone{width:145px;right:0;bottom:24px}.second-devices{padding:0 10px 150px}.second-devices .phone{width:145px;right:0;bottom:0}.technical-grid,.adapt-details{grid-template-columns:1fr}.adapt-details{gap:22px}.technical-grid article{padding:22px}.render-strip{flex-wrap:wrap;padding:20px}.render-strip>.q-btn{width:100%}.render-strip>div{flex-basis:75%}.device-note{max-width:50%}.adapt-preview{border-width:4px;border-radius:10px}.product header .brand{font-size:11px;letter-spacing:.04em}.product header nav{gap:12px;font-size:11px}.product header nav>a:not(:last-child){display:none}.buy-floating{width:calc(100% - 24px);justify-content:space-between;gap:10px}.buy-floating>span{min-width:0;flex:1;white-space:normal}.buy-floating small{max-width:none}.buy-floating strong{font-size:16px;line-height:1.3;overflow-wrap:anywhere}.buy-floating>.q-btn{flex-shrink:0;font-size:12px}.buy-floating :deep(.q-btn__content){flex-wrap:nowrap}.product-assistant{right:14px;bottom:115px;width:54px;height:54px;border-radius:18px}.product{padding-bottom:125px}}
+.solutions-navbar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 200;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px max(18px, calc((100vw - 1200px) / 2));
+  background: #041719f5;
+  border-bottom: 1px solid #2b6556;
+  box-shadow: 0 8px 30px #0004;
+  backdrop-filter: blur(16px);
+}
+.solutions-brand, .solutions-navbar nav { display: flex; align-items: center; gap: 15px; }
+.solutions-brand { gap: 8px; font-size: .86rem; color: #f1fffa !important; font-weight: 850; }
+.solutions-brand > span > span { color: #65e4c6; }
+.solutions-navbar a, .hero-actions a, .module-links > a, .floating-prototype { text-decoration: none; }
+.solutions-navbar nav > a { font-size: .8rem; font-weight: 650; white-space: nowrap; }
+.solutions-navbar nav > a:not(.nav-trial):hover { text-decoration: underline; }
+.solutions-navbar .nav-trial, .trial-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid #b6ffd1;
+  border-radius: 12px;
+  color: #092f24 !important;
+  background: linear-gradient(115deg, #d9ffa5, #71e9c7);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+.nav-trial:hover, .trial-cta:hover { filter: brightness(1.1); }
 
+.solutions-hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: clamp(28px, 5vw, 78px); align-items: center; padding: 42px 0 clamp(45px, 7vw, 93px); }
+.solutions-hero > *, .mobile-frames > *, .solution-slide > *, .installation > * { min-width: 0; }
+.kit-label { display: inline-flex; padding: 7px 10px; border-radius: 8px; border: 1px solid #77d4b77d; background: #174e3d66; color: #bcf8e3; font-size: .68rem; font-weight: 800; letter-spacing: .08em; }
+.solutions-hero h1 { margin: 13px 0 15px; font-size: clamp(36px, 4.1vw, 58px); font-weight: 820; line-height: 1.07; letter-spacing: -.05em; }
+.solutions-hero h1 em, h2 em { color: #8df0ca; font-style: normal; }
+.solutions-hero p, .section-heading p, .solution-mobile p, .product-upsell p { color: #bed8cd; line-height: 1.7; }
+.solutions-hero p { max-width: 480px; font-size: clamp(14px, 1.35vw, 18px); }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 17px; }
+.trial-cta { min-height: 54px; padding: 12px 15px; }
+.trial-cta .q-icon { font-size: 20px; }
+.simulator-cta { color: #ddfff2 !important; background: #164637; border-color: #81daba; }
+.trust { color: #aed3c5; font-size: .8rem; }
+.trust .q-icon { font-size: 18px; margin-right: 3px; }
+.highlights { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.highlights span { padding: 6px 8px; border: 1px solid #386c5a; border-radius: 99px; font-size: .68rem; color: #d0eadf; }
 
-.solutions-brand{display:flex;align-items:center;gap:8px;text-decoration:none}.solutions-brand>span{color:#f1fffa!important}.solutions-brand>span>span{color:#46dbc0}.solutions-brand img{object-fit:contain}.hero-actions{display:flex;gap:12px;flex-wrap:wrap}.hero-actions .q-btn{flex:1;min-width:190px}.solutions-hero .copy{min-width:0}.solution-package,.solution-demonstration,.solution-mobile,.solution-plans{padding:65px 0}.section-heading{max-width:780px;margin-bottom:34px}.section-heading h2,.solution-mobile h2{font-size:clamp(32px,4.4vw,56px);line-height:1.08;letter-spacing:-1.6px;margin:14px 0 20px}.section-heading em,.solution-mobile em{color:#7be7c8;font-style:normal}.section-heading p{color:#b2cac2;max-width:650px;line-height:1.8}.solution-pair,.plans-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.solution-pair article,.plan-card{padding:34px;border:1px solid #2b5148;border-radius:24px;background:linear-gradient(145deg,#10362f80,#071c20)}.solution-pair article:nth-child(2){background:linear-gradient(145deg,#183d4a80,#071c20)}.solution-number{display:block;color:#8fdfc6;font-size:10px;letter-spacing:.13em;font-weight:800;margin-bottom:24px}.solution-pair h3,.plan-card h3{font-size:28px;line-height:1.2;margin:20px 0 14px}.solution-pair p,.plan-card p{color:#bbd0c8;font-size:14px;line-height:1.8}.solution-pair ul,.plan-card ul{padding-left:18px;line-height:2;color:#d8eee5;font-size:13px}.solution-pair small,.plan-card small,.solution-mobile small{display:block;font-size:11px;color:#88a79c;line-height:1.7;margin-top:20px}.solutions-carousel{background:transparent;height:610px}.solution-slide{display:grid;grid-template-columns:minmax(200px,.6fr) minmax(0,1.4fr);align-items:center;gap:32px;padding:32px 48px 60px}.slide-copy h3{font-size:clamp(26px,3vw,42px);line-height:1.15;margin:18px 0}.slide-copy p{color:#aecac0;font-size:13px;line-height:1.8}.solution-mobile{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:center}.solution-mobile p{color:#b4cdc3;font-size:15px;line-height:1.8}.mobile-frames{display:flex;align-items:center;gap:18px;min-width:0}.mobile-note{font-size:13px;color:#93cbb6;line-height:1.8}.mobile-note>.q-icon{display:block;font-size:36px;margin-bottom:14px}.plan-card{display:flex;flex-direction:column}.plan-card--source{border-color:#55c49f;background:linear-gradient(145deg,#164e3eaa,#081c1e)}.plan-chip{color:#90e7c9;font-size:10px;letter-spacing:.1em;font-weight:800}.plan-card .price{display:flex;flex-direction:column;align-items:flex-start;min-height:120px}.plan-card .price strong{font-size:42px;line-height:1.2;letter-spacing:-1px}.plan-card .price span{font-size:11px;color:#a6c0b4}.plan-card ul{flex:1;margin:16px 0 28px}.plan-card>.q-btn{width:100%}.plans-footnote{font-size:11px;text-align:center;color:#86a497;line-height:1.7;margin:24px auto;max-width:700px}.solutions-product .hero-video{min-width:0}.solutions-product .buy-floating{max-width:760px}.solutions-product details{border-bottom:1px solid #264a40;padding:18px 0}.solutions-product summary{font-size:16px;font-weight:650;cursor:pointer}.solutions-product details p{font-size:13px;color:#b1c9bd;line-height:1.9}.solutions-product .builder-preview .hero-devices{padding:20px 0;min-width:0}
-@media(max-width:900px){.solution-mobile{gap:26px}.mobile-note{display:none}.solutions-carousel{height:650px}.solution-slide{grid-template-columns:1fr;gap:20px;padding-top:0}.slide-copy{max-width:650px}.solution-pair article,.plan-card{padding:24px}.plan-card .price strong{font-size:34px}}
-@media(max-width:650px){.solutions-product{padding-left:16px;padding-right:16px}.solution-package,.solution-demonstration,.solution-mobile,.solution-plans{padding:42px 0}.solution-pair,.plans-grid,.solution-mobile{grid-template-columns:1fr}.solution-pair article,.plan-card{padding:24px 20px;border-radius:20px}.solutions-carousel{height:540px}.solution-slide{padding:0 22px 45px;gap:18px}.slide-copy h3{font-size:29px}.slide-copy .eyebrow{font-size:9px}.mobile-frames{max-width:300px;margin:auto}.section-heading h2,.solution-mobile h2{letter-spacing:-1px}.solutions-product .buy-floating{padding:10px;gap:6px}.solutions-product .buy-floating>.q-btn{font-size:10px;min-height:40px;padding:6px 9px}.solutions-product .buy-floating strong{font-size:13px}.solutions-product .buy-floating small{font-size:9px}.solutions-brand{font-size:11px!important}.solutions-brand img{width:30px;height:30px}.hero-actions .q-btn{width:100%}.plan-card .price strong{font-size:34px}.solutions-product .hero-devices{padding:12px 0!important}}
+.solution-package, .solution-demonstration, .solution-mobile, .solution-plans, .guide { padding: clamp(30px, 5vw, 66px) 0; }
+.section-heading { max-width: 710px; margin: 0 auto 25px; text-align: center; }
+.eyebrow { color: #a4f5d8; font-size: .67rem; font-weight: 820; letter-spacing: .12em; }
+h2 { margin: 12px 0; font-size: clamp(29px, 3.75vw, 48px); font-weight: 780; line-height: 1.13; letter-spacing: -.04em; }
+.module-links, .plans-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.module-links > a {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 17px;
+  align-items: center;
+  gap: 10px;
+  padding: 17px;
+  border: 1px solid var(--tile-line);
+  border-radius: 13px;
+  background: var(--tile-bg);
+  color: var(--tile-color);
+}
+.module-links > a:hover { filter: brightness(1.16); }
+.module-links strong, .module-links small { display: block; }
+.module-links small { margin-top: 4px; color: #d5e7df; font-size: .74rem; }
+.module-links > a > .q-icon:first-child { font-size: 25px; }
+.module-link--blue { --tile-line: #426c83; --tile-bg: #0e2939; --tile-color: #b8e7ff; }
+.module-link--green { --tile-line: #41735d; --tile-bg: #0d2e24; --tile-color: #b5f7d9; }
+.module-link--gold { --tile-line: #78664a; --tile-bg: #302719; --tile-color: #ffe4a6; }
 
-.kit-label{display:inline-block;padding:9px 13px;margin-bottom:18px;border:1px solid #4fa98b;border-radius:8px;background:#174e3d66;color:#b9ffe5;font-size:11px;font-weight:800;letter-spacing:.06em;line-height:1.6}.solutions-hero .copy>.eyebrow{display:block}
-.plan-card .price{flex-wrap:nowrap;width:100%}.plan-card .price span{flex-basis:auto;max-width:100%;overflow-wrap:anywhere}
+.solutions-carousel { height: clamp(410px, 51vw, 630px); background: transparent; }
+.solution-slide { display: grid; grid-template-columns: minmax(190px, .65fr) 1.35fr; align-items: center; gap: 24px; padding: 18px 45px 32px; }
+.slide-copy h3 { margin: 10px 0; font-size: clamp(24px, 2.7vw, 37px); font-weight: 750; line-height: 1.16; }
+.slide-copy p { color: #bed8cd; line-height: 1.68; }
+.demo-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin: 12px 0; }
+.demo-tabs button { padding: 8px 12px; color: #d4f2e7; background: #0c2927; border: 1px solid #3e7662; border-radius: 8px; font: inherit; font-size: .75rem; cursor: pointer; }
+.demo-tabs button[aria-pressed="true"] { color: #082d20; background: #93e9c5; border-color: #b5ffe2; font-weight: 760; }
+.demo-note, .mobile-caption { margin: 14px auto 0; text-align: center; font-size: .75rem !important; color: #a3cbbd; }
+.solution-mobile, .installation { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(20px, 5vw, 60px); align-items: center; }
+.solution-mobile small { color: #b0c9c0; }
+.mobile-frames { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.guide { border-top: 1px solid #2b5d50; }
+.quick-steps { padding-left: 1.2em; color: #c1d8cf; }
+.quick-steps li { margin-bottom: 8px; }
 
-.demo-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0 18px}.demo-tabs button{padding:10px 16px;color:#bcebd8;background:#0c2927;border:1px solid #3e7662;border-radius:10px;font-size:12px;cursor:pointer}.demo-tabs button[aria-pressed="true"]{color:#082d20;background:#93e9c5;border-color:#b5ffe2;font-weight:700}.demo-tabs button:focus-visible{outline:2px solid white;outline-offset:3px}
-/* Layout and navigation for the solutions landing only. */
-.solutions-product{padding-top:86px}.solutions-product .solutions-navbar{position:fixed;top:0;left:0;right:0;z-index:200;padding:14px max(20px,calc((100vw - 1200px)/2));min-height:72px;background:#041719f5;backdrop-filter:blur(18px);box-shadow:0 8px 30px #0004;border-bottom:1px solid #2b6556}.solutions-navbar nav{gap:24px}.solutions-product .solutions-navbar nav a{white-space:nowrap}.solutions-navbar .nav-trial{display:inline-flex;align-items:center;gap:8px;padding:11px 15px;border:1px solid #a3ffd7;border-radius:10px;color:#062b22;background:linear-gradient(120deg,#b3fda5,#51e3c5);font-weight:800;box-shadow:0 5px 22px #42d9a83b}.solutions-product h1{font-size:clamp(32px,3.6vw,50px);line-height:1.13;letter-spacing:-.04em}.solutions-product .solutions-hero{padding-top:44px}.solutions-product section[id],.solutions-product :deep(.kit-team){scroll-margin-top:96px}.trial-cta{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:62px;padding:15px 22px;border:1px solid #d3ffce;border-radius:14px;color:#05291d!important;background:linear-gradient(110deg,#c4ff97,#5ee6bb);box-shadow:0 10px 35px #60eb9d35;font-size:16px;font-weight:800;line-height:1.3}.trial-cta small{display:block;font-size:10px;font-weight:500;margin-top:5px;color:#1f5c44}.trial-cta>.q-icon{font-size:25px}.trial-cta:hover,.nav-trial:hover{filter:brightness(1.08);box-shadow:0 12px 36px #60eb9d55}.trial-cta:focus-visible,.nav-trial:focus-visible{outline:3px solid #efffe9;outline-offset:4px}.operations-overview{margin-top:36px}.operations-overview>p,.mobile-caption{font-size:12px!important;text-align:center;color:#93beaa!important;line-height:1.7!important;margin:16px auto;max-width:800px}.prototype-strip{margin-top:28px;padding:30px;border:1px solid #4b9e7f;border-radius:22px;display:flex;align-items:center;justify-content:space-between;gap:30px;background:linear-gradient(110deg,#184b39,#0c2a2d)}.prototype-strip strong{font-size:23px}.prototype-strip p{font-size:13px;margin:8px 0 0}.mobile-frames{display:grid;grid-template-columns:1fr 1fr;gap:18px}.solutions-product .mobile-frames{max-width:none}.mobile-frames>div{min-width:0}.solutions-product .solutions-carousel{height:640px}.solutions-product .solution-slide{padding:24px 46px 60px}.solutions-product .slide-copy p{font-size:14px}.solutions-product .solution-mobile{grid-template-columns:.85fr 1.15fr}.solutions-product .hero-actions>.trial-cta{flex:1;min-width:225px}.solutions-product .hero-actions>.q-btn{min-width:180px;font-size:12px}.solutions-product .demo-note{margin-top:12px!important}
-@media(max-width:900px){.solutions-product .solutions-navbar{gap:16px}.solutions-product .solutions-navbar nav{gap:12px}.solutions-product .solution-mobile{grid-template-columns:1fr}.solutions-product .mobile-frames{width:min(610px,100%);margin:auto}.solutions-product .solutions-carousel{height:740px}.solutions-product .solution-slide{grid-template-columns:1fr;gap:20px;padding-top:15px}.solutions-product .solution-slide :deep(.solution-frame){max-width:650px;margin:auto}.solutions-product .solutions-hero{padding-top:32px}.solutions-product h1{max-width:650px}}
-@media(max-width:600px){.solutions-product{padding-top:115px}.solutions-product .solutions-navbar{padding:10px 16px;flex-wrap:wrap;gap:8px}.solutions-product .solutions-navbar .solutions-brand{min-height:30px}.solutions-product .solutions-navbar nav{display:flex;justify-content:space-between;width:100%;gap:8px;overflow-x:auto}.solutions-product .solutions-navbar nav>a{display:inline-flex!important;font-size:11px}.solutions-product .solutions-navbar nav>a[href="#equipe"]{display:none!important}.solutions-navbar .nav-trial{padding:8px 10px;font-size:10px!important}.solutions-product h1{font-size:34px;line-height:1.15}.solutions-product section[id],.solutions-product :deep(.kit-team){scroll-margin-top:122px}.solutions-product .hero-actions{display:grid;grid-template-columns:1fr;width:100%}.trial-cta{min-height:65px;width:100%;font-size:17px}.solutions-product .solutions-carousel{height:600px}.solutions-product .solution-slide{padding:10px 22px 48px}.solutions-product .slide-copy h3{font-size:27px;line-height:1.2;margin:10px 0}.solutions-product .slide-copy p{font-size:12px;line-height:1.7}.prototype-strip{padding:24px;flex-direction:column;align-items:stretch;gap:20px}.prototype-strip strong{font-size:21px}.solutions-product .mobile-frames{gap:30px;grid-template-columns:1fr}.mobile-frames>div{max-width:290px;margin:auto}.solutions-product .kit-label{font-size:9px;letter-spacing:.04em}.solutions-product .section-heading h2,.solutions-product .solution-mobile h2{font-size:34px}}
+.desktop-trial { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: clamp(15px, 6vw, 65px); padding: clamp(22px, 4.5vw, 54px); border: 1px solid #81dbb9; border-radius: 24px; background: radial-gradient(ellipse at 90% 10%, #256c4a, transparent 60%), #103a2f; }
+.desktop-trial p, .desktop-trial small { max-width: 570px; color: #d1ede1; line-height: 1.68; }
+.desktop-trial small { display: block; margin-top: 12px; }
+.desktop-trial img { width: clamp(90px, 17vw, 170px); height: auto; filter: drop-shadow(0 12px 23px #0005); }
+.desktop-trial .eyebrow .q-icon { font-size: 21px; margin-right: 5px; }
+
+.solutions-product .plans-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.solutions-product .plan-card--source {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(17px, 2.3vw, 27px);
+  border: 1px solid #4d967c;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #174337, #0a201e);
+}
+.plan-card h3 { margin: 7px 0; font-size: clamp(20px, 2.25vw, 29px); font-weight: 770; line-height: 1.15; }
+.plan-card .kit-plan-identity { gap: 13px; margin-bottom: 14px; }
+.plan-card .kit-plan-identity > img { width: 74px; height: auto; }
+.plan-chip { color: #a4f5d8; font-size: .64rem; font-weight: 800; letter-spacing: .11em; }
+.price { display: grid; gap: 4px; }
+.price strong { font-size: clamp(25px, 3vw, 39px); line-height: 1.12; }
+.price span, .plan-card small { font-size: .72rem; color: #b7d6ca; line-height: 1.55; }
+.plan-card small { margin-top: 9px; }
+.plan-card ul { flex: 1; padding-left: 1.15em; font-size: .79rem; line-height: 1.6; color: #d3ede3; }
+.plan-card li { margin-bottom: 6px; }
+.plans-footnote { color: #b2cfc3; text-align: center; font-size: .78rem; }
+
+.solutions-product footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 20px; border-top: 1px solid #2b5d50; color: #a4c6b9; font-size: .77rem; }
+.product-assistant { display: grid; place-items: center; padding: 0; border: 1px solid #65e1c1; background: linear-gradient(145deg, #60e9c9, #079a80); cursor: pointer; }
+.floating-prototype { display: inline-flex; align-items: center; gap: 7px; border: 1px solid; }
+
+@media (max-width: 930px) {
+  .solutions-hero { grid-template-columns: 1fr; }
+  .hero-video { width: min(650px, 100%); margin: auto; }
+  .solutions-product .plans-grid { grid-template-columns: minmax(0, 540px); justify-content: center; }
+}
+@media (max-width: 700px) {
+  .solutions-product { --nav-clearance: 125px; padding-top: 109px; }
+  .solutions-navbar { flex-wrap: wrap; gap: 6px; }
+  .solutions-navbar nav { width: 100%; gap: 8px; }
+  .solutions-product .solutions-navbar nav > a.nav-trial { display: inline-flex !important; }
+  .solutions-navbar nav > a.nav-simulator { font-size: .68rem; }
+  .solutions-navbar .nav-trial { padding: 8px 9px; font-size: .68rem; }
+  .solutions-hero { padding-top: 21px; }
+  .hero-actions > a { min-height: 48px; padding-inline: 10px; font-size: .82rem; }
+  .module-links, .solution-mobile, .installation { grid-template-columns: 1fr; }
+  .solutions-carousel { height: clamp(400px, 90vw, 590px); }
+  .solution-slide { grid-template-columns: 1fr; align-content: center; gap: 16px; padding: 16px 28px 25px; }
+  .slide-copy p { margin: 0; }
+}
+@media (max-width: 360px) {
+  .solutions-product { --nav-clearance: 136px; padding-inline: 12px; }
+  .hero-actions > a { width: 100%; }
+  .desktop-trial { grid-template-columns: 1fr; }
+  .desktop-trial > img { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .solutions-product { animation: none; } }
 </style>
-
-<style scoped>.solutions-product .floating-prototype{position:fixed;right:20px;bottom:24px;z-index:1200;display:flex;align-items:center;gap:10px;padding:15px 20px;border-radius:999px;background:#bcf5e0;color:#063e33!important;font-weight:800;text-decoration:none;box-shadow:0 8px 28px #001e2540;border:1px solid #7acbae}.notifications-cta{background:#e8f2ff!important;color:#153c6a!important}.distribution-section{padding:80px max(5vw,20px);background:#0a231e;color:#effffb;border:1px solid #234a3e;border-radius:24px}.distribution-section>p{max-width:820px;line-height:1.8}.distribution-section h2{font-size:clamp(28px,4vw,46px)}#chatbots,#notificacoes{scroll-margin-top:90px}.solutions-hero .hero-actions{align-items:stretch}.solutions-hero .hero-actions>a{flex:1;min-width:200px}@media(max-width:600px){.floating-prototype{bottom:max(16px,env(safe-area-inset-bottom));right:12px;font-size:13px;padding:12px 16px}.distribution-section{padding:48px 20px}}</style>
-
-<style scoped>.product-reveal{opacity:1!important;transform:none!important;transition:none!important}</style>
-
-<style scoped>.solutions-product .floating-prototype{left:16px;right:auto;bottom:max(18px,env(safe-area-inset-bottom));max-width:calc(100vw - 90px);z-index:1201}.solutions-product .product-assistant{right:16px;bottom:max(16px,env(safe-area-inset-bottom));width:54px;height:54px;z-index:1201}.solutions-product .demo-composer{scroll-margin-bottom:95px}@media(max-width:600px){.solutions-product .floating-prototype{font-size:12px;padding:12px 14px;gap:6px;left:10px}.solutions-product .product-assistant{right:10px;width:48px;height:48px}.solutions-product .product-assistant img{width:36px;height:36px}}</style>
-
-<style scoped>.plans-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.plan-card{min-width:0}.plan-card .price strong{font-size:clamp(30px,3vw,44px)}@media(max-width:950px){.plans-grid{grid-template-columns:1fr!important}}</style>

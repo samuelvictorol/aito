@@ -55,7 +55,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
-import { api, apiBaseURL } from 'boot/axios'
+import { api } from 'boot/axios'
+import { beginGoogleLogin } from 'src/services/google-login'
 import PasswordResetDialog from 'components/PasswordResetDialog.vue'
 import LoginMfaDialog from 'components/LoginMfaDialog.vue'
 import AffiliateApplicationDialog from 'components/AffiliateApplicationDialog.vue'
@@ -114,8 +115,7 @@ async function submitAuth() {
 }
 
 function continueWithGoogle() {
-  if (props.returnPath) sessionStorage.setItem('aito_auth_return_path', props.returnPath)
-  window.location.assign(`${apiBaseURL.replace(/\/$/, '')}/auth/google?audience=${encodeURIComponent(props.audience)}`)
+  beginGoogleLogin(props.returnPath, props.audience)
 }
 
 function goToCustomerLogin() {

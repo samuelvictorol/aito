@@ -17,11 +17,13 @@ const source = computed(() => String(props.video?.src || '').trim())
 const embed = computed(() => {
   try {
     const url = new URL(source.value)
-    if (url.hostname === 'youtu.be') return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(url.pathname.slice(1))}`
-    if (['www.youtube.com', 'youtube.com'].includes(url.hostname)) {
-      const id = url.searchParams.get('v') || url.pathname.split('/').pop()
-      return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}` : ''
-    }
+    if (url.protocol !== 'https:') return ''
+    const id = url.hostname === 'youtu.be'
+      ? url.pathname.slice(1)
+      : ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com'].includes(url.hostname)
+        ? url.searchParams.get('v') || url.pathname.match(/^\/(?:embed|shorts)\/([^/]+)$/)?.[1]
+        : ''
+    if (id && /^[\w-]{11}$/.test(id)) return `https://www.youtube-nocookie.com/embed/${id}?autoplay=1`
   } catch { /* Local video files use the native player. */ }
   return ''
 })
@@ -41,11 +43,13 @@ onBeforeUnmount(() => observer?.disconnect())
     <div ref="screen" class="video-monitor__frame">
       <div class="video-monitor__camera" aria-hidden="true"></div>
       <div class="video-monitor__screen">
-        <iframe v-if="visible && embed && playing" :src="embed" :title="title" loading="lazy" allow="fullscreen; picture-in-picture" allowfullscreen></iframe>
+        <iframe v-if="embed && playing" :src="embed" :title="title" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
         <video v-else-if="visible && source && !embed" :src="source" :poster="video.poster || undefined" controls playsinline preload="none" :aria-label="title"></video>
-        <button v-else-if="embed" class="video-monitor__placeholder" type="button" @click="playing = true">
+        <button v-else-if="embed" class="video-monitor__placeholder" type="button" :aria-label="`Reproduzir ${title}`" @click="playing = true">
           <q-icon name="mdi-play-circle-outline" size="52px" />
-          <strong>{{ title }}</strong><span>Assista à apresentação</span>
+          <span class="video-monitor__eyebrow">{{ eyebrow }}</span>
+          <strong class="video-monitor__headline">{{ headline }}</strong>
+          <span>Assista à apresentação</span>
         </button>
         <div v-else class="video-monitor__placeholder">
           <img src="/aito-logo-restored.png" alt="" width="76" height="76" />

@@ -15,6 +15,7 @@
           <q-input v-model="form.password" outlined dense label="Senha" type="password" autocomplete="current-password" class="q-mt-sm" :rules="[requiredRule]" />
 
           <q-btn unelevated no-caps class="full-width q-mt-md customer-login__button" icon="mdi-briefcase-outline" label="Entrar no portal" type="submit" :loading="loading" />
+          <q-btn outline no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-google" label="Continuar com Google" type="button" @click="continueWithGoogle" />
           <q-btn flat no-caps class="full-width customer-login__forgot q-mt-md" icon="mdi-lock-reset" label="Esqueci minha senha" type="button" @click="forgotOpen = true" />
           <q-btn flat no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-arrow-left" label="Voltar para a AitoSoftwares" type="button" @click="$router.push('/')" />
         </q-form>
@@ -27,6 +28,7 @@
 
 <script>
 import { api } from 'boot/axios'
+import { beginGoogleLogin } from 'src/services/google-login'
 import PasswordResetDialog from 'components/PasswordResetDialog.vue'
 import LoginMfaDialog from 'components/LoginMfaDialog.vue'
 
@@ -43,6 +45,7 @@ export default {
     }
   },
   methods: {
+    continueWithGoogle () { beginGoogleLogin('', 'customer') },
     requiredRule (value) {
       return Boolean(String(value || '').trim()) || 'Preencha este campo.'
     },

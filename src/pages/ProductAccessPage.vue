@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
+import { beginGoogleLogin } from 'src/services/google-login'
 import LicenseValidity from 'src/components/LicenseValidity.vue'
 import { licenseValidity } from 'src/services/license-validity'
 import { licenseProductType, licensePackages, productLabel } from 'src/services/product-catalog'
@@ -102,6 +103,7 @@ onBeforeUnmount(() => clearInterval(clock))
           <p>Quer encontrar sua licença e novos downloads depois? Vincule a compra ao seu e-mail, sem precisar criar uma senha agora.</p>
           <q-btn unelevated color="teal-8" no-caps icon="mdi-email-check-outline" label="Vincular à minha conta" @click="upgrade=true"/>
           <q-btn v-if="hasSession" flat no-caps label="Vincular à conta já conectada" :loading="busy" @click="bindCurrent"/>
+          <q-btn v-else flat no-caps icon="mdi-google" label="Entrar com Google para vincular" :disable="busy" @click="beginGoogleLogin('/produto/acesso')"/>
         </article>
       </div>
       <q-card v-if="upgrade || !product" flat bordered class="upgrade-card"><q-card-section><h2>Sua biblioteca, com proteção.</h2><template v-if="!challenge"><p>Informe seu e-mail para confirmar a identidade. Para compras já vinculadas, use o e-mail da conta original.</p><q-form @submit.prevent="beginUpgrade"><q-input v-model.trim="email" outlined type="email" label="Seu e-mail" autocomplete="email" :rules="[value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)||'Informe um e-mail válido']"/><q-btn type="submit" unelevated no-caps color="teal-8" label="Receber código por e-mail" :loading="busy"/></q-form></template><template v-else><p>{{challenge.message || 'Enviamos seu código por e-mail. Confira também o spam e o lixo eletrônico.'}} <strong>{{challenge.emailMasked}}</strong></p><q-form @submit.prevent="verify"><q-input v-model="code" outlined label="Código de seis dígitos" inputmode="numeric" autocomplete="one-time-code" maxlength="6"/><q-checkbox v-model="remember" label="Manter acesso neste dispositivo por 120 dias" color="teal"/><q-btn type="submit" unelevated no-caps color="teal-8" label="Confirmar e abrir meu painel" :loading="busy" :disable="!/^\d{6}$/.test(code)"/></q-form></template></q-card-section></q-card>

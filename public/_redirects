@@ -4,4 +4,5 @@
 /comunicacao/socket.io/* https://api.aitosoftwares.com/comunicacao/socket.io/:splat 200!
 /comunicacao/whatsapp-web/socket.io/* https://api.aitosoftwares.com/comunicacao/whatsapp-web/socket.io/:splat 200!
 /comunicacao/app/* /comunicacao/app/index.html 200
+/whatsapp-solucoes /whatsapp-solucoes/index.html 200
 /* /index.html 200

@@ -56,6 +56,7 @@ function termInput() {
     const value = new Date(form.date)
     if (!Number.isFinite(value.getTime())) throw Error('Escolha uma data e hora válidas.')
     if (props.mode !== 'edit' && value <= new Date()) throw Error('Escolha uma data futura.')
+    if (props.mode === 'renew' && value <= new Date(props.license?.expiresAt)) throw Error('Escolha uma data posterior à validade atual.')
     return { permanent: false, expiresAt: value.toISOString() }
   }
   if (form.kind === 'days') {
@@ -129,7 +130,7 @@ async function save() {
             Ao salvar, a licença ficará expirada. O Desktop conectado abrirá a tela de renovação.
           </q-banner>
           <q-banner rounded class="license-term-note">
-            {{ mode === 'renew' ? 'O novo prazo começa agora e reativa a licença. A chave e a instalação continuam vinculadas.'
+            {{ mode === 'renew' ? 'Os meses ou dias adicionados começam no vencimento atual. Se a licença já venceu, o novo período começa hoje.'
               : mode === 'grant' ? 'O valor informado será registrado como uma venda manual.'
               : 'A alteração de vencimento mantém a chave e a instalação vinculadas.' }}
           </q-banner>

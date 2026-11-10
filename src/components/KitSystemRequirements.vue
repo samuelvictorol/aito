@@ -8,9 +8,11 @@ const desktop = {
   description: 'Instale o Kit no Windows, ative sua licença e escolha onde guardar os dados da operação.',
   highlights: [
     { icon: 'mdi-microsoft-windows', label: 'SISTEMA COMPATÍVEL', value: 'Windows 10 ou 11', text: 'Instalador .exe para computadores de 64 bits (x64).' },
-    { icon: 'mdi-memory', label: 'RECOMENDADO', value: '8 GB de RAM', text: 'Reserve 4 GB livres para o aplicativo, além do espaço para conversas, mídias e backups.' },
-    { icon: 'mdi-wifi', label: 'CONECTIVIDADE', value: 'Internet e licença Desktop', text: 'Mantenha o computador ligado e o app em execução para receber mensagens e cumprir os agendamentos.' },
+    { icon: 'mdi-download-outline', label: 'DOWNLOAD DO INSTALADOR', value: 'Cerca de 360 MB', text: 'O tamanho do arquivo pode mudar entre versões.' },
+    { icon: 'mdi-harddisk', label: 'ESPAÇO EM DISCO', value: 'Cerca de 2 GB', text: 'Espaço estimado para o app e a instalação. Deixe pelo menos 4 GB livres e reserve espaço para mídias e backups.' },
+    { icon: 'mdi-memory', label: 'MEMÓRIA RECOMENDADA', value: '8 GB de RAM', text: 'Memória do computador para trabalhar com o aplicativo e o navegador abertos.' },
   ],
+  note: 'Você precisa de internet e de uma licença Desktop ativa. Mantenha o app em execução para atender e cumprir os agendamentos.',
   setups: [
     { icon: 'mdi-database-check-outline', label: 'Local integrado', tag: 'Padrão', text: 'O instalador inclui banco SQLite, fila e cache locais. Docker é opcional.' },
     { icon: 'mdi-docker', label: 'Modo MongoDB', text: 'O Docker Compose é necessário se o assistente for criar o MongoDB local. Você também pode conectar um MongoDB existente ou na nuvem com TLS. A fila e o cache podem ficar locais ou usar Redis.' },
@@ -58,6 +60,7 @@ const requirements = computed(() => props.source ? whitelabel : desktop)
         </div>
       </article>
     </div>
+    <p v-if="requirements.note" class="kit-requirements__note"><q-icon name="mdi-wifi" aria-hidden="true" /> {{ requirements.note }}</p>
   </section>
 </template>
 
@@ -95,6 +98,7 @@ const requirements = computed(() => props.source ? whitelabel : desktop)
   padding: 0;
 }
 .kit-requirements__highlights { grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; }
+.kit-requirements:not(.kit-requirements--source) .kit-requirements__highlights { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .kit-requirements__highlights li, .kit-requirements__setups article {
   min-width: 0;
   padding: clamp(16px, 2.4vw, 24px);
@@ -111,8 +115,13 @@ const requirements = computed(() => props.source ? whitelabel : desktop)
 .kit-requirements__setups h3 { margin: 0; font-size: 1rem; }
 .kit-requirements__setups header span { padding: 3px 8px; border: 1px solid var(--requirements-border); border-radius: 99px; color: var(--requirements-accent); font-size: .65rem; font-weight: 700; }
 .kit-requirements__setups p { font-size: .83rem; }
+.kit-requirements .kit-requirements__note { margin-top: 14px; }
+.kit-requirements__note .q-icon { font-size: 17px; vertical-align: middle; margin-right: 4px; }
+@media (max-width: 850px) {
+  .kit-requirements:not(.kit-requirements--source) .kit-requirements__highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 660px) {
-  .kit-requirements__highlights, .kit-requirements__setups { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .kit-requirements__highlights, .kit-requirements__setups, .kit-requirements:not(.kit-requirements--source) .kit-requirements__highlights { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .kit-requirements__highlights .q-icon { margin-bottom: 8px; }
   .kit-requirements__setups { margin-top: 10px; }
 }
