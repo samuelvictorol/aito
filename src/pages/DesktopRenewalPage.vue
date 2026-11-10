@@ -2,10 +2,29 @@
 import {ref,onMounted} from 'vue'
 import {useRoute} from 'vue-router'
 import {api} from '../boot/axios'
+import {safeReceiptUrl} from '../services/purchase-history'
 const route=useRoute(),data=ref(null),error=ref(''),busy=ref(false),selected=ref(Number(route.query.plano)||12)
 async function load(){try{data.value=(await api.get('/desktop-renewals/session')).data.data}catch(e){error.value=e.response?.data?.message||'Abra Renovar pelo aplicativo Desktop.'}}
 async function checkout(){busy.value=true;error.value='';try{const value=(await api.post('/desktop-renewals/checkout',{months:selected.value})).data.data;const url=new URL(value.url);if(url.protocol!=='https:'||!/(^|\.)infinitepay\.io$/.test(url.hostname))throw Error('Checkout inválido.');location.assign(url.href)}catch(e){error.value=e.response?.data?.message||e.message}finally{busy.value=false}}
-onMounted(async()=>{if(route.query.origem==='desktop')return;const code=new URLSearchParams(location.hash.slice(1)).get('grant');history.replaceState(null,'',location.pathname+location.search);try{if(code)await api.post('/desktop-renewals/redeem',{code});if(route.query.order_nsu&&route.query.transaction_nsu)await api.post('/desktop-renewals/confirm',{order_nsu:route.query.order_nsu,transaction_nsu:route.query.transaction_nsu,slug:route.query.slug||route.query.invoice_slug});await load()}catch(e){error.value=e.response?.data?.message||'Abra a renovação novamente no aplicativo.'}})
+onMounted(async () => {
+  if (route.query.origem === 'desktop') return
+  const code = new URLSearchParams(location.hash.slice(1)).get('grant')
+  history.replaceState(null, '', location.pathname + location.search)
+  try {
+    if (code) await api.post('/desktop-renewals/redeem', { code })
+    if (route.query.order_nsu && route.query.transaction_nsu) {
+      await api.post('/desktop-renewals/confirm', {
+        order_nsu: route.query.order_nsu,
+        transaction_nsu: route.query.transaction_nsu,
+        slug: route.query.slug || route.query.invoice_slug,
+        receipt_url: safeReceiptUrl(route.query.receipt_url) || undefined,
+      })
+    }
+    await load()
+  } catch (cause) {
+    error.value = cause.response?.data?.message || 'Abra a renovação novamente no aplicativo.'
+  }
+})
 </script>
 <template><main class="renewal"><router-link to="/whatsapp-solucoes">AitoNotify Desktop</router-link><h1>Renove sua licença</h1><p v-if="error" role="alert">{{error}}</p><template v-if="data"><p>{{data.name}}, escolha o próximo período. O pagamento confirmado acrescenta meses a partir do vencimento atual ou de hoje, se já expirou.</p><div class="plans"><label v-for="plan in data.plans" :key="plan.months"><input v-model="selected" type="radio" :value="plan.months" :disabled="!plan.enabled"/>{{plan.label}} · {{plan.months}} mês(es)<strong>{{(plan.priceCents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}}</strong></label></div><q-btn color="teal" no-caps label="Renovar pela InfinitePay" :loading="busy" @click="checkout"/><q-btn flat no-caps label="Já paguei · consultar" @click="load"/></template><p v-else>Se você acabou de pagar pelo aplicativo, pode voltar a ele e clicar em “Já renovei”. O servidor confere a confirmação da InfinitePay automaticamente.</p><p>Os preços são os vigentes no momento de gerar o pagamento. Não há cobrança recorrente automática.</p></main></template>
 <style scoped>.renewal{min-height:100vh;background:#f0faf6;padding:40px max(20px,calc((100vw - 850px)/2));color:#133f30}h1{font-size:clamp(30px,6vw,46px);line-height:1.2}.plans{display:flex;flex-wrap:wrap;gap:16px;margin:30px 0}label{padding:25px;border:1px solid #85ad9a;border-radius:18px;background:white;flex:1;min-width:160px;cursor:pointer}strong{display:block;font-size:25px;margin-top:20px}p{line-height:1.8}[role=alert]{color:#a22938}</style>

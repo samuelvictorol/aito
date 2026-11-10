@@ -41,13 +41,9 @@ function showSection(value) {
   section.value = value
 }
 
-function goToConversation() {
-  conversation.value?.scrollIntoView({ block: 'start' })
-}
-
 function selectReference(template) {
   reference.value = template
-  goToConversation()
+  conversation.value?.show()
 }
 
 function receiveProposal(value) {
@@ -100,6 +96,9 @@ function refreshAfterAction() {
 
     <div class="studio-grid">
       <section class="studio-workspace" aria-label="Área de criação da campanha">
+        <q-chip v-if="reference" removable icon="description" color="blue-1" text-color="blue-10" class="studio-reference" @remove="reference = null">
+          {{ reference.name || 'Template selecionado' }}
+        </q-chip>
         <q-tabs
           :model-value="section"
           align="left" inline-label no-caps
@@ -138,21 +137,14 @@ function refreshAfterAction() {
         </div>
       </section>
 
-      <aside ref="conversation" class="studio-conversation" aria-label="Conversar com o agente">
-        <q-chip v-if="reference" removable icon="description" color="blue-1" text-color="blue-10" @remove="reference = null">
-          {{ reference.name || 'Template selecionado' }}
-        </q-chip>
-        <AdminAssistant
-          embedded scope="campaign" :workspace-context="contextText"
-          @action-applied="refreshAfterAction" @draft-updated="receiveProposal" @files-updated="receiveFiles"
-        />
-      </aside>
     </div>
+    <AdminAssistant ref="conversation" scope="campaign" :workspace-context="contextText"
+      @action-applied="refreshAfterAction" @draft-updated="receiveProposal" @files-updated="receiveFiles" />
   </q-page>
 </template>
 
 <style scoped>
-.campaign-studio { background: linear-gradient(155deg,#f7fcff,#e9f5ff); }
+.campaign-studio { padding-bottom: 90px; background: linear-gradient(155deg,#f7fcff,#e9f5ff); }
 .studio-hero {
   display: flex;
   justify-content: space-between;
@@ -172,23 +164,18 @@ function refreshAfterAction() {
 .studio-channels, .studio-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .studio-channels .q-badge { border: 1px solid #ffffff35; padding: 6px 10px; gap: 6px; }
 .studio-actions { justify-content: flex-end; flex: 0 0 auto; }
-.studio-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 18px; margin-top: 20px; align-items: start; }
-.studio-workspace, .studio-panel, .studio-conversation { min-width: 0; }
+.studio-grid { margin-top: 20px; }
+.studio-workspace, .studio-panel { min-width: 0; }
 .studio-tabs { background: #e9f5ff; border: 1px solid #c5e0f5; border-radius: 16px; color: #2d5678; }
 .studio-panel { padding-top: 14px; }
-.studio-conversation { position: sticky; top: 12px; min-width:0; scroll-margin-top: 12px; }
-.studio-conversation > .q-chip { max-width: 100%; }
-.studio-conversation > .q-chip :deep(.q-chip__content) { overflow: hidden; text-overflow: ellipsis; }
+.studio-reference { max-width: 100%; margin-bottom: 10px; }
+.studio-reference :deep(.q-chip__content) { overflow: hidden; text-overflow: ellipsis; }
 .draft-proposal { background: #e4f4ff; border: 1px solid #c1dff5; color: #224d70; }
 .draft-proposal p { margin: 4px 0 0; }
 .proposal-message { white-space: pre-wrap; max-height: 180px; overflow: auto; overflow-wrap: anywhere; }
 @media (max-width: 1120px) {
   .studio-hero { flex-wrap: wrap; }
   .studio-actions { justify-content: flex-start; }
-}
-@media (max-width: 880px) {
-  .studio-grid { grid-template-columns: minmax(0, 1fr); }
-  .studio-conversation { position: relative; top: 0; }
 }
 @media (max-width: 520px) {
   .studio-hero { border-radius: 18px; }

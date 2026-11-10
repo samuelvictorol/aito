@@ -19,6 +19,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
+import { safeReceiptUrl } from 'src/services/purchase-history'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,6 +46,7 @@ async function loadStatus () {
     const response = await api.post(`/courses/purchases/${purchaseId}/status`, {
       transactionNsu: queryValue('transaction_nsu', 'transactionNsu'),
       slug: queryValue('slug', 'invoice_slug'),
+      receipt_url: safeReceiptUrl(queryValue('receipt_url', 'receiptUrl')) || undefined,
     }, { headers: { Authorization: `Bearer ${token}` } })
     const data = response.data.data || {}
     unlocked.value = Boolean(data.unlocked)

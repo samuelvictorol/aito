@@ -35,6 +35,7 @@ const history = ref([]), future = ref([])
 const fullscreen = ref(false), inspectorOpen = ref(false), simulatorOpen = ref(false), simulationNode = ref(null), jsonInput = ref(null)
 const simulationFlow = ref(null)
 const generalOpen = ref(false), builderRoot = ref(null)
+const inspectorClose = ref(null)
 const revision = ref(null), loaded = ref(false)
 let flowInstance
 function onFlowInit(instance) { flowInstance = instance; setTimeout(() => instance.fitView({ padding: 0.2, maxZoom: 1 }), 50) }
@@ -55,6 +56,12 @@ const selectedNode = computed(() => nodes.value.find((item) => item.id === selec
 const selectedEdge = computed(() => edges.value.find((item) => item.id === selectedEdgeId.value))
 const canUndo = computed(() => history.value.length > 0 || serializeEditor() !== trackedSnapshot)
 const canRedo = computed(() => future.value.length > 0)
+
+watch(inspectorOpen, async open => {
+  if (!props.studio || !open) return
+  await nextTick()
+  inspectorClose.value?.focus({ preventScroll: true })
+})
 
 function normalize(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim() }
 function defaultAction(type = 'http') { return { type, integrationKey: '', recipients: [], contactGroupIds: [], message: '', method: 'POST', url: '', headers: [{ name: 'Content-Type', value: 'application/json' }], body: '{\n  "mensagem": "{{mensagem}}",\n  "telefone": "{{telefone}}"\n}', timeoutMs: 10000, resultVariable: 'api_result', continueOnError: false, waitMs: 1000, variableName: '', variableValue: '', chatAction: '', chatActionValue: 60 } }
@@ -349,7 +356,7 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
       <button v-can-action="'web_flows.import'" :disabled="!mayEdit" class="icon-button responsive-action" title="Importar fluxo JSON" aria-label="Importar fluxo JSON" @click="jsonInput.click()"><span aria-hidden="true">↥</span><span class="action-label">Importar JSON</span></button>
       <button v-can-action="'web_flows.export'" class="icon-button responsive-action" title="Exportar fluxo JSON" aria-label="Exportar fluxo JSON" @click="exportFlow"><span aria-hidden="true">↧</span><span class="action-label">Exportar JSON</span></button>
       <button v-if="!studio" v-can-action="'web_flows.execute'" class="icon-button responsive-action" title="Simular bot" aria-label="Simular bot" @click="simulate"><span aria-hidden="true">▷</span><span class="action-label">Simular bot</span></button>
-      <button class="icon-button responsive-action" :title="fullscreen ? 'Sair da tela cheia do diagrama' : 'Tela cheia do diagrama'" :aria-label="fullscreen ? 'Sair da tela cheia do diagrama' : 'Tela cheia do diagrama'" :aria-pressed="fullscreen" @click="toggleDiagramFullscreen"><span aria-hidden="true">{{ fullscreen ? '↙' : '⛶' }}</span><span class="action-label">{{ fullscreen ? 'Sair da tela cheia' : 'Diagrama' }}</span></button>
+      <button class="icon-button responsive-action" :title="fullscreen ? 'Sair da tela cheia do diagrama' : 'Tela cheia do diagrama'" :aria-label="fullscreen ? 'Sair da tela cheia do diagrama' : 'Tela cheia do diagrama'" :aria-pressed="fullscreen" @click="toggleDiagramFullscreen"><span aria-hidden="true">{{ fullscreen ? '↙' : '⛶' }}</span><span class="action-label">{{ fullscreen ? 'Sair da tela cheia' : 'Tela cheia' }}</span></button>
       <button class="icon-button responsive-action" title="Configurações gerais do fluxo" aria-label="Configurações gerais do fluxo" @click="generalOpen = true"><span aria-hidden="true">⚙</span><span class="action-label">Configurações</span></button><button v-if="!studio" class="icon-button responsive-action" title="Tela cheia do navegador" aria-label="Tela cheia do navegador" @click="toggleBrowserFullscreen"><span aria-hidden="true">⛶</span><span class="action-label">Tela cheia</span></button><button v-if="dirty" class="btn ghost" @click="discard">Descartar</button>
       <button v-can-action="'web_flows.edit'" class="btn" :disabled="prototype || !mayEdit || !loaded || saving || localConflicts.length > 0" @click="save">{{ prototype ? 'Salvar indisponível na demonstração' : saving ? 'Salvando…' : 'Salvar e aplicar' }}</button>
     </div>
@@ -381,10 +388,11 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
           <Controls />
         </VueFlow>
       </div>
-      <button v-if="inspectorOpen" class="inspector-backdrop" aria-label="Fechar configuração" @click="inspectorOpen = false"></button>
       <button class="mobile-config btn" @click="inspectorOpen = true">{{ selectedNode ? 'Configurar Card' : selectedEdge ? 'Configurar conexão' : 'Configurar fluxo' }}</button>
-      <aside :class="['inspector', { 'is-open': inspectorOpen }]" :role="inspectorOpen ? 'dialog' : undefined" :aria-modal="inspectorOpen || undefined" aria-label="Configurar fluxo" @keydown.esc="inspectorOpen = false">
-        <button class="inspector-close icon-button" title="Fechar configuração" @click="inspectorOpen = false">×</button>
+      <Teleport to="body" :disabled="!studio">
+      <button v-if="inspectorOpen" :class="['inspector-backdrop', { 'inspector-backdrop--studio': studio }]" aria-label="Fechar configuração" @click="inspectorOpen = false"></button>
+      <aside :class="['inspector', { 'is-open': inspectorOpen, 'inspector--studio': studio }]" :role="inspectorOpen ? 'dialog' : undefined" :aria-modal="inspectorOpen || undefined" :aria-label="selectedNode ? 'Configurar Card' : selectedEdge ? 'Configurar conexão' : 'Configurar fluxo'" @keydown.esc.stop="inspectorOpen = false">
+        <button ref="inspectorClose" class="inspector-close icon-button" aria-label="Fechar configuração" @click="inspectorOpen = false">×</button>
         <fieldset class="permission-fields" :disabled="!mayEdit"><template v-if="previewOpen">
           <span class="eyebrow">Preview técnico</span><h2>Dados do fluxograma</h2>
           <p class="tip">Este é exatamente o conteúdo validado e salvo. Credenciais não aparecem aqui: use <code v-pre>{{secret.NOME}}</code>.</p>
@@ -458,9 +466,12 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
           <p class="tip">O intervalo entre balões e o retorno automático estão nas configurações gerais.</p>
         </template></fieldset>
       </aside>
+      </Teleport>
     </div>
     <div v-if="toast" class="toast">{{ toast }}</div>
-    <div v-if="generalOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Configurações gerais"><section class="card general-dialog"><header><h2>Configurações gerais do fluxo</h2><button class="icon-button" aria-label="Fechar" @click="generalOpen = false">×</button></header><fieldset class="permission-fields" :disabled="!mayEdit"><FlowGeneralSettings :nodes="nodes" v-model="meta.settings" /></fieldset><button class="btn" @click="generalOpen = false">Concluir</button><p>As alterações são aplicadas ao salvar o fluxo.</p></section></div>
+    <Teleport to="body" :disabled="!studio">
+    <div v-if="generalOpen" :class="['modal-backdrop', { 'modal-backdrop--studio': studio }]" role="dialog" aria-modal="true" aria-label="Configurações gerais"><section class="card general-dialog"><header><h2>Configurações gerais do fluxo</h2><button class="icon-button" aria-label="Fechar" @click="generalOpen = false">×</button></header><fieldset class="permission-fields" :disabled="!mayEdit"><FlowGeneralSettings :nodes="nodes" v-model="meta.settings" /></fieldset><button class="btn" @click="generalOpen = false">Concluir</button><p>As alterações são aplicadas ao salvar o fluxo.</p></section></div>
+    </Teleport>
     <FlowSimulator v-if="simulatorOpen" :flow="simulationFlow" :assets="assets" :payment-configs="paymentConfigs" :detached="studio" :docked="studio" @close="closeSimulation" @step="simulationNode = $event" />
   </section>
 </template>
@@ -509,28 +520,50 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
   position: absolute;
   bottom: 16px;
   right: 16px;
+  left: auto;
+  transform: none;
   z-index: 20;
 }
-.builder-page--studio .inspector { display: none; }
-.builder-page--studio .inspector.is-open {
-  display: block;
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: min(100%, 390px);
-  max-height: none;
-  border-radius: 0;
-  z-index: 51;
+.inspector--studio,.modal-backdrop--studio {
+  --ink: #152f29;
+  --muted: #608175;
+  --line: #c9ddd3;
+  --card: white;
+  color: var(--ink);
+  color-scheme: light;
 }
-.builder-page--studio .inspector-backdrop {
+.inspector--studio { display: none; }
+.inspector--studio.is-open {
   display: block;
-  position: absolute;
+  position: fixed;
+  inset: max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px)) auto;
+  width: min(450px,calc(100vw - 24px));
+  max-height: none;
+  padding: clamp(14px,3vw,24px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  z-index: 4601;
+}
+.inspector--studio .inspector-close { display: inline-grid; float: right; margin-left: 8px; }
+.inspector--studio .inspector-title > div { min-width: 0; }
+.inspector--studio .two-fields > *, .inspector--studio .method-url > *, .inspector--studio .header-row > * { min-width: 0; }
+.inspector--studio .messages-head,.inspector--studio .output-card header { flex-wrap: wrap; gap: 8px; }
+.inspector-backdrop--studio {
+  display: block;
+  position: fixed;
   inset: 0;
   width: 100%;
   background: #042d2466;
   border: 0;
-  z-index: 50;
+  z-index: 4600;
 }
-.builder-page--studio .inspector-close { display: inline-grid; float: right; }
+.modal-backdrop--studio { z-index: 4602; }
+@media (max-width: 520px) {
+  .inspector--studio .two-fields,.inspector--studio .method-url { grid-template-columns: minmax(0,1fr); }
+  .inspector--studio .field input,.inspector--studio .field textarea,.inspector--studio .field select { font-size: 16px; }
+}
 .builder-page--studio.is-fullscreen { width: 100vw; max-width: none; height: 100dvh; max-height: none; padding: clamp(8px,2vw,18px) clamp(8px,2vw,18px) calc(80px + env(safe-area-inset-bottom,0px)); z-index: 4100; }
 .builder-page--studio.is-fullscreen .builder-head { flex-shrink: 0; }
 .builder-page--studio.is-fullscreen .builder-shell { flex: 1 1 0; height: auto; min-height: 0; }

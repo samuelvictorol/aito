@@ -7,6 +7,7 @@ import { api, apiBaseURL } from 'boot/axios'
 import AuthDialog from './AuthDialog.vue'
 import KitCouponInput from './KitCouponInput.vue'
 import { attribution, trackJourney } from 'src/services/lead-attribution'
+import { safeReceiptUrl } from 'src/services/purchase-history'
 import { defaultProductCatalog, normalizeProductCatalog, productSubtotal, productTermLabel, useProductCart } from 'src/services/product-cart'
 
 const props = defineProps({ productType: { type: String, default: 'desktop' }, catalog: { type: Object, default: null } })
@@ -70,7 +71,10 @@ async function confirm() {
   if (!localStorage.getItem('aito_user_token')) { loginOnly.value = false; loginOpen.value = true; return }
   confirming.value = true; error.value = ''; connect()
   try {
-    await api.post('/products/aitonotify/confirm', { order_nsu: route.query.order_nsu, transaction_nsu: route.query.transaction_nsu, slug: route.query.slug || route.query.invoice_slug }, headers())
+    await api.post('/products/aitonotify/confirm', {
+      order_nsu: route.query.order_nsu, transaction_nsu: route.query.transaction_nsu,
+      slug: route.query.slug || route.query.invoice_slug, receipt_url: safeReceiptUrl(route.query.receipt_url) || undefined,
+    }, headers())
     order.value = { orderNsu: route.query.order_nsu, status: 'paid' }; paid.value = true; cart.clear(); emit('purchased')
     $q.notify({ type: 'positive', message: 'Compra confirmada. Seus produtos e tokens estão em Meus produtos.' })
   } catch (cause) { error.value = cause.response?.data?.message || 'Aguardando a confirmação da InfinitePay. Consulte novamente em instantes.' }

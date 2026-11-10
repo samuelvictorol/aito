@@ -95,7 +95,8 @@ onBeforeUnmount(() => window.removeEventListener('resize', resize))
 .assistant-float:hover{filter:brightness(1.06)}
 .assistant-float :deep(img){width:3rem;height:3rem;object-fit:contain}
 .assistant-float--admin.assistant-float--chat{bottom:calc(140px + env(safe-area-inset-bottom,0px))}
-.assistant-float--chatbot,.assistant-float--simulator{z-index:4500;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:3.55rem;height:3.55rem;font-size:1.55rem;color:#134d3b}
+.assistant-float--campaign,.assistant-float--chatbot,.assistant-float--simulator{z-index:4500;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:3.55rem;height:3.55rem;font-size:1.55rem;color:#134d3b}
+.assistant-float--campaign{border-color:#77b5e6;background:linear-gradient(140deg,#d8f1ff,#8bc5f0);color:#124d81}
 .assistant-float--chatbot{left:20px;right:auto;border-color:#96dbc0;background:linear-gradient(140deg,#ecfff5,#90dfbd)}
 .assistant-float--simulator{border-color:#98c7ef;background:linear-gradient(140deg,#eaf6ff,#b7dbfa);color:#19578a}
 .assistant-float[aria-expanded=true]{border-color:currentColor}
@@ -103,6 +104,6 @@ onBeforeUnmount(() => window.removeEventListener('resize', resize))
 @media(max-width:700px){
   .assistant-float{right:12px;width:3.65rem;height:3.65rem}
   .assistant-float--chatbot{left:12px;right:auto}
-  .assistant-float--chatbot,.assistant-float--simulator{width:3.25rem;height:3.25rem}
+  .assistant-float--campaign,.assistant-float--chatbot,.assistant-float--simulator{width:3.25rem;height:3.25rem}
 }
 </style>

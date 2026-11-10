@@ -4,10 +4,10 @@
       <q-badge v-if="unread" floating rounded color="teal-3" text-color="dark" :label="unread > 9 ? '9+' : unread" />
       <q-tooltip v-if="!menuOpen">Notificações</q-tooltip>
     <q-menu v-model="menuOpen" no-parent-event anchor="bottom right" self="top right" class="notification-bell__menu">
-      <div class="notification-bell__head"><strong>Notificações</strong><q-btn v-if="unread" flat dense no-caps label="Marcar lidas" @click="markAllRead" /></div>
-      <div v-if="loading" class="notification-bell__empty"><q-spinner color="teal-3" /></div>
+      <div class="notification-bell__head"><strong>Notificações</strong><q-btn v-if="unread" flat dense no-caps label="Marcar lidas" :loading="marking" @click="markAllRead" /></div>
+      <div v-if="loading && !notifications.length" class="notification-bell__empty"><q-spinner color="teal-3" /></div>
       <div v-else-if="!notifications.length" class="notification-bell__empty"><q-icon name="mdi-bell-sleep-outline" size="28px" /><span>Nenhuma novidade por aqui.</span></div>
-      <button v-for="notification in notifications" :key="notification._id" type="button" class="notification-bell__item" :class="{ 'is-unread': !notification.read }" @click="openNotification(notification)"><q-icon :name="notification.type === 'course-new' ? 'mdi-school-outline' : 'mdi-information-outline'" /><span><strong>{{ notification.title }}</strong><small>{{ notification.message }}</small><em>{{ formatDate(notification.createdAt) }}</em></span></button>
+      <button v-for="notification in notifications" :key="notification._id" type="button" class="notification-bell__item is-unread" :disabled="marking" @click="openNotification(notification)"><q-icon :name="notification.type === 'course-new' ? 'mdi-school-outline' : 'mdi-information-outline'" /><span><strong>{{ notification.title }}</strong><small>{{ notification.message }}</small><em>{{ formatDate(notification.createdAt) }}</em></span></button>
     </q-menu>
     </q-btn>
     <q-dialog v-model="detailOpen"><q-card class="notification-detail"><q-card-section class="notification-detail__head"><h2>{{selected?.title}}</h2><q-btn flat round dense icon="mdi-close" aria-label="Fechar notificação" v-close-popup/></q-card-section><q-card-section class="notification-detail__message">{{selected?.message}}</q-card-section><q-card-actions align="right"><q-btn flat no-caps label="Fechar" v-close-popup/><q-btn v-if="safeTarget(selected)" unelevated color="teal-7" no-caps label="Abrir link" icon="mdi-arrow-top-right" @click="navigate(selected)"/></q-card-actions></q-card></q-dialog>
@@ -20,18 +20,86 @@ import { useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 
 const selected=ref(null),detailOpen=ref(false)
-const router = useRouter(); const menuOpen = ref(false); const notifications = ref([]); const unread = computed(() => notifications.value.filter((item) => !item.read).length); const loading = ref(false); let pollTimer
-function headers () { return { headers: { Authorization: `Bearer ${localStorage.getItem('aito_user_token')||''}` } } }
+const router = useRouter()
+const menuOpen = ref(false)
+const notifications = ref([])
+const unread = computed(() => notifications.value.length)
+const loading = ref(false)
+const marking = ref(false)
+let pollTimer
+let requestVersion = 0
+let sessionToken = ''
+const accessToken = () => localStorage.getItem('aito_user_token') || ''
+const headers = (token = accessToken()) => ({ headers: { Authorization: `Bearer ${token}` } })
 function formatDate (value) { return value ? new Date(value).toLocaleDateString('pt-BR') : '-' }
-async function load () { if (!localStorage.getItem('aito_user_token')) return; loading.value = true; try { const response = await api.get('/notifications', headers()); notifications.value = response.data.data || [] } catch (error) { /* Notification center is optional. */ } finally { loading.value = false } }
-async function markRead (notification) { if (notification.read) return; try { await api.patch(`/notifications/${notification._id}/read`, {}, headers()); notification.read = true } catch (error) { /* Keep the item visible if the API is unavailable. */ } }
+async function load () {
+  const token = accessToken()
+  if (token !== sessionToken) {
+    sessionToken = token
+    removeRead()
+    selected.value = null
+    detailOpen.value = false
+    menuOpen.value = false
+  }
+  if (!token) return
+  const version = ++requestVersion
+  loading.value = true
+  try {
+    const { data } = await api.get('/notifications', { ...headers(token), params: { unread: true } })
+    if (version === requestVersion && token === accessToken()) {
+      notifications.value = (data.data || []).filter((item) => !item.read)
+    }
+  } catch { /* Keep the most recent successful list when polling fails. */ }
+  finally { if (version === requestVersion) loading.value = false }
+}
+function removeRead (id) {
+  // Discard a poll that started before the read was saved.
+  requestVersion += 1
+  loading.value = false
+  notifications.value = id ? notifications.value.filter((item) => item._id !== id) : []
+}
 function safeTarget(notification) { const value=notification?.actionUrl || (notification?.relatedSlug ? `/cursos/${encodeURIComponent(notification.relatedSlug)}` : ''); if(!value)return ''; try { const url=new URL(value,window.location.origin); return ['https:','http:'].includes(url.protocol) && !url.username && !url.password ? url : '' } catch { return '' } }
 function navigate(notification) { const url=safeTarget(notification); if(!url)return; detailOpen.value=false; if(url.origin===window.location.origin)router.push(url.pathname+url.search+url.hash); else window.open(url.href,'_blank','noopener,noreferrer') }
-async function openNotification (notification) { await markRead(notification); selected.value=notification; menuOpen.value = false; detailOpen.value=true }
-async function markAllRead () { await Promise.all(notifications.value.filter((item) => !item.read).map(markRead)) }
+async function openNotification (notification) {
+  const token = accessToken()
+  if (marking.value || !token || token !== sessionToken) return
+  marking.value = true
+  try {
+    await api.patch(`/notifications/${notification._id}/read`, {}, headers(token))
+    if (token !== accessToken()) return
+    removeRead(notification._id)
+  } catch (error) {
+    if (token !== accessToken()) return
+    if (error.response?.status === 404) {
+      removeRead(notification._id)
+      return
+    }
+  } finally { marking.value = false }
+  selected.value = notification
+  menuOpen.value = false
+  detailOpen.value = true
+}
+async function markAllRead () {
+  const token = accessToken()
+  if (marking.value || !token || token !== sessionToken) return
+  marking.value = true
+  try {
+    await api.patch('/notifications/read', {}, headers(token))
+    if (token === accessToken()) removeRead()
+  } catch { /* Leave unread notices available for retry. */ }
+  finally { marking.value = false }
+}
 function open () { menuOpen.value = !menuOpen.value; if(menuOpen.value)load() }
-onMounted(() => { load(); pollTimer = window.setInterval(load, 60000) })
-onBeforeUnmount(() => window.clearInterval(pollTimer))
+onMounted(() => {
+  load()
+  pollTimer = window.setInterval(load, 60000)
+  window.addEventListener('aito:notification-read', load)
+})
+onBeforeUnmount(() => {
+  requestVersion += 1
+  window.clearInterval(pollTimer)
+  window.removeEventListener('aito:notification-read', load)
+})
 </script>
 
 <style>

@@ -112,7 +112,10 @@ const typeOptions = [
 const projectClientIds = computed(() => (props.project?.clients || []).map((item) => item.id || item._id || item))
 const targetOptions = computed(() => targets.value.filter((item) => !projectId || item.role !== 'customer' || !projectClientIds.value.length || projectClientIds.value.includes(item._id)).map((item) => ({ label: `${item.name} - ${item.role === 'affiliate' ? 'afiliado' : item.role === 'customer' ? 'cliente' : 'usuário'}`, value: item._id })))
 const selectedTarget = computed(() => targets.value.find((item) => item._id === form.value.targetUserId) || null)
-const projectOptions = computed(() => projects.value.filter((item) => !form.value.targetUserId || item.client?.id === form.value.targetUserId).map((item) => ({ label: item.title, value: item._id })))
+const projectOptions = computed(() => projects.value.filter((item) => {
+  const target = form.value.targetUserId
+  return !target || [item.client, ...(item.clients || [])].some(client => (client?.id || client?._id || client) === target)
+}).map((item) => ({ label: item.title, value: item._id })))
 const activeCount = computed(() => tickets.value.filter((item) => ['open', 'in_progress'].includes(item.status)).length)
 const columns = computed(() => props.admin
   ? [
@@ -160,11 +163,15 @@ async function load() {
   } catch (error) { notifyError(error) } finally { loading.value = false }
 }
 async function loadNotifications() {
-  try { const response = await api.get('/notifications', headers); notifications.value = response.data.data || [] } catch (error) { notifyError(error) }
+  try { const response = await api.get('/notifications', { ...headers, params: { type: 'support-ticket' } }); notifications.value = response.data.data || [] } catch (error) { notifyError(error) }
 }
 async function markRead(notification) {
   if (!notification.read) {
-    try { await api.patch(`/notifications/${notification._id}/read`, {}, headers); notification.read = true } catch (error) { notifyError(error) }
+    try {
+      await api.patch(`/notifications/${notification._id}/read`, {}, headers)
+      notification.read = true
+      window.dispatchEvent(new Event('aito:notification-read'))
+    } catch (error) { notifyError(error) }
   }
 }
 async function save() {

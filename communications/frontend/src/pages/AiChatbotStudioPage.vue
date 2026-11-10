@@ -366,7 +366,7 @@ onBeforeUnmount(() => { destroyed = true })
       </section>
 
     </div>
-    <AdminAssistant ref="agent" embedded floating scope="chatbot" :workspace-context="contextText" :action-allowed="canApplyAction"
+    <AdminAssistant ref="agent" scope="chatbot" :workspace-context="contextText" :action-allowed="canApplyAction"
       @actions-updated="onActionsUpdated" @action-applied="onActionApplied" @visibility-change="onAgentVisibility" />
     <Teleport to="body">
       <AssistantFloat v-if="maySimulate" kind="simulator" :expanded="simulatorOpen" :disabled="!simulatorOpen && !simulatorReady"

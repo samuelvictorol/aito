@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
-import { QDialog, useQuasar } from 'quasar'
+import { useQuasar } from 'quasar'
 import { fabMeta } from '@quasar/extras/fontawesome-v6'
 import { useAuthStore } from '../stores/auth.js'
 import { useWhiteLabel } from '../services/whitelabel.js'
@@ -13,12 +13,11 @@ import AssistantFile from './AssistantFile.vue'
 import AssistantIntroduction from './AssistantIntroduction.vue'
 import AssistantSettingsDialog from './AssistantSettingsDialog.vue'
 import AssistantFloat from './AssistantFloat.vue'
+import AssistantPanel from './AssistantPanel.vue'
 import { createAssistantComposerKeys } from '../services/assistant-composer-keys.js'
 
 const props = defineProps({
   chatMode: Boolean,
-  embedded: Boolean,
-  floating: Boolean,
   scope: { type: String, default: '' },
   workspaceContext: { type: String, default: '' },
   actionAllowed: { type: Function, default: () => true },
@@ -44,7 +43,7 @@ const { files: attachments, uploading, error: attachmentError, progress: attachm
 const loading = ref(false), sending = ref(false), transcribing = ref(false), confirming = ref(false), error = ref(''), configError = ref(''), dragging = ref(false)
 const configured = ref(false), models = ref([])
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
-const inline = computed(() => props.embedded && !props.floating)
+const robotIcon = import.meta.env.BASE_URL + 'ia.gif'
 const profiles = {
   campaign: {
     name: 'Agente de campanhas', icon: fabMeta, color: '#2087e0',
@@ -91,7 +90,7 @@ function applyConfig(value) {
   for (const key of ['model', 'effort', 'speed']) {
     if (value[key] !== undefined) config[key] = value[key]
   }
-  if(!configured.value){dialog.value=false;logsDialog.value=false;clearTimeout(timer);pollVersion++;cancelRecording()}
+  if(!configured.value){if (!profile.value) dialog.value=false;logsDialog.value=false;clearTimeout(timer);pollVersion++;cancelRecording()}
 }
 async function scrollBottom(force=false) {
   await nextTick();const el=thread.value;if(el&&(force||el.scrollHeight-el.clientHeight-el.scrollTop<180))el.scrollTo({top:el.scrollHeight,behavior:'smooth'})
@@ -106,15 +105,15 @@ function openSettings() {
   settingsDialog.value = true
 }
 function onSettingsSaved(value) {
-  if (value.configured && !dialog.value) void enterChat()
+  if (value.configured) void enterChat()
 }
 function onConfigurationChanged(event) {
   const wasConfigured = configured.value
   applyConfig(event.detail)
-  if (props.embedded && configured.value && !wasConfigured) void (inline.value ? enterChat() : pollWorkspace())
+  if (profile.value && configured.value && !wasConfigured && !dialog.value) void pollWorkspace()
 }
 function syncWorkspace(value) {
-  if (!props.embedded) return
+  if (!profile.value) return
   const actions = value.pendingActions || []
   const signature = JSON.stringify(actions)
   if (signature !== lastActions) {
@@ -155,7 +154,7 @@ async function pollWorkspace() {
 }
 function minimize() { dialog.value = false }
 function toggleChat() { if (dialog.value) minimize(); else void open() }
-defineExpose({ minimize })
+defineExpose({ minimize, show: () => { if (!dialog.value) void open() } })
 
 async function enterChat(){
   if(!configured.value)return
@@ -180,10 +179,16 @@ async function poll() {
 async function open() {
   if(opening.value)return
   opening.value=true;error.value=''
+  if (profile.value) dialog.value = true
   const loaded=await loadConfig()
-  if(!loaded&&!inline.value)loadErrorDialog.value=true
-  else if(loaded&&configured.value)await enterChat()
-  else if(!inline.value) introDialog.value=true
+  if (destroyed) return
+  if (loaded && configured.value) {
+    if (!profile.value || dialog.value) await enterChat()
+    else await pollWorkspace()
+  } else if (!profile.value) {
+    if (!loaded) loadErrorDialog.value=true
+    else introDialog.value=true
+  }
   opening.value=false
 }
 async function retryOpen(){loadErrorDialog.value=false;await open()}
@@ -197,7 +202,7 @@ async function send() {
   if(!configured.value||!dialog.value)return
   resetKeys();sending.value=true;error.value=''
   try {
-    await sessionApi.message({text:draft.value.trim(),attachmentIds:attachments.value.map(file=>file.id), ...(props.embedded && props.workspaceContext ? { workspaceContext: props.workspaceContext.slice(0, 12000) } : {}) })
+    await sessionApi.message({text:draft.value.trim(),attachmentIds:attachments.value.map(file=>file.id), ...(profile.value && props.workspaceContext ? { workspaceContext: props.workspaceContext.slice(0, 12000) } : {}) })
     draft.value='';attachmentQueue.clear();session.running=true;if($q.screen.lt.md)shortcutsVisible.value=false;await loadState();await scrollBottom(true)
   }catch(cause){error.value=errorMessage(cause)}finally{sending.value=false;poll()}
 }
@@ -258,15 +263,13 @@ async function toggleRecording() {
 function cancelRecording(){recorderCancelled=true;if(recorder?.state==='recording')recorder.stop();releaseRecorder()}
 watch(() => config.model, () => { if (!effortOptions.value.some(item => item.value === config.effort)) config.effort = 'medium' })
 watch(dialog,value=>{
-  if (props.floating) emit('visibility-change', value)
+  if (profile.value) emit('visibility-change', value)
   if(!value){clearTimeout(timer);pollVersion++;resetKeys();cancelRecording();if(session.running)timer=setTimeout(poll,5000)}
 })
 watch(spoken, enabled => { if (!enabled && speechSupported) window.speechSynthesis.cancel() })
 onMounted(() => {
   window.addEventListener(ASSISTANT_CONFIG_EVENT, onConfigurationChanged)
-  if (props.embedded) void loadConfig().then(loaded => {
-    if (loaded && configured.value && !dialog.value) return inline.value ? enterChat() : pollWorkspace()
-  })
+  if (profile.value) void open()
 })
 onBeforeUnmount(() => {
   destroyed = true
@@ -283,31 +286,22 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <AssistantFloat
-      v-if="floating || !inline && !dialog && !introDialog && !settingsDialog"
+      v-if="!introDialog && !settingsDialog"
       :label="dialog ? 'Minimizar ' + agentName : 'Abrir ' + agentName"
-      :kind="floating ? 'chatbot' : 'admin'" :expanded="dialog" :loading="opening" :chat-mode="chatMode" @toggle="toggleChat"
+      :kind="scope || 'admin'" :expanded="dialog" :loading="opening" :chat-mode="chatMode" @toggle="toggleChat"
     >
-      <q-icon v-if="floating" :name="dialog ? 'close' : 'auto_awesome'" />
-      <img v-else src="/comunicacao/app/ia.gif" alt="" />
+      <img :src="robotIcon" alt="" />
     </AssistantFloat>
   </Teleport>
   <q-dialog v-model="introDialog" :maximized="$q.screen.lt.sm"><AssistantIntroduction :app-name="branding.appName" :can-configure="canConfigure" :shared-account="sharedAccount" :style="theme" :error="configError" @configure="openSettings" @retry="loadConfig" @close="introDialog=false"/></q-dialog>
   <q-dialog v-model="loadErrorDialog"><q-card class="aito-config-unavailable aito-assistant-shell" :style="theme"><q-card-section><q-icon name="cloud_off" size="36px"/><h2>Não foi possível consultar o agente</h2><p>Isso não significa que sua configuração foi apagada. Tente novamente para carregar a chave e as preferências já salvas.</p><q-banner rounded class="aito-error" role="alert">{{configError}}</q-banner></q-card-section><q-card-actions align="right"><q-btn flat no-caps label="Fechar" v-close-popup/><q-btn class="aito-primary" unelevated no-caps icon="refresh" label="Tentar novamente" :loading="opening" @click="retryOpen"/></q-card-actions></q-card></q-dialog>
-  <Teleport to="body" :disabled="!floating">
-  <component
-    :is="embedded ? 'div' : QDialog"
-    v-if="configured"
-    v-show="!floating || dialog"
-    :class="{ 'aito-embedded': inline, 'aito-floating-panel': floating }"
-    v-bind="embedded ? {} : { modelValue: dialog, persistent: true, noShake: true, maximized: $q.screen.lt.md, transitionShow: 'slide-up', transitionHide: 'slide-down' }"
-    :role="floating ? 'region' : undefined" :aria-label="floating ? agentName : undefined"
-    @update:model-value="dialog = $event"
-    @keydown.esc="floating && minimize()"
-  >
+  <Teleport to="body">
+    <AssistantPanel v-show="dialog" :kind="scope || 'admin'" :label="agentName" @close="minimize" v-slot="{ startMove }">
     <q-card class="aito-assistant-shell" :class="scope && 'aito-assistant-shell--' + scope" :style="theme" @paste="pasteFiles" @dragover="dragOver" @dragleave.self="dragging=false" @drop="drop">
-      <header class="aito-assistant-header"><q-icon v-if="profile" :name="profile.icon" class="aito-specialty-mark" /><img v-else src="/comunicacao/app/ia.gif" alt=""/><div><strong>{{agentName}}</strong><span v-if="!profile">Seu agente do {{branding.appName}}</span></div><nav><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="embedded&&speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/><q-btn v-if="!inline" flat round dense icon="close" :aria-label="'Minimizar ' + agentName" @click="minimize"/></nav></header>
-      <div v-if="loading" class="aito-initial-loading"><q-spinner color="primary"/> Preparando seu espaço…</div>
-      <div v-else ref="thread" class="aito-assistant-thread"><q-banner v-if="sharedAccount" dense rounded class="aito-shared-account" role="status"><template #avatar><q-icon name="policy"/></template>Você usa a conta OpenAI configurada pela administração. {{canExecute?'Ações seguem suas permissões e exigem revisão.':'Seu acesso permite conversar e consultar dados autorizados, sem executar alterações.'}}</q-banner>
+      <header class="aito-assistant-header" @pointerdown="startMove"><img :src="robotIcon" alt="" /><div><strong>{{agentName}}</strong><span v-if="!profile">Seu agente do {{branding.appName}}</span></div><nav v-if="configured"><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="profile && speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/></nav><q-btn flat round dense icon="close" :aria-label="'Minimizar ' + agentName" @click="minimize"/></header>
+      <div v-if="opening && !configured || loading" class="aito-initial-loading"><q-spinner color="primary"/> Preparando seu espaço…</div>
+      <template v-else-if="configured">
+      <div ref="thread" class="aito-assistant-thread"><q-banner v-if="sharedAccount" dense rounded class="aito-shared-account" role="status"><template #avatar><q-icon name="policy"/></template>Você usa a conta OpenAI configurada pela administração. {{canExecute?'Ações seguem suas permissões e exigem revisão.':'Seu acesso permite conversar e consultar dados autorizados, sem executar alterações.'}}</q-banner>
         <section v-if="!session.messages.length" class="aito-assistant-welcome">
           <span class="aito-welcome-mark"><q-icon :name="profile?.icon || 'auto_awesome'"/></span>
           <h2>{{ profile?.heading || 'Como posso ajudar no ' + branding.appName + '?' }}</h2>
@@ -334,16 +328,15 @@ onBeforeUnmount(() => {
         <footer v-if="transcribing || session.usage.totalTokens"><span v-if="transcribing" role="status">Transcrevendo áudio…</span><span v-if="session.usage.totalTokens" class="aito-composer-cost" @click="logsDialog=true">{{formatAssistantTokens(session.usage.totalTokens)}} tokens</span></footer>
       </section>
       <div v-if="dragging" class="aito-drop-overlay" @dragover.prevent @dragleave.prevent="dragging=false" @drop.stop="drop"><q-icon name="cloud_upload" size="60px"/><strong>Solte seus arquivos aqui</strong><span>Até 8 prints e documentos na mesma mensagem</span></div>
+      </template>
+      <div v-else class="aito-connect-state">
+        <q-icon :name="profile?.icon || 'key'" size="32px" />
+        <p>{{ configError || 'Conecte sua chave OpenAI para conversar com o agente.' }}</p>
+        <q-btn v-if="configError" flat no-caps icon="refresh" label="Tentar novamente" @click="open" />
+        <q-btn v-else-if="canConfigure" flat no-caps icon="key" label="Configurar agente" @click="openSettings" />
+      </div>
     </q-card>
-  </component>
-  <q-banner v-else-if="inline" rounded class="aito-embedded-connect">
-    <template #avatar><q-icon name="auto_awesome" /></template>
-    {{ configError || 'Conecte sua chave OpenAI para conversar com o agente.' }}
-    <template #action>
-      <q-btn v-if="canConfigure" flat no-caps icon="key" label="Configurar agente" @click="openSettings" />
-      <q-btn v-if="configError" flat no-caps icon="refresh" label="Atualizar" @click="open" />
-    </template>
-  </q-banner>
+    </AssistantPanel>
   </Teleport>
 
   <AssistantSettingsDialog v-if="canConfigure" v-model="settingsDialog" @saved="onSettingsSaved" />
@@ -368,27 +361,22 @@ onBeforeUnmount(() => {
 @media(prefers-reduced-motion:reduce){.aito-recording>span{animation:none}}
 .aito-attachment-heading{display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:10px;color:var(--aito-muted);padding:4px 5px 8px}.aito-attachment-heading small{font-size:9px}.aito-draft-files{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;max-height:150px;overflow:auto;padding:2px 3px 6px}.aito-draft-file{display:flex;align-items:center;gap:8px;min-width:0;padding:7px;background:var(--aito-tint);border:1px solid var(--aito-line);border-radius:12px}.aito-draft-file>img{width:42px;height:46px;object-fit:cover;border-radius:6px;background:white;flex:none}.aito-draft-file>.q-icon{color:var(--aito-accent);flex:none}.aito-draft-file>div{min-width:0;flex:1}.aito-draft-file strong{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}.aito-draft-file small{display:block;margin-top:4px;font-size:9px;color:var(--aito-muted)}.aito-draft-file .q-btn{min-width:25px;min-height:25px;font-size:10px;color:var(--aito-muted)}.aito-upload-progress{display:flex;align-items:center;gap:8px;padding:7px;font-size:11px;color:var(--aito-accent)}.aito-attachment-error{white-space:pre-line;max-height:85px;overflow:auto;margin:4px;padding:8px;border-radius:8px;background:#fff0ed;color:#9b3636;font-size:11px;line-height:1.6}.aito-attachment-hint{font-size:9px;line-height:1.5;color:var(--aito-muted);margin:3px 6px 2px}@media(max-width:600px){.aito-draft-files{grid-template-columns:repeat(2,minmax(0,1fr));max-height:140px}.aito-draft-file{gap:5px;padding:5px}.aito-draft-file>img{width:30px;height:37px}.aito-draft-file strong{font-size:9px}.aito-attachment-heading{align-items:start;gap:5px}.aito-attachment-heading small{font-size:8px;max-width:62%;text-align:right}.aito-attachment-hint{font-size:8px}}
 
-.aito-embedded{min-width:0}
-.aito-embedded .aito-assistant-shell{width:100%;max-width:none;height:clamp(490px,74vh,760px);max-height:none;border:1px solid var(--aito-line);border-radius:20px}
-.aito-embedded .aito-assistant-thread{padding:12px 14px 18px}
-.aito-embedded .aito-assistant-header{padding:10px 12px;gap:7px}
-.aito-embedded .aito-assistant-header>img{width:34px;height:34px}
-.aito-embedded .aito-assistant-header strong{font-size:15px}
-.aito-embedded .aito-assistant-header>div>span{font-size:9px}
-.aito-embedded .aito-assistant-header nav{gap:1px}
-.aito-embedded-connect{background:#fff6dd;color:#654820;border:1px solid #eddbab}
 .aito-assistant-shell--campaign{background:linear-gradient(150deg,#f9fdff,#eaf5ff)}
 .aito-assistant-shell--campaign .aito-assistant-header{background:linear-gradient(125deg,#eef8ff,#c9e9ff)}
 .aito-assistant-shell--chatbot{background:linear-gradient(150deg,#fbfffd,#e7faf1)}
 .aito-assistant-shell--chatbot .aito-assistant-header{background:linear-gradient(125deg,#edfff5,#c6efdc)}
-.aito-specialty-mark{flex:none;width:38px;height:38px;border-radius:12px;background:#ffffffa0;color:var(--aito-accent);font-size:22px}
-.aito-floating-panel{position:fixed;left:14px;bottom:calc(82px + env(safe-area-inset-bottom,0px));z-index:4300;width:min(430px,calc(100vw - 28px))}
-.aito-floating-panel .aito-assistant-shell{width:100%;max-width:none;height:min(680px,calc(100dvh - 96px - env(safe-area-inset-bottom,0px)));max-height:none;border-radius:18px;border:1px solid var(--aito-line)}
-.aito-floating-panel .aito-assistant-header{padding:8px 12px}
-.aito-floating-panel .aito-assistant-thread{padding:8px 14px 15px}
-.aito-floating-panel .aito-assistant-welcome{margin:22px auto}
-.aito-floating-panel .aito-assistant-welcome h2,.aito-embedded .aito-assistant-welcome h2{font-size:clamp(1.25rem,5vw,1.75rem)}
-.aito-floating-panel .aito-composer-area{padding:8px 10px 10px}
-.aito-floating-panel .aito-shortcuts,.aito-embedded .aito-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr))}
-
+.assistant-panel .aito-assistant-shell{width:100%;max-width:none;height:100%;max-height:none;border-radius:18px;border:1px solid var(--aito-line)}
+.assistant-panel .aito-assistant-header{padding:8px 12px;gap:5px;cursor:grab;touch-action:none;user-select:none}
+.assistant-panel .aito-assistant-header:active{cursor:grabbing}
+.assistant-panel .aito-assistant-header>img{width:34px;height:34px}
+.assistant-panel .aito-assistant-header strong{font-size:14px;line-height:1.2}
+.assistant-panel .aito-assistant-header nav{gap:0}
+.assistant-panel .aito-assistant-header .q-btn{min-width:32px;min-height:36px}
+.assistant-panel .aito-assistant-thread{padding:8px 14px 15px}
+.assistant-panel .aito-assistant-welcome{margin:22px auto}
+.assistant-panel .aito-assistant-welcome h2{font-size:clamp(1.25rem,5vw,1.75rem)}
+.assistant-panel .aito-composer-area{padding:8px 10px 10px;max-height:60%;overflow:auto}
+.assistant-panel .aito-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr))}
+.aito-connect-state{display:grid;justify-items:center;align-content:center;flex:1;gap:10px;padding:20px;text-align:center;color:var(--aito-text)}
+.aito-connect-state p{margin:0}
 </style>
