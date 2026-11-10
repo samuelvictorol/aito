@@ -530,7 +530,7 @@ onBeforeUnmount(() => {
       icon="space_dashboard"
     >
       <template #actions>
-        <AdminCredentialsAction v-if="auth.user?.role === 'admin' && !inPrototype()" host-management-url="/admin" @configure="showCredentialPrerequisite" />
+        <AdminCredentialsAction v-if="auth.user?.role === 'admin' && !inPrototype()" host-management-url="/admin?tab=access-security" @configure="showCredentialPrerequisite" />
         <q-btn v-if="!auth.isCollaborator" outline color="primary" icon="import_export" label="Exportar / importar JSON" no-caps @click="backupOpen=true"/>
         <q-btn outline color="primary" icon="refresh" label="Atualizar" no-caps :loading="loading" @click="loadDashboard" />
       </template>

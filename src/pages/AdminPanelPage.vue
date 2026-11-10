@@ -9,7 +9,10 @@
             <q-tab-panel name="desktop-expirations"><DesktopExpirations/></q-tab-panel>
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
-            <q-tab-panel name="access-security"><AuthenticationIntegrationCard /></q-tab-panel>
+            <q-tab-panel name="access-security">
+              <AdminPasswordChangeCard :auth-options="headers" @changed="finishPasswordChange" />
+              <AuthenticationIntegrationCard />
+            </q-tab-panel>
             <q-tab-panel name="site-assistant"><SiteAssistantHistoryManager /></q-tab-panel>
             <q-tab-panel name="overview"><BusinessDashboard /></q-tab-panel>
 
@@ -70,6 +73,7 @@ import { defineAsyncComponent } from 'vue'
 import { api } from 'boot/axios'
 import 'src/css/admin-overlays.css'
 import AuthenticationIntegrationCard from 'components/AuthenticationIntegrationCard.vue'
+import AdminPasswordChangeCard from 'components/AdminPasswordChangeCard.vue'
 import LicenseTokenList from 'components/LicenseTokenList.vue'
 import LicenseTermDialog from 'components/LicenseTermDialog.vue'
 import CosmicScene from 'components/CosmicScene.vue'
@@ -100,7 +104,7 @@ const AdminEmailTemplates = defineAsyncComponent(() => import('components/AdminE
 
 export default {
   name: 'AdminPanelPage',
-  components: { AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  components: { AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   data () {
     return {
       drawerOpen:false,detailExpanded:false,licenseGrantOpen:false,licenseCustomer:null, tab: 'overview', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
@@ -123,6 +127,7 @@ export default {
   },
   mounted () {
     document.body.classList.add('aito-admin-dark')
+    if (this.$route.query.tab === 'access-security') this.tab = 'access-security'
     try { this.admin = JSON.parse(localStorage.getItem('aito_admin_user') || '{}') } catch (error) { this.admin = {} }
     this.loadAll()
   },
@@ -157,7 +162,17 @@ export default {
     async savePolicy () { this.loading.policy = true; try { const { data } = await api.put(`/admin/policies/${this.policyDraft.type}`, this.policyDraft, this.headers); this.policyDraft = data.data; this.policies = this.policies.map(item => item.type === data.data.type ? data.data : item); this.$q.notify({ type: 'positive', message: 'Documento atualizado.' }) } catch (error) { this.notifyError(error) } finally { this.loading.policy = false } },
     deletePolicy () { this.$q.dialog({ title: 'Excluir documento', message: 'A rota publica usara o texto padrao.', cancel: true, persistent: true }).onOk(async () => { try { await api.delete(`/admin/policies/${this.policyDraft.type}`, this.headers); await this.loadPolicies(); this.$q.notify({ type: 'positive', message: 'Documento excluido.' }) } catch (error) { this.notifyError(error) } }) },
     notifyError (error) { this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel concluir a operacao.' }) },
-    async logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_admin_token')}}) } catch { this.$q.notify({type:'negative',message:'Não foi possível encerrar a sessão. Tente novamente.'}); return } localStorage.removeItem('aito_admin_token'); localStorage.removeItem('aito_admin_user'); this.$router.push('/admin/login') }
+    clearAdminSession () {
+      this.token = ''
+      localStorage.removeItem('aito_admin_token')
+      localStorage.removeItem('aito_admin_user')
+    },
+    async finishPasswordChange () {
+      this.clearAdminSession()
+      await this.$router.replace({ name: 'admin-login' })
+      this.$q.notify({ type: 'positive', message: 'Senha alterada. Entre novamente com seu e-mail e a nova senha.' })
+    },
+    async logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_admin_token')}}) } catch { this.$q.notify({type:'negative',message:'Não foi possível encerrar a sessão. Tente novamente.'}); return } this.clearAdminSession(); this.$router.push('/admin/login') }
   }
 }
 </script>
