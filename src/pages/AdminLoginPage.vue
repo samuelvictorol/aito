@@ -14,7 +14,8 @@
           <q-input v-model="form.email" outlined dense label="Email admin" type="email" autocomplete="username" />
           <q-input v-model="form.password" outlined dense label="Senha" type="password" autocomplete="current-password" class="q-mt-sm" />
 
-          <q-btn unelevated no-caps class="full-width q-mt-md login-btn" icon="mdi-login" label="Entrar" type="submit" :loading="loading" />
+          <q-btn unelevated no-caps class="full-width q-mt-md login-btn" icon="mdi-login" label="Entrar" type="submit" :loading="loading" :disable="restoring" />
+          <q-btn flat no-caps class="full-width q-mt-sm login-home-btn" icon="mdi-shield-check-outline" label="Continuar neste dispositivo" type="button" :loading="restoring" :disable="loading" @click="restoreSession" />
           <q-btn flat no-caps class="full-width q-mt-sm login-home-btn" icon="mdi-home-outline" label="Inicio" type="button" @click="$router.push('/')" />
         </q-form>
       </q-page>
@@ -33,6 +34,7 @@ export default {
   data () {
     return {
       loading: false,
+      restoring: false,
       mfaOpen:false,
       mfaChallenge:null,
       form: {
@@ -52,6 +54,18 @@ export default {
         const redirect = this.$route.query.redirect
         const safeRedirect = typeof redirect === 'string' && /^\/admin(?:\/|[?#]|$)/.test(redirect) && !/[\\\r\n]/.test(redirect) && !redirect.startsWith('/admin/login') ? redirect : '/admin'
         this.$router.push(safeRedirect)
+    },
+    async restoreSession () {
+      this.restoring = true
+      try {
+        const { data } = await api.post('/auth/session')
+        if (data.user?.role !== 'admin' || !data.token) throw new Error('Sessão administrativa indisponível')
+        this.completeLogin(data)
+      } catch {
+        this.$q.notify({ type: 'warning', message: 'Entre com seu e-mail e senha para confirmar o acesso neste dispositivo.' })
+      } finally {
+        this.restoring = false
+      }
     },
     async login () {
       this.loading = true
