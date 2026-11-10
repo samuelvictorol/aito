@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { landingHeroVideo } from 'src/data/landingHeroVideo'
 
 const props = defineProps({
@@ -11,7 +11,6 @@ const props = defineProps({
 })
 const screen = ref(null)
 const visible = ref(false)
-const playing = ref(false)
 let observer
 const source = computed(() => String(props.video?.src || '').trim())
 const embed = computed(() => {
@@ -23,7 +22,7 @@ const embed = computed(() => {
       : ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com'].includes(url.hostname)
         ? url.searchParams.get('v') || url.pathname.match(/^\/(?:embed|shorts)\/([^/]+)$/)?.[1]
         : ''
-    if (id && /^[\w-]{11}$/.test(id)) return `https://www.youtube-nocookie.com/embed/${id}?autoplay=1`
+    if (id && /^[\w-]{11}$/.test(id)) return `https://www.youtube-nocookie.com/embed/${id}`
   } catch { /* Local video files use the native player. */ }
   return ''
 })
@@ -34,7 +33,6 @@ onMounted(() => {
   }, { rootMargin: '120px' })
   observer.observe(screen.value)
 })
-watch(source, () => { playing.value = false })
 onBeforeUnmount(() => observer?.disconnect())
 </script>
 
@@ -43,14 +41,8 @@ onBeforeUnmount(() => observer?.disconnect())
     <div ref="screen" class="video-monitor__frame">
       <div class="video-monitor__camera" aria-hidden="true"></div>
       <div class="video-monitor__screen">
-        <iframe v-if="embed && playing" :src="embed" :title="title" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-        <video v-else-if="visible && source && !embed" :src="source" :poster="video.poster || undefined" controls playsinline preload="none" :aria-label="title"></video>
-        <button v-else-if="embed" class="video-monitor__placeholder" type="button" :aria-label="`Reproduzir ${title}`" @click="playing = true">
-          <q-icon name="mdi-play-circle-outline" size="52px" />
-          <span class="video-monitor__eyebrow">{{ eyebrow }}</span>
-          <strong class="video-monitor__headline">{{ headline }}</strong>
-          <span>Assista à apresentação</span>
-        </button>
+        <iframe v-if="embed" :src="embed" :title="title" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+        <video v-else-if="source" :src="visible ? source : undefined" :poster="video.poster || undefined" controls playsinline preload="metadata" :aria-label="title"></video>
         <div v-else class="video-monitor__placeholder">
           <img src="/aito-logo-restored.png" alt="" width="76" height="76" />
           <span class="video-monitor__eyebrow">{{ eyebrow }}</span>
