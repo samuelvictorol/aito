@@ -14,6 +14,7 @@ import AssistantIntroduction from './AssistantIntroduction.vue'
 import AssistantSettingsDialog from './AssistantSettingsDialog.vue'
 import AssistantFloat from './AssistantFloat.vue'
 import AssistantPanel from './AssistantPanel.vue'
+import WhatsAppWebShortcuts from './WhatsAppWebShortcuts.vue'
 import { createAssistantComposerKeys } from '../services/assistant-composer-keys.js'
 
 const props = defineProps({
@@ -299,6 +300,7 @@ onBeforeUnmount(() => {
     <AssistantPanel v-show="dialog" :kind="scope || 'admin'" :label="agentName" @close="minimize" v-slot="{ startMove }">
     <q-card class="aito-assistant-shell" :class="scope && 'aito-assistant-shell--' + scope" :style="theme" @paste="pasteFiles" @dragover="dragOver" @dragleave.self="dragging=false" @drop="drop">
       <header class="aito-assistant-header" @pointerdown="startMove"><img :src="robotIcon" alt="" /><div><strong>{{agentName}}</strong><span v-if="!profile">Seu agente do {{branding.appName}}</span></div><nav v-if="configured"><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="profile && speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/></nav><q-btn flat round dense icon="close" :aria-label="'Minimizar ' + agentName" @click="minimize"/></header>
+      <WhatsAppWebShortcuts v-if="scope === 'chatbot' && configured" :user="auth.user" compact />
       <div v-if="opening && !configured || loading" class="aito-initial-loading"><q-spinner color="primary"/> Preparando seu espaço…</div>
       <template v-else-if="configured">
       <div ref="thread" class="aito-assistant-thread"><q-banner v-if="sharedAccount" dense rounded class="aito-shared-account" role="status"><template #avatar><q-icon name="policy"/></template>Você usa a conta OpenAI configurada pela administração. {{canExecute?'Ações seguem suas permissões e exigem revisão.':'Seu acesso permite conversar e consultar dados autorizados, sem executar alterações.'}}</q-banner>

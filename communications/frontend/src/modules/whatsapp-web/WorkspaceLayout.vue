@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { inPrototype, prototypeAuth } from '../../services/prototype-runtime.js'
 import { routeAllowed } from '../../services/access.js'
+import { whatsappWebNavigation as navigation } from './navigation.js'
 import ChatsPage from './pages/ChatsPage.vue'
 import WhiteLabelBrand from '../../components/WhiteLabelBrand.vue'
 import { api, currentUser, messageOf, socket, startSessionListeners, stopSessionListeners } from './services.js'
@@ -29,18 +30,6 @@ let previousViewportHeight = ''
 const chatView = computed(() => Boolean(props.inboxOnly || (inPrototype() && route.path === '/prototype/whatsapp-web') || route.meta.whatsappWebChat || (props.collaboratorOnly && currentUser.value)))
 provide('whatsapp-web:conversation-selected', (value) => { conversationSelected.value = Boolean(value) })
 const loginForm = ref({ username: '', password: '' })
-const navigation = [
-  { path: '', label: 'Conversas', icon: 'forum' },
-  { path: '/connection', label: 'Conexão', icon: 'qr_code_2' },
-  { path: '/flows', label: 'Fluxos e simulador', icon: 'account_tree' },
-  { path: '/native-flows', label: 'Comandos nativos', icon: 'terminal' },
-  { path: '/contacts', label: 'Contatos e grupos', icon: 'contacts' },
-  { path: '/catalog', label: 'Catálogo e pedidos', icon: 'storefront' },
-  { path: '/files', label: 'Arquivos', icon: 'perm_media' },
-  { path: '/integrations', label: 'Integrações', icon: 'hub' },
-  { path: '/logs', label: 'Monitoramento e logs', icon: 'monitor_heart' },
-  { path: '/settings', label: 'Configurações', icon: 'settings' },
-]
 const visibleNavigation = computed(() => navigation.filter(item => routeAllowed('/whatsapp-web'+item.path,currentUser.value)))
 const primaryNavigation = computed(() => visibleNavigation.value.filter(item => ['', '/connection', '/flows'].includes(item.path)))
 const secondaryNavigation = computed(() => visibleNavigation.value.filter(item => !primaryNavigation.value.includes(item)))

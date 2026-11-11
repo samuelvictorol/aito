@@ -6,6 +6,7 @@ import { Controls } from '@vue-flow/controls'
 import { MarkerType, VueFlow } from '@vue-flow/core'
 import AdminAssistant from '../components/AdminAssistant.vue'
 import AssistantFloat from '../components/AssistantFloat.vue'
+import WhatsAppWebShortcuts from '../components/WhatsAppWebShortcuts.vue'
 import FlowBuilderPage from '../modules/whatsapp-web/pages/FlowBuilderPage.vue'
 import FlowNode from '../modules/whatsapp-web/components/FlowNode.vue'
 import FlowSimulator from '../modules/whatsapp-web/components/FlowSimulator.vue'
@@ -307,6 +308,8 @@ onBeforeUnmount(() => { destroyed = true })
       {{ error }}
       <template #action><q-btn flat no-caps label="Tentar novamente" @click="loadFlows()" /></template>
     </q-banner>
+
+    <WhatsAppWebShortcuts :user="user" />
 
     <div class="studio-grid">
       <section class="studio-workspace" aria-label="Área de criação do fluxo">
