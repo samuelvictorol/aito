@@ -1,11 +1,12 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseDate, purchaseMoney } from 'src/services/purchase-history'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
-  licenseId: { type: String, required: true },
+  licenseId: String,
+  adminProjectId: String,
   admin: Boolean,
 })
 const loading = ref(false)
@@ -31,11 +32,12 @@ async function loadHistory(page = 1) {
   currentLoad = request
   loading.value = true
   error.value = ''
-  const scope = props.admin ? 'admin' : 'account'
+  const scope = props.adminProjectId ? 'admin/project-keys' : props.admin ? 'admin' : 'account'
+  const targetId = props.adminProjectId || props.licenseId
   const offset = (page - 1) * pagination.value.rowsPerPage
   try {
-    const { data } = await api.get(`/aito-tokens/${scope}/${encodeURIComponent(props.licenseId)}/recharges`, {
-      ...financeHeaders(props.admin), params: { offset }, signal: request.signal,
+    const { data } = await api.get(`/aito-tokens/${scope}/${encodeURIComponent(targetId)}/recharges`, {
+      ...financeHeaders(props.admin || Boolean(props.adminProjectId)), params: { offset }, signal: request.signal,
     })
     if (request.signal.aborted) return
     const { history, total, limit } = data.data
@@ -48,6 +50,7 @@ async function loadHistory(page = 1) {
   }
 }
 
+onMounted(() => { if (props.adminProjectId) loadHistory() })
 onBeforeUnmount(() => currentLoad?.abort())
 </script>
 

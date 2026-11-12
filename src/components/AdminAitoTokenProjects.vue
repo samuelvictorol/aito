@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseDate, purchaseMoney } from 'src/services/purchase-history'
+import AitoTokenHistory from './AitoTokenHistory.vue'
 import LoginMfaDialog from './LoginMfaDialog.vue'
 
 const emit = defineEmits(['reauthenticated', 'open-projects'])
@@ -19,6 +20,7 @@ const busy = ref(false)
 const challenge = ref(null)
 const mfaOpen = ref(false)
 const revealed = ref(null)
+const historyProject = ref(null)
 let request
 
 const columns = [
@@ -160,6 +162,7 @@ onBeforeUnmount(() => {
             />
             <q-btn v-if="props.row.active" flat dense round icon="mdi-key-remove" color="orange-4" aria-label="Revogar chave" @click="selectAction('revoke', props.row)"><q-tooltip>Revogar chave</q-tooltip></q-btn>
             <q-btn v-if="props.row.active && projectActive(props.row)" flat dense round icon="mdi-wallet-plus-outline" color="teal-3" aria-label="Adicionar créditos" @click="selectAction('grant', props.row)"><q-tooltip>Adicionar créditos</q-tooltip></q-btn>
+            <q-btn v-if="props.row.issued" flat dense round icon="mdi-history" color="teal-3" aria-label="Histórico de recargas" @click="historyProject = props.row"><q-tooltip>Histórico de recargas</q-tooltip></q-btn>
           </div>
         </q-td>
       </template>
@@ -181,6 +184,15 @@ onBeforeUnmount(() => {
             <q-btn unelevated no-caps label="Confirmar por e-mail" color="teal-7" type="submit" :loading="busy" :disable="mfaOpen" />
           </q-card-actions>
         </q-form>
+      </q-card>
+    </q-dialog>
+    <q-dialog :model-value="Boolean(historyProject)" @update:model-value="historyProject = null">
+      <q-card dark class="token-projects__dialog token-projects__dialog--wide">
+        <q-card-section class="row items-center justify-between">
+          <div><h3>Histórico de recargas</h3><p>{{ historyProject?.title }}</p></div>
+          <q-btn flat round dense icon="mdi-close" aria-label="Fechar histórico" v-close-popup />
+        </q-card-section>
+        <q-card-section><AitoTokenHistory v-if="historyProject" :admin-project-id="historyProject.projectId" /></q-card-section>
       </q-card>
     </q-dialog>
     <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="apply" />
@@ -209,4 +221,5 @@ onBeforeUnmount(() => {
 .token-projects__hint { padding-left: .5rem; color: #c2d9d3; }
 .token-projects__actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: .25rem; }
 .token-projects__dialog { width: min(94vw, 550px); }
+.token-projects__dialog--wide { width: min(94vw, 900px); max-width: 94vw; }
 </style>
