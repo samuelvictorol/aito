@@ -22,6 +22,16 @@ const tabs = [
   { id: 'voice', label: 'Locução', icon: 'mdi-waveform' },
   { id: 'ai', label: 'Vídeo com IA', icon: 'mdi-movie-open-play-outline' },
 ]
+const videoCatalog = [
+  { id: 'seedance-2.5', maker: 'ByteDance', name: 'Seedance 2.5', summary: 'Sequências com movimento de câmera e direção de cena.', poster: '0% 0%' },
+  { id: 'genjutsu-light', maker: 'Higgsfield', name: 'Genjutsu Light', summary: 'Transfere o movimento de um vídeo para outra cena.', poster: '100% 0%', limitation: 'Requer vídeo de referência' },
+  { id: 'genjutsu', maker: 'Higgsfield', name: 'Genjutsu', summary: 'Troca elementos ou estilos mantendo o movimento original.', poster: '0% 33.3333%', limitation: 'Requer vídeo de referência' },
+  { id: 'kling-4.0', maker: 'Kling', name: 'Kling 4.0', summary: 'Cenas cinematográficas com ações e enquadramentos detalhados.', poster: '100% 33.3333%' },
+  { id: 'kling-4.0-flash', maker: 'Kling', name: 'Kling 4.0 Flash', summary: 'Clipes rápidos em 720p para experimentar uma ideia.', poster: '0% 66.6667%' },
+  { id: 'minimax-h3', maker: 'MiniMax', name: 'MiniMax H3', summary: 'Movimento de personagem e detalhes em alta resolução.', poster: '100% 66.6667%' },
+  { id: 'wan-3.0-prime', maker: 'Alibaba', name: 'Wan 3.0 Prime', summary: 'Geração rápida para cenas em movimento e estilos variados.', poster: '0% 100%' },
+  { id: 'grok-imagine-2.0', maker: 'xAI', name: 'Grok Imagine 2.0', summary: 'Cria e edita imagens com atenção aos detalhes.', poster: '100% 100%', type: 'image', limitation: 'Geração de imagem' },
+]
 const title = ref('Meu vídeo')
 const tab = ref('scenes')
 const formatId = ref(videoFormats[0].id)
@@ -36,6 +46,7 @@ const narration = shallowRef(null)
 const voicePreview = shallowRef(null)
 const recording = shallowRef(null)
 const generated = shallowRef(null)
+const generatedDuration = ref(0)
 const activeJob = shallowRef(null)
 const prompt = ref('')
 const scriptPrompt = ref('')
@@ -55,8 +66,24 @@ const optionsError = ref('')
 const voice = ref('')
 const videoModel = ref('')
 const videoOption = ref('')
-const modelOptions = computed(() => options.value?.videoModels?.find(item => item.id === videoModel.value)?.options || [])
+const clipPrompt = ref(null)
+const modelOffers = computed(() => new Map((options.value?.videoModels || []).map(item => [item.id, item.options])))
+const modelOptions = computed(() => modelOffers.value.get(videoModel.value) || [])
 const offer = computed(() => modelOptions.value.find(item => item.id === videoOption.value))
+const selectedModel = computed(() => videoCatalog.find(item => item.id === videoModel.value))
+const modelCards = computed(() => videoCatalog.map(item => {
+  const offers = modelOffers.value.get(item.id) || []
+  const available = offers.length > 0
+  const perSecond = available ? Math.min(...offers.map(option => option.priceUsdCents / option.seconds)) : 0
+  const availability = item.limitation ? 'Fora do Estúdio' : available ? 'Texto para vídeo' :
+    !signedIn.value ? 'Entre para usar' : optionsLoading.value ? 'Consultando' : 'Indisponível'
+  return { ...item, available, perSecond, availability, selectable: available || (!signedIn.value && !item.limitation) }
+}))
+const optionResolution = item => item?.resolution || '720p'
+const videoAspects = computed(() => [...new Set(modelOptions.value.map(item => item.format))])
+const videoResolutions = computed(() => [...new Set(modelOptions.value.filter(item => item.format === offer.value?.format).map(optionResolution))])
+const videoDurations = computed(() => modelOptions.value.filter(item =>
+  item.format === offer.value?.format && optionResolution(item) === optionResolution(offer.value)))
 const maxNarration = computed(() => options.value?.voice?.maxCharacters || 4096)
 const voicePrice = computed(() => narrationText.value.trim().length * (options.value?.voice?.priceUsdCentsPerCharacter || 0))
 const sample = 'Olá. Esta é uma amostra da minha voz em português.'
@@ -74,6 +101,19 @@ const jobStorageKey = 'aitoia-video-jobs'
 const jobLifetime = 24 * 60 * 60 * 1000
 
 function showAuth(mode = 'register') { authMode.value = mode; authOpen.value = true }
+function selectVideoModel(item) {
+  videoModel.value = item.id
+  nextTick(() => clipPrompt.value?.focus())
+}
+function changeVideoConfiguration(field, value) {
+  const current = offer.value
+  const currentResolution = optionResolution(current)
+  const matching = modelOptions.value.filter(item => field === 'format' ? item.format === value
+    : item.format === current.format && optionResolution(item) === value)
+  const next = matching.find(item => optionResolution(item) === currentResolution && item.seconds === current.seconds) ||
+    matching.find(item => item.seconds === current.seconds) || matching[0]
+  if (next) videoOption.value = next.id
+}
 function showWallet() {
   if (!signedIn.value) return showAuth()
   walletOpen.value = true
@@ -120,7 +160,9 @@ async function loadOptions() {
     if (controller.signal.aborted) return
     options.value = data.data
     if (!options.value?.voices?.some(item => item.id === voice.value)) voice.value = options.value?.voices?.[0]?.id || ''
-    if (!options.value?.videoModels?.some(item => item.id === videoModel.value)) videoModel.value = options.value?.videoModels?.[0]?.id || ''
+    if (!modelOffers.value.get(videoModel.value)?.length) {
+      videoModel.value = modelOffers.value.get('kling-4.0-flash')?.length ? 'kling-4.0-flash' : options.value?.videoModels?.[0]?.id || ''
+    }
     restoreJob(accountId.value, options.value?.recoverableGeneration)
   } catch (cause) {
     if (!controller.signal.aborted) optionsError.value = cause.response?.data?.message || 'Não foi possível consultar o catálogo.'
@@ -378,6 +420,7 @@ async function readJob(job, signal) {
   }
   const url = new URL(current.url)
   if (url.protocol !== 'https:' || url.username || url.password || url.port) throw new Error('O provedor retornou um endereço de vídeo inválido.')
+  generatedDuration.value = 0
   generated.value = { ...current, url: url.href }
   notice.value = 'Clipe pronto. Baixe o arquivo ou adicione-o à sua cena.'
 }
@@ -430,7 +473,9 @@ function addGenerated() {
   run('media', async signal => {
     await setSceneMedia(await fetchGenerated(signal), signal)
     signal.throwIfAborted()
-    editScene({ duration: sceneSeconds(selectedScene.value?.media?.element.duration) })
+    const duration = selectedScene.value?.media?.element.duration
+    editScene({ duration: sceneSeconds(duration) })
+    if (duration > 15) notice.value = 'A cena usa os primeiros 15 segundos. O clipe completo continua disponível para download.'
     tab.value = 'scenes'
   })
 }
@@ -497,8 +542,34 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
 
       <div class="video-studio__grid">
+        <div class="video-studio__tabs" role="group" aria-label="Ferramentas do editor"><button v-for="item in tabs" :key="item.id" type="button" :aria-pressed="tab === item.id" :disabled="!mayEdit" @click="tab = item.id"><q-icon :name="item.icon" size="20px" /> {{ item.label }}</button></div>
+
+        <section v-if="tab === 'ai'" class="video-studio__catalog" aria-labelledby="video-studio-models">
+          <div class="video-studio__catalog-header">
+            <div><h2 id="video-studio-models">Modelos de geração</h2><p>Escolha um modelo para configurar seu clipe.</p></div>
+            <button v-if="signedIn" class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
+          </div>
+          <div class="video-studio__model-grid">
+            <article v-for="item in modelCards" :key="item.id" class="video-studio__model-card" :class="{ 'video-studio__model-card--selected': videoModel === item.id && item.selectable }">
+              <div class="video-studio__model-poster" :style="{ backgroundPosition: item.poster }" aria-hidden="true">
+                <span class="video-studio__model-type" :class="{ 'video-studio__model-type--image': item.type === 'image' }"><q-icon :name="item.type === 'image' ? 'mdi-image-outline' : 'mdi-play-box-outline'" size="15px" /> {{ item.type === 'image' ? 'Imagem' : 'Vídeo' }}</span>
+              </div>
+              <div class="video-studio__model-content">
+                <div><span class="video-studio__model-maker">{{ item.maker }}</span><h3>{{ item.name }}</h3></div>
+                <p>{{ item.summary }}</p>
+                <div class="video-studio__model-meta">
+                  <span v-if="item.available" class="video-studio__model-rate" title="Preço de referência do estúdio">A partir de {{ usd(item.perSecond) }}/s</span>
+                  <span :class="{ 'video-studio__model-status--available': item.available }">{{ item.availability }}</span>
+                </div>
+              </div>
+              <button v-if="item.selectable" class="video-studio__model-hit" type="button" :disabled="!mayEdit" :aria-label="`Selecionar ${item.name}`" :aria-pressed="videoModel === item.id" @click="selectVideoModel(item)">
+                <q-icon :name="videoModel === item.id ? 'mdi-check-circle' : 'mdi-arrow-top-right'" size="18px" aria-hidden="true" />
+              </button>
+            </article>
+          </div>
+        </section>
+
         <section class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
-          <div class="video-studio__tabs" role="group" aria-label="Ferramentas do editor"><button v-for="item in tabs" :key="item.id" type="button" :aria-pressed="tab === item.id" :disabled="!mayEdit" @click="tab = item.id"><q-icon :name="item.icon" size="20px" /> {{ item.label }}</button></div>
 
           <div v-if="tab === 'scenes'" class="video-studio__section">
             <div class="video-studio__fields">
@@ -554,20 +625,30 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
           </div>
 
           <div v-else class="video-studio__section">
-            <div class="video-studio__scene-heading"><h2>Gerar clipe</h2><button v-if="signedIn" class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button></div>
-            <label>Descrição do clipe<textarea v-model="prompt" rows="5" maxlength="2000" placeholder="Descreva o cenário, o movimento de câmera e o estilo…" :disabled="!mayEdit" /></label>
-            <div v-if="options?.videoModels?.length" class="video-studio__fields video-studio__fields--equal">
-              <label>Modelo<select v-model="videoModel" :disabled="!mayEdit"><option v-for="item in options.videoModels" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
-              <label>Configuração<select v-model="videoOption" :disabled="!mayEdit"><option v-for="item in modelOptions" :key="item.id" :value="item.id">{{ item.label }} · {{ usd(item.priceUsdCents) }}</option></select></label>
+            <div class="video-studio__scene-heading"><h2>Gerar clipe</h2><span v-if="selectedModel" class="video-studio__selected-model">{{ selectedModel.name }}</span></div>
+            <label>Descrição do clipe<textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="2000" placeholder="Descreva o cenário, o movimento de câmera e o estilo…" :disabled="!mayEdit" /></label>
+            <div v-if="offer" class="video-studio__fields video-studio__fields--clip">
+              <label>Formato<select :value="offer.format" :disabled="!mayEdit" @change="changeVideoConfiguration('format', $event.target.value)"><option v-for="aspect in videoAspects" :key="aspect">{{ aspect }}</option></select></label>
+              <label>Resolução<select :value="optionResolution(offer)" :disabled="!mayEdit" @change="changeVideoConfiguration('resolution', $event.target.value)"><option v-for="resolution in videoResolutions" :key="resolution" :value="resolution">{{ resolution }}</option></select></label>
+              <label>Duração<select v-model="videoOption" :disabled="!mayEdit"><option v-for="item in videoDurations" :key="item.id" :value="item.id">{{ item.seconds }} s</option></select></label>
             </div>
             <p v-else-if="signedIn && !activeJob && !generated" class="video-studio__hint">{{ optionsLoading ? 'Carregando modelos de vídeo…' : optionsError || 'A geração de clipes está temporariamente indisponível.' }}</p>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
               <button v-else-if="activeJob && !busy" class="video-studio__primary" type="button" @click="checkJob"><q-icon name="mdi-refresh" size="20px" /> Verificar geração</button>
-              <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || !offer || !prompt.trim()" @click="makeVideo"><q-spinner v-if="busy === 'video'" size="19px" /><q-icon v-else name="mdi-movie-open-play-outline" size="19px" /> {{ busy === 'video' ? 'Gerando clipe…' : 'Gerar clipe' }}<span v-if="offer && busy !== 'video'"> · {{ usd(offer.priceUsdCents) }}</span></button>
+              <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || !offer || !prompt.trim()" @click="makeVideo"><q-spinner v-if="busy === 'video'" size="19px" /><q-icon v-else name="mdi-movie-open-play-outline" size="19px" /> {{ busy === 'video' ? 'Gerando clipe…' : 'Gerar clipe' }}<span v-if="offer && busy !== 'video'"> · Até {{ usd(offer.priceUsdCents) }}</span></button>
             </div>
             <p v-if="busy === 'video'" class="video-studio__hint" role="status">{{ activeJob?.status === 'in_progress' ? 'O provedor está produzindo seu clipe.' : 'Aguardando o provedor…' }}</p>
-            <div v-if="generated" class="video-studio__generated"><h3>Clipe gerado</h3><video :src="generated.url" controls playsinline preload="metadata" referrerpolicy="no-referrer" aria-label="Clipe gerado com IA" /><div class="video-studio__actions"><button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="downloadGenerated"><q-icon name="mdi-download-outline" size="18px" /> Baixar clipe</button><button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="addGenerated"><q-icon name="mdi-plus" size="18px" /> Usar na cena</button><a class="video-studio__secondary" :href="generated.url" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-open-in-new" size="17px" /> Abrir arquivo</a></div></div>
+            <div v-if="generated" class="video-studio__generated">
+              <h3>Clipe gerado</h3>
+              <video :src="generated.url" controls playsinline preload="metadata" referrerpolicy="no-referrer" aria-label="Clipe gerado com IA" @loadedmetadata="generatedDuration = $event.target.duration" />
+              <div class="video-studio__actions">
+                <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="downloadGenerated"><q-icon name="mdi-download-outline" size="18px" /> Baixar clipe</button>
+                <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="addGenerated"><q-icon name="mdi-plus" size="18px" /> {{ generatedDuration > 15 ? 'Usar primeiros 15 s na cena' : 'Usar na cena' }}</button>
+                <a class="video-studio__secondary" :href="generated.url" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-open-in-new" size="17px" /> Abrir arquivo</a>
+              </div>
+              <p v-if="generatedDuration > 15" class="video-studio__hint">Baixar clipe salva o vídeo completo.</p>
+            </div>
           </div>
         </section>
 
@@ -619,7 +700,7 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
 .video-studio__grid { display: grid; grid-template-columns: minmax(0, .86fr) minmax(0, 1.14fr); align-items: start; gap: 16px; }
 .video-studio__panel { min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: var(--aito-ai-surface); }
 .video-studio__editor { overflow: hidden; }
-.video-studio__tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 7px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-panel); }
+.video-studio__tabs { grid-column: 1 / -1; display: grid; width: min(620px, 100%); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 7px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
 .video-studio__tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--aito-ai-muted); cursor: pointer; white-space: nowrap; }
 .video-studio__tabs button[aria-pressed=true] { border-color: var(--aito-ai-line); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); font-weight: 650; }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
@@ -629,7 +710,27 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
 .video-studio h3 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
 .video-studio__preview header span, .video-studio__hint, .video-studio__script small { color: var(--aito-ai-muted); font-size: .84rem; }
 .video-studio__fields { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr); gap: 10px; }
-.video-studio__fields--equal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.video-studio__fields--clip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.video-studio__catalog { grid-column: 1 / -1; min-width: 0; display: grid; gap: 12px; }
+.video-studio__catalog-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.video-studio__catalog-header p { margin-top: 4px; color: var(--aito-ai-muted); font-size: .9rem; }
+.video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.video-studio__model-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 13px; background: var(--aito-ai-surface); }
+.video-studio__model-card--selected, .video-studio__model-card:has(.video-studio__model-hit:not(:disabled):hover) { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-panel); }
+.video-studio__model-poster { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; background-color: var(--aito-ai-panel); background-image: url('/aitoia-model-posters.webp'); background-size: 200% 400%; }
+.video-studio__model-type { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 6px; background: #281d3aeb; color: #f7dff9; font-size: .69rem; font-weight: 700; }
+.video-studio__model-type--image { background: #082f25eb; color: #d7ffed; }
+.video-studio__model-content { display: grid; flex: 1; grid-template-rows: auto 1fr auto; gap: 6px; padding: 9px 8px 6px; }
+.video-studio__model-maker { color: var(--aito-ai-muted); font-size: .76rem; }
+.video-studio__model-content h3 { margin-top: 2px; overflow-wrap: anywhere; }
+.video-studio__model-content p { color: var(--aito-ai-muted); font-size: .82rem; line-height: 1.35; }
+.video-studio__model-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; color: var(--aito-ai-muted); font-size: .73rem; }
+.video-studio__model-rate { padding: 2px 5px; border-radius: 4px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); font-weight: 650; }
+.video-studio__model-status--available, .video-studio__selected-model { color: var(--aito-ai-accent); }
+.video-studio__selected-model { font-size: .86rem; font-weight: 650; text-align: right; }
+.video-studio__model-hit { position: absolute; inset: 0; display: flex; justify-content: flex-end; align-items: flex-start; padding: 10px; border: 0; border-radius: inherit; color: var(--aito-ai-text); background: transparent; cursor: pointer; }
+.video-studio__model-hit :deep(.q-icon) { width: 27px; height: 27px; border-radius: 7px; background: #092322eb; }
+.video-studio__model-hit[aria-pressed=true] :deep(.q-icon) { color: var(--aito-ai-accent); }
 .video-studio label { display: grid; min-width: 0; gap: 6px; color: var(--aito-ai-muted); font-weight: 620; font-size: .84rem; }
 .video-studio input:not([type=range]), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio textarea { min-height: 60px; resize: vertical; }
@@ -666,6 +767,8 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
 .video-studio__audio-meta strong { overflow-wrap: anywhere; }
 .video-studio__generated { display: grid; gap: 8px; }
 .video-studio__generated video, .video-studio__rendered { display: block; width: 100%; max-height: 420px; border-radius: 8px; background: var(--aito-ai-bg); }
+@media (max-width: 960px) { .video-studio__model-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 850px) { .video-studio__grid { grid-template-columns: minmax(0, 1fr); } .video-studio__preview { position: static; } }
+@media (max-width: 640px) { .video-studio__model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .video-studio__model-content { padding-inline: 5px; } }
 @media (max-width: 480px) { .video-studio__bar { grid-template-columns: 1fr auto; padding: 7px 10px; gap: 6px; } .video-studio__nav { grid-row: 2; grid-column: 1 / -1; justify-content: center; } .video-studio__nav a { justify-content: center; flex: 1; } .video-studio__intro { align-items: flex-start; flex-direction: column; } .video-studio__tabs button { font-size: .8rem; } .video-studio__tabs :deep(.q-icon) { font-size: 17px !important; } }
 </style>
