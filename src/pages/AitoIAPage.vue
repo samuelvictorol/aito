@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useMeta } from 'quasar'
+import { useMeta, useQuasar } from 'quasar'
 import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
@@ -15,6 +15,7 @@ const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.
 const AitoIAChatVideo = defineAsyncComponent(() => import('components/AitoIAChatVideo.vue'))
 useMeta({ title: 'AitoIA | Chat com AitoTokens', meta: { description: { name: 'description', content: 'Converse com os modelos OpenAI usando AitoTokens. Compare modelos e mantenha suas conversas no seu navegador.' } } })
 const route = useRoute()
+const $q = useQuasar()
 const state = useAitoIA()
 const { signedIn, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
   modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
@@ -35,7 +36,7 @@ const videoOpen = ref(false)
 const videoBusy = ref(false)
 const videoFile = shallowRef(null)
 const busy = computed(() => Boolean(request.value || videoBusy.value))
-useAitoWorkGuard(busy, () => { error.value = 'Aguarde a operação em andamento para sair desta tela.' })
+useAitoWorkGuard(busy, () => $q.notify({ type: 'warning', message: 'Aguarde a operação em andamento para sair desta tela.' }))
 const effortLabels = { none: 'Direta', minimal: 'Mínima', low: 'Baixa', medium: 'Equilibrada', high: 'Alta', xhigh: 'Muito alta', max: 'Ultra' }
 const effortIndex = computed({ get: () => Math.max(0, efforts.value.indexOf(effort.value)), set: value => { effort.value = efforts.value[Number(value)] || effort.value } })
 const promptIdeas = [

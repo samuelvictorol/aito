@@ -120,7 +120,8 @@ const subtitles = computed(() => studioSubtitles(timeline.value))
 const canRecord = computed(() => exportFormats.value.length > 0)
 const mayEdit = computed(() => !busy.value)
 const guarded = computed(() => Boolean(busy.value))
-useAitoWorkGuard(guarded, () => { error.value = 'Aguarde a conclusão do trabalho antes de sair do estúdio.' })
+const blockedExit = ref(false)
+useAitoWorkGuard(guarded, () => { blockedExit.value = true })
 const durationLabel = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 let videoFrame
 let displayedVideo
@@ -176,7 +177,7 @@ async function run(kind, action) {
   busy.value = kind
   try { await action(controller.signal) } catch (cause) { if (mounted && !controller.signal.aborted) await report(cause) }
   finally {
-    if (activeOperation === controller) { activeOperation = null; busy.value = ''; progress.value = 0 }
+    if (activeOperation === controller) { activeOperation = null; busy.value = ''; progress.value = 0; blockedExit.value = false }
   }
 }
 async function loadOptions() {
@@ -692,6 +693,7 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
         <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="archiveProject"><q-icon name="mdi-folder-zip-outline" size="20px" /> Baixar projeto ZIP</button>
       </div>
       <p v-if="error" role="alert" class="video-studio__notice video-studio__notice--error"><q-icon name="mdi-alert-circle-outline" size="20px" /> {{ error }}</p>
+      <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
 
       <div class="video-studio__grid">
