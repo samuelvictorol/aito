@@ -4,3 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+[[headers]]
+  for = "/downloads/aitoia-codex.zip"
+  [headers.values]
+    Cache-Control = "public, no-cache"
+    Content-Disposition = 'attachment; filename="AitoIA-by-AitoSoftwares.zip"'

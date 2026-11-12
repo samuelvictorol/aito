@@ -4,17 +4,12 @@ import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import { aitoTokens, brl, usd } from 'src/composables/useAitoIA'
 
-const props = defineProps({
-  marketplace: { type: String, required: true },
-  setupUrl: { type: String, required: true },
-})
 const route = useRoute()
 const open = ref(false)
 const offers = ref([])
 const offerError = ref(false)
 const home = computed(() => route.name === 'landing-3d')
 const promotedRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-video-studio', 'aito-ia-marketing-studio'])
-const install = computed(() => `codex://plugins/install/aitosoftwares?marketplace=${encodeURIComponent(props.marketplace)}`)
 let timer
 let offersRequest
 
@@ -70,10 +65,10 @@ onBeforeUnmount(() => {
       </ul>
       <p v-else-if="offerError" role="status">Consulte os pacotes na <router-link to="/aitotokens">página de AitoTokens</router-link>.</p>
       <div class="codex-offer__actions">
-        <a class="codex-offer__primary" href="https://openai.com/codex/" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-download" /> Baixar Codex</a>
-        <a class="codex-offer__secondary" :href="install"><q-icon name="mdi-puzzle-outline" /> Instalar plugin AitoSoftwares</a>
+        <a class="codex-offer__primary" href="/downloads/aitoia-codex.zip" download><q-icon name="mdi-download" /> Baixar plugin (.zip)</a>
+        <a href="https://openai.com/codex/" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-console-line" /> Baixar Codex</a>
       </div>
-      <a class="codex-offer__guide" :href="setupUrl" target="_blank" rel="noopener noreferrer">Configurar AitoKey no Codex <q-icon name="mdi-arrow-top-right" /></a>
+      <small class="codex-offer__note">O ZIP inclui o guia de instalação. Para usar o modelo, você precisa de uma AitoKey de projeto com o piloto liberado.</small>
     </q-card>
   </q-dialog>
 </template>
@@ -92,7 +87,7 @@ onBeforeUnmount(() => {
 .codex-offer__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .codex-offer__actions a, .codex-offer__trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 7px 10px; border: 1px solid #cdaa6666; border-radius: 9px; text-decoration: none; font: inherit; font-weight: 700; }
 .codex-offer .codex-offer__primary, .codex-offer__trigger { color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); }
-.codex-offer__guide { display: inline-block; margin-top: 10px; }
+.codex-offer__note { display: block; margin-top: 10px; color: #bdd3cb; }
 .codex-offer__trigger { position: fixed; left: max(16px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); z-index: 100; box-shadow: 0 5px 20px #0007; cursor: pointer; }
 @media (max-width: 460px) { .codex-offer__plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .codex-offer__trigger { bottom: max(62px, calc(env(safe-area-inset-bottom) + 55px)); } }
 </style>
