@@ -1,0 +1,28 @@
+.aito-ai-theme {
+  color-scheme: dark;
+  --aito-ai-bg: #03090b;
+  --aito-ai-surface: #061819;
+  --aito-ai-panel: #092122;
+  --aito-ai-raised: #102e2c;
+  --aito-ai-line: #36605a;
+  --aito-ai-text: #effffb;
+  --aito-ai-muted: #b8d1cd;
+  --aito-ai-accent: #8fffee;
+  --aito-ai-accent-strong: #13bc9d;
+  --aito-ai-accent-soft: #133b35;
+  --aito-ai-gold: #f5d893;
+  --aito-ai-gold-soft: #2b251a;
+  --aito-ai-gold-line: #685634;
+  --aito-ai-ink: #03120f;
+  --aito-ai-purple: #d2b6ff;
+  --aito-ai-purple-soft: #292438;
+  --aito-ai-purple-line: #544566;
+  --aito-ai-error: #ffd6e1;
+  --aito-ai-error-soft: #382229;
+  --aito-ai-error-line: #794e5d;
+  --aito-ai-gradient: linear-gradient(135deg, var(--aito-ai-accent), var(--aito-ai-accent-strong));
+  --aito-ai-gold-gradient: linear-gradient(125deg, #f9e5ad, #e6b767);
+  --aito-ai-glow: radial-gradient(ellipse at 75% 12%, #13bc9d2e, transparent 64%);
+  --aito-ai-overlay: #01080ad9;
+  --aito-ai-font: 'Geist', 'Inter', system-ui, sans-serif;
+}

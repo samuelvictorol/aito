@@ -19,7 +19,7 @@ watch(walletId, () => { selected.value = null })
 
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card dark class="aito-wallet">
+    <q-card dark class="aito-ai-theme aito-wallet">
       <header class="aito-wallet__header">
         <img src="/aitotokens.svg" alt="" width="42" height="42" />
         <h2>AitoTokens</h2>
@@ -67,41 +67,41 @@ watch(walletId, () => { selected.value = null })
 </template>
 
 <style scoped>
-.aito-wallet { width: min(630px, calc(100vw - 2rem)); max-width: 100% !important; max-height: calc(100dvh - 2rem); padding: 17px; overflow: auto; border: 1px solid #624c68; border-radius: 17px; color: #f1e9f4; background: #211a29; font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+.aito-wallet { width: min(630px, calc(100vw - 2rem)); max-width: 100% !important; max-height: calc(100dvh - 2rem); padding: 17px; overflow: auto; border: 1px solid var(--aito-ai-line); border-radius: 17px; color: var(--aito-ai-text); background: var(--aito-ai-surface); font-family: var(--aito-ai-font); }
 .aito-wallet button, .aito-wallet select { font: inherit; }
-.aito-wallet button:focus-visible, .aito-wallet a:focus-visible { outline: 2px solid #e5c8ff; outline-offset: 2px; }
+.aito-wallet button:focus-visible, .aito-wallet a:focus-visible { outline: 2px solid var(--aito-ai-accent); outline-offset: 2px; }
 .aito-wallet__header { display: flex; align-items: center; gap: 8px; }
 .aito-wallet__header h2 { flex: 1; margin: 0; font-size: 1.23rem; font-weight: 750; line-height: 1.2; }
-.aito-wallet__icon { display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; border-radius: 8px; color: #cab7d4; background: transparent; cursor: pointer; }
-.aito-wallet__icon:hover { color: #fff; background: #ffffff10; }
-.aito-wallet__summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid #5f4a39; border-radius: 11px; background: #2f2427; }
-.aito-wallet__summary > div, .aito-wallet__summary > label { display: grid; gap: 4px; color: #ddcadc; font-size: .77rem; }
-.aito-wallet__summary strong { color: #f6d998; font-size: 1.6rem; line-height: 1.2; }
-.aito-wallet__summary small { color: #cabbc9; font-size: .72rem; }
-.aito-wallet__summary select { min-height: 34px; padding: 4px 6px; border: 1px solid #746070; border-radius: 7px; color: #f6edf7; background: #2d2235; }
+.aito-wallet__icon { display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; border-radius: 8px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
+.aito-wallet__icon:hover { color: var(--aito-ai-text); background: #ffffff10; }
+.aito-wallet__summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid var(--aito-ai-gold-line); border-radius: 11px; background: var(--aito-ai-gold-soft); }
+.aito-wallet__summary > div, .aito-wallet__summary > label { display: grid; gap: 4px; color: var(--aito-ai-muted); font-size: .77rem; }
+.aito-wallet__summary strong { color: var(--aito-ai-gold); font-size: 1.6rem; line-height: 1.2; }
+.aito-wallet__summary small { color: var(--aito-ai-muted); font-size: .72rem; }
+.aito-wallet__summary select { min-height: 34px; padding: 4px 6px; border: 1px solid var(--aito-ai-line); border-radius: 7px; color: var(--aito-ai-text); background: var(--aito-ai-raised); }
 .aito-wallet__section { margin-top: 17px; }
-.aito-wallet__section h3 { margin: 0 0 7px; color: #f2e7f5; font-size: .94rem; font-weight: 720; line-height: 1.25; }
-.aito-wallet__section p { margin: 0; color: #c1b0c7; font-size: .8rem; }
+.aito-wallet__section h3 { margin: 0 0 7px; color: var(--aito-ai-text); font-size: .94rem; font-weight: 720; line-height: 1.25; }
+.aito-wallet__section p { margin: 0; color: var(--aito-ai-muted); font-size: .8rem; }
 .aito-wallet__plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.aito-wallet__plans button { display: grid; gap: 4px; min-width: 0; padding: 9px 6px; border: 1px solid #554160; border-radius: 8px; color: #e8d9f0; background: #2b2035; text-align: left; cursor: pointer; }
-.aito-wallet__plans button[aria-pressed=true] { border-color: #f4d591; background: #3c2b34; }
-.aito-wallet__plans strong { color: #f6ddaa; font-size: .91rem; }
+.aito-wallet__plans button { display: grid; gap: 4px; min-width: 0; padding: 9px 6px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-panel); text-align: left; cursor: pointer; }
+.aito-wallet__plans button[aria-pressed=true] { border-color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
+.aito-wallet__plans strong { color: var(--aito-ai-gold); font-size: .91rem; }
 .aito-wallet__plans span { font-size: .8rem; }
-.aito-wallet__plans small { color: #d5bedc; font-size: .64rem; overflow-wrap: anywhere; }
-.aito-wallet__checkout { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0; color: #e3cfda; font-size: .77rem; }
-.aito-wallet__action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 35px; padding: 5px 9px; border: 0; border-radius: 7px; color: #2d1c2c; background: linear-gradient(125deg, #f9e5ad, #e6b767); font-size: .78rem !important; font-weight: 720 !important; cursor: pointer; text-decoration: none; }
-.aito-wallet__pending { display: grid; gap: 6px; padding: 9px; border: 1px solid #775941; border-radius: 8px; background: #342635; font-size: .77rem; }
+.aito-wallet__plans small { color: var(--aito-ai-muted); font-size: .64rem; overflow-wrap: anywhere; }
+.aito-wallet__checkout { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0; color: var(--aito-ai-muted); font-size: .77rem; }
+.aito-wallet__action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 35px; padding: 5px 9px; border: 0; border-radius: 7px; color: var(--aito-ai-ink); background: var(--aito-ai-gold-gradient); font-size: .78rem !important; font-weight: 720 !important; cursor: pointer; text-decoration: none; }
+.aito-wallet__pending { display: grid; gap: 6px; padding: 9px; border: 1px solid var(--aito-ai-gold-line); border-radius: 8px; background: var(--aito-ai-gold-soft); font-size: .77rem; }
 .aito-wallet__pending > div { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-.aito-wallet__pending span { color: #d4bcd1; }
-.aito-wallet__pending button:not(.aito-wallet__action), .aito-wallet__history button, .aito-wallet__pager button { padding: 4px 5px; border: 0; color: #dfc5f1; background: transparent; font-size: .74rem; cursor: pointer; text-decoration: underline; }
+.aito-wallet__pending span { color: var(--aito-ai-muted); }
+.aito-wallet__pending button:not(.aito-wallet__action), .aito-wallet__history button, .aito-wallet__pager button { padding: 4px 5px; border: 0; color: var(--aito-ai-accent); background: transparent; font-size: .74rem; cursor: pointer; text-decoration: underline; }
 .aito-wallet button:disabled { opacity: .55; cursor: default; }
 .aito-wallet__history { margin: 0; padding: 0; list-style: none; }
-.aito-wallet__history li { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid #3d3048; font-size: .74rem; }
+.aito-wallet__history li { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid var(--aito-ai-line); font-size: .74rem; }
 .aito-wallet__history li > div { display: grid; flex: 1; gap: 2px; }
-.aito-wallet__history small { color: #baabc5; }
-.aito-wallet__history a { color: #e4cef3; }
-.aito-wallet__notice { margin-top: 7px; padding: 6px 9px; border-radius: 6px; color: #f4dfbc; background: #3a2b38; font-size: .75rem; }
-.aito-wallet__notice--error { color: #ffc9dc; background: #4a2a3a; }
+.aito-wallet__history small { color: var(--aito-ai-muted); }
+.aito-wallet__history a { color: var(--aito-ai-accent); }
+.aito-wallet__notice { margin-top: 7px; padding: 6px 9px; border-radius: 6px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); font-size: .75rem; }
+.aito-wallet__notice--error { color: var(--aito-ai-error); background: var(--aito-ai-error-soft); }
 .aito-wallet__pager { display: flex; gap: 9px; justify-content: flex-end; }
 @media (max-width: 470px) { .aito-wallet { padding: 11px; } .aito-wallet__plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

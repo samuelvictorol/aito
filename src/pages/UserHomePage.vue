@@ -5,6 +5,7 @@
       <nav class="user-app__nav" aria-label="Área do usuário">
         <button v-for="item in menu" :key="item.id" type="button" :class="{ 'is-active': activeMenu === item.id }" :aria-current="activeMenu === item.id ? 'page' : undefined" @click="showTab(item.id)"><q-icon :name="item.icon" /> {{ item.label }}</button>
         <router-link class="user-app__ai-link" :to="{ name: 'aito-ia' }"><q-icon name="mdi-creation" /> AitoIA <q-icon name="mdi-arrow-top-right" aria-hidden="true" /></router-link>
+        <router-link class="user-app__ai-link" :to="{ name: 'aito-ia-video-studio' }"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo <q-icon name="mdi-arrow-top-right" aria-hidden="true" /></router-link>
       </nav>
 
       <main v-if="activeMenu === 'courses'" class="user-app__main user-app__wide"><UserCoursesPanel /></main>

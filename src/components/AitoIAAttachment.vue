@@ -29,12 +29,12 @@ onBeforeUnmount(() => { if (url) URL.revokeObjectURL(url) })
 </template>
 
 <style scoped>
-.aito-attachment { display: inline-flex; min-width: 0; max-width: min(220px, 100%); align-items: center; padding: 4px; border: 1px solid #484052; border-radius: 10px; background: #201b29; }
-.aito-attachment__link { min-width: 0; display: flex; align-items: center; gap: .55rem; padding: .2rem .35rem; color: #e9e3f0; text-decoration: none; }
-.aito-attachment__link > .q-icon, .aito-attachment__link img { display: block; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 6px; color: #c7adf2; object-fit: cover; }
+.aito-attachment { display: inline-flex; min-width: 0; max-width: min(220px, 100%); align-items: center; padding: 4px; border: 1px solid var(--aito-ai-line); border-radius: 10px; background: var(--aito-ai-panel); }
+.aito-attachment__link { min-width: 0; display: flex; align-items: center; gap: .55rem; padding: .2rem .35rem; color: var(--aito-ai-text); text-decoration: none; }
+.aito-attachment__link > .q-icon, .aito-attachment__link img { display: block; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 6px; color: var(--aito-ai-accent); object-fit: cover; }
 .aito-attachment__link > span { min-width: 0; }
 .aito-attachment__link strong, .aito-attachment__link small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .7rem; font-weight: 600; }
-.aito-attachment__link small { color: #aaa1b7; font-weight: 400; }
-.aito-attachment__remove { display: grid; min-width: 28px; height: 28px; place-items: center; margin-left: .1rem; border: 0; border-radius: 7px; color: #bdb1cb; background: transparent; cursor: pointer; }
-.aito-attachment__remove:hover, .aito-attachment__link:hover { color: #fff; background: #ffffff0a; }
+.aito-attachment__link small { color: var(--aito-ai-muted); font-weight: 400; }
+.aito-attachment__remove { display: grid; min-width: 28px; height: 28px; place-items: center; margin-left: .1rem; border: 0; border-radius: 7px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
+.aito-attachment__remove:hover, .aito-attachment__link:hover { color: var(--aito-ai-text); background: #ffffff0a; }
 </style>

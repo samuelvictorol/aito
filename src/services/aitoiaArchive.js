@@ -98,9 +98,8 @@ export function exportAitoIAJson(conversations) {
   return toExport(conversations, false).metadata
 }
 
-export async function exportAitoIAZip(conversations) {
-  const { metadata, files } = toExport(conversations, true)
-  const entries = [{ name: 'conversas.json', blob: metadata }, ...files].map(({ name, blob }) => ({
+export async function zipAitoIAFiles(files) {
+  const entries = files.map(({ name, blob }) => ({
     name: encoder.encode(name), blob, size: blob.size,
   }))
   const size = entries.reduce((total, entry) => total + entry.size + 76 + entry.name.length * 2, 22)
@@ -120,7 +119,12 @@ export async function exportAitoIAZip(conversations) {
   return new Blob([...contents, ...directory, endOfDirectory(entries.length, directorySize, offset)], { type: 'application/zip' })
 }
 
-function download(blob, filename) {
+export async function exportAitoIAZip(conversations) {
+  const { metadata, files } = toExport(conversations, true)
+  return zipAitoIAFiles([{ name: 'conversas.json', blob: metadata }, ...files])
+}
+
+export function downloadAitoIAFile(blob, filename) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -135,9 +139,9 @@ function download(blob, filename) {
 }
 
 export function downloadAitoIAJson(conversations, filename = 'aitoia-conversas.json') {
-  download(exportAitoIAJson(conversations), filename)
+  downloadAitoIAFile(exportAitoIAJson(conversations), filename)
 }
 
 export async function downloadAitoIAZip(conversations, filename = 'aitoia-conversas.zip') {
-  download(await exportAitoIAZip(conversations), filename)
+  downloadAitoIAFile(await exportAitoIAZip(conversations), filename)
 }

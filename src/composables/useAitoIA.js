@@ -1,6 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { api } from 'boot/axios'
-import { createAitoIALocalStore, downloadAitoIAJson, downloadAitoIAZip } from 'src/services/aitoiaLocal'
+import { createAitoIALocalStore } from 'src/services/aitoiaLocal'
+import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/services/aitoiaArchive'
 import { checkAttachment, checkoutLink, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
 
 const sessionKey = 'aito_user_token'
@@ -16,7 +17,7 @@ const paidOrders = new Set(['paid', 'approved', 'applied'])
 const statusOf = error => error.response?.status
 const errorMessage = (error, fallback) => error.response?.data?.message || fallback
 
-export function useAitoIA() {
+export function useAitoIA({ chatHistory = true } = {}) {
   const token = ref('')
   const sessionLoading = ref(false)
   const status = ref(null)
@@ -157,7 +158,8 @@ export function useAitoIA() {
       const { data } = await api.get('/aitoia/status', { ...config(), params: { walletId: walletId.value } })
       if (sessionEpoch !== epoch || statusEpoch !== order) return
       status.value = data.data
-      await openStore(data.data?.accountId, epoch)
+      if (chatHistory) await openStore(data.data?.accountId, epoch)
+      else accountId.value = data.data?.accountId || ''
     } catch (cause) {
       if (sessionEpoch !== epoch || statusEpoch !== order) return
       if (statusOf(cause) === 401) { forgetSession(); return }
@@ -259,11 +261,18 @@ export function useAitoIA() {
 
   async function exportChats(format, chat = null) {
     pruneLocal()
+    const epoch = sessionEpoch
+    const exportToken = token.value
     try {
       const rows = chat ? chats.value.filter(item => item.id === chat.id) : chats.value
-      if (!rows.length) return
-      await (format === 'json' ? downloadAitoIAJson(rows) : downloadAitoIAZip(rows))
-    } catch { storageError.value = 'Não foi possível baixar as conversas.' }
+      if (!exportToken || !rows.length) return
+      const json = format === 'json'
+      const file = json ? exportAitoIAJson(rows) : await exportAitoIAZip(rows)
+      if (epoch !== sessionEpoch || localStorage.getItem(sessionKey) !== exportToken) return
+      downloadAitoIAFile(file, json ? 'aitoia-conversas.json' : 'aitoia-conversas.zip')
+    } catch {
+      if (epoch === sessionEpoch) storageError.value = 'Não foi possível baixar as conversas.'
+    }
   }
 
   function addFiles(files) {
@@ -432,7 +441,7 @@ export function useAitoIA() {
     window.addEventListener('storage', accountChange)
     window.addEventListener('aito:session-expired', accountChange)
     document.addEventListener('visibilitychange', onVisible)
-    expirationTimer = window.setInterval(pruneLocal, 60000)
+    if (chatHistory) expirationTimer = window.setInterval(pruneLocal, 60000)
   })
 
   onBeforeUnmount(() => {

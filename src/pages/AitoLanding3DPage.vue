@@ -187,7 +187,7 @@
     </router-link>
     <router-link v-if="introTextVisible" class="landing-3d__aitoia-fixed" :to="{ name: 'aito-ia', query: { auth: 'register' } }">
       <img src="/chatgpt-mark.svg" alt="" width="23" height="23" />
-      <span>AitoIA <small>com GPT-6.1</small></span>
+      <span>AitoIA <small>GPT 6.1</small></span>
       <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
     </router-link>
     <p class="landing-3d__counter" aria-live="polite">

@@ -90,15 +90,15 @@ function download(block) {
 </template>
 
 <style scoped>
-.aito-response { color: #ece8f2; font-size: .95rem; line-height: 1.7; overflow-wrap: anywhere; }
+.aito-response { color: var(--aito-ai-text); font-size: .95rem; line-height: 1.7; overflow-wrap: anywhere; }
 .aito-response__text { white-space: pre-wrap; }
-.aito-response__text a { color: #d0baff; text-underline-offset: 3px; }
-.aito-response__text code { padding: 1px 4px; border-radius: 4px; color: #e2cdfb; background: #2a2435; }
+.aito-response__text a { color: var(--aito-ai-accent); text-underline-offset: 3px; }
+.aito-response__text code { padding: 1px 4px; border-radius: 4px; color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
 .aito-response__heading { font-weight: 750; }
-.aito-response__code { margin: .75rem 0; overflow: hidden; border: 1px solid #393242; border-radius: 11px; background: #141119; }
-.aito-response__toolbar { display: flex; gap: .3rem; align-items: center; padding: .3rem .65rem; color: #c6bccf; background: #221c2b; font-size: .74rem; }
+.aito-response__code { margin: .75rem 0; overflow: hidden; border: 1px solid var(--aito-ai-line); border-radius: 11px; background: var(--aito-ai-bg); }
+.aito-response__toolbar { display: flex; gap: .3rem; align-items: center; padding: .3rem .65rem; color: var(--aito-ai-muted); background: var(--aito-ai-panel); font-size: .74rem; }
 .aito-response__toolbar span { flex: 1; }
 .aito-response__toolbar button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
-.aito-response__toolbar button:hover { color: #fff; background: #ffffff12; }
+.aito-response__toolbar button:hover { color: var(--aito-ai-text); background: #ffffff12; }
 .aito-response__code pre { margin: 0; overflow: auto; padding: 1rem; font-size: .83rem; line-height: 1.55; }
 </style>

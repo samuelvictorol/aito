@@ -63,16 +63,18 @@ const reais = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL
 const money = (value, format = dollars) => typeof value === 'number' && Number.isFinite(value) ? format.format(value / 100) : '—'
 const formatTokens = row => numbers.format((row.inputTokens || 0) + (row.outputTokens || 0))
 const productName = value => products.find(product => product.value === value)?.label || value || 'Produto'
+const providerName = value => value === 'higgsfield' ? 'Higgsfield' : 'OpenAI'
 const subject = row => row.title || (row.scope === 'embedded' ? 'Aito Comunicação' : row.scope === 'project' ? 'Projeto' : productName(row.productType))
 const combinedColumns = [
   { name: 'subject', label: 'Origem', field: subject, align: 'left' },
   { name: 'license', label: 'Licença', field: row => row.licenseId || '—', align: 'left' },
   { name: 'client', label: 'Cliente', field: row => row.clientName || '—', align: 'left' },
   { name: 'model', label: 'Modelo', field: row => row.model || '—', align: 'left' },
+  { name: 'service', label: 'Provedor', field: row => providerName(row.provider), align: 'left' },
 ]
 const costColumns = [
   { name: 'billed', label: 'Consumo AitoTokens', field: row => money(row.billedUsdCents) },
-  { name: 'provider', label: 'Custo OpenAI', field: row => money(row.providerUsdCents) },
+  { name: 'provider', label: 'Custo do provedor', field: row => money(row.providerUsdCents) },
   { name: 'margin', label: 'Margem bruta', field: row => money(row.marginUsdCents) },
 ]
 const logStates = { applied: 'Concluída', reserved: 'Em processamento', released: 'Reserva liberada', reconciliation: 'Conciliação pendente' }
@@ -91,7 +93,7 @@ const metrics = computed(() => {
   const data = summary.value || {}
   return [
     { label: 'Consumo AitoTokens', usd: data.billedUsdCents, brl: data.billedBrlCents, icon: 'mdi-circle-multiple-outline' },
-    { label: 'Custo OpenAI', usd: data.providerUsdCents, brl: data.providerBrlCents, icon: 'mdi-server-outline' },
+    { label: 'Custo dos provedores', usd: data.providerUsdCents, brl: data.providerBrlCents, icon: 'mdi-server-outline' },
     { label: 'Margem bruta', usd: data.marginUsdCents, brl: data.marginBrlCents, icon: 'mdi-chart-line' },
     { label: 'Recargas confirmadas', usd: data.paidRechargeUsdCents, brl: data.paidRechargeBrlCents, icon: 'mdi-wallet-plus-outline' },
   ]
@@ -100,9 +102,9 @@ const forecast = computed(() => {
   const data = summary.value || {}
   return [
     { label: 'Créditos disponíveis', value: data.outstandingUsdCents },
-    { label: 'Reserva estimada na OpenAI', value: data.projectedProviderUsdCents },
+    { label: 'Reserva estimada para uso', value: data.projectedProviderUsdCents },
     { label: 'Margem estimada', value: data.projectedMarginUsdCents },
-    { label: 'Recarga OpenAI sugerida', value: data.fundingGapUsdCents },
+    { label: 'Recarga sugerida', value: data.fundingGapUsdCents },
   ]
 })
 const providerShare = computed(() => {
@@ -253,7 +255,7 @@ onBeforeUnmount(() => controller?.abort())
       </div>
       <div v-if="providerShare !== null" class="token-usage__split">
         <div class="token-usage__split-track" aria-hidden="true"><span :style="{ width: providerShare + '%' }"></span></div>
-        <div class="token-usage__split-labels"><span>OpenAI {{ numbers.format(Math.round(providerShare)) }}%</span><span>Margem bruta {{ numbers.format(100 - Math.round(providerShare)) }}%</span></div>
+        <div class="token-usage__split-labels"><span>Provedores {{ numbers.format(Math.round(providerShare)) }}%</span><span>Margem bruta {{ numbers.format(100 - Math.round(providerShare)) }}%</span></div>
       </div>
       <p class="token-usage__note">{{ numbers.format(summary.requests || 0) }} chamadas · {{ numbers.format(summary.inputTokens || 0) }} tokens de entrada · {{ numbers.format(summary.outputTokens || 0) }} tokens de saída.</p>
       <p v-if="summary.estimatedRequests" class="token-usage__note">{{ numbers.format(summary.estimatedRequests) }} chamadas antigas convertidas para reais pela cotação atual.</p>
@@ -261,10 +263,10 @@ onBeforeUnmount(() => controller?.abort())
         <div class="token-usage__forecast-head">
           <div>
             <h4 id="token-forecast-title">Reserva para os créditos em circulação</h4>
-            <p>Estimativa do custo se o saldo disponível for consumido. Informe o saldo atual na OpenAI para calcular a diferença.</p>
+            <p>Estimativa do custo se o saldo disponível for consumido. Informe o saldo nos provedores para calcular a diferença.</p>
           </div>
           <q-form class="token-usage__reserve-input" @submit.prevent="load(1, true)">
-            <q-input v-model="filters.providerBalance" dark outlined dense clearable label="Saldo informado na OpenAI" prefix="US$" type="number" min="0" step="0.01" />
+            <q-input v-model="filters.providerBalance" dark outlined dense clearable label="Saldo total nos provedores" prefix="US$" type="number" min="0" step="0.01" />
             <q-btn flat no-caps color="teal-3" type="submit" label="Calcular" :loading="loading" />
           </q-form>
         </div>
@@ -276,9 +278,9 @@ onBeforeUnmount(() => controller?.abort())
           </div>
         </dl>
         <details>
-          <summary>Simular um custo OpenAI</summary>
+          <summary>Simular o custo do provedor</summary>
           <div class="token-usage__reserve-input">
-            <q-input v-model="simulatedCost" dark outlined dense label="Custo OpenAI" prefix="US$" type="number" min="0" max="10000" step="0.01" />
+            <q-input v-model="simulatedCost" dark outlined dense label="Custo do provedor" prefix="US$" type="number" min="0" max="10000" step="0.01" />
             <p>Consumo equivalente <strong>{{ money(2 * simulatedCents) }}</strong> · Margem bruta <strong>{{ money(simulatedCents) }}</strong></p>
           </div>
         </details>
@@ -304,8 +306,8 @@ onBeforeUnmount(() => controller?.abort())
         <q-form @submit.prevent="requestReconciliationMfa">
           <q-card-section>
             <h4>Conciliar reserva AitoIA</h4>
-            <p>Reserva de {{ money(reconciliation?.reservedUsdCents) }}. Informe o custo confirmado na OpenAI. Use zero se a OpenAI confirmou que a chamada não gerou cobrança.</p>
-            <q-input v-model="reconciliationCost" dark outlined label="Custo confirmado na OpenAI" prefix="US$" type="number" min="0" max="1000" step="0.000001" required />
+            <p>Reserva de {{ money(reconciliation?.reservedUsdCents) }}. Informe o custo confirmado com {{ providerName(reconciliation?.provider) }}. Use zero se o provedor confirmou que a chamada foi gratuita.</p>
+            <q-input v-model="reconciliationCost" dark outlined label="Custo confirmado pelo provedor" prefix="US$" type="number" min="0" max="1000" step="0.000001" required />
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" v-close-popup :disable="reconciliationBusy" />

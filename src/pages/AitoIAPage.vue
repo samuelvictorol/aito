@@ -1,11 +1,12 @@
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMeta } from 'quasar'
 import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import { useAitoIA, usd } from 'src/composables/useAitoIA'
 import { MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
+import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
@@ -98,12 +99,14 @@ async function copyMessage(message) {
 }
 
 onMounted(() => {
-  if (route.query.auth === 'register' && !signedIn.value) showAuth()
+  watch([() => route.query.auth, sessionLoading, signedIn], ([auth, loading, authenticated]) => {
+    if (auth === 'register' && !loading && !authenticated) showAuth()
+  }, { immediate: true })
 })
 </script>
 
 <template>
-  <div class="aito-studio" :class="{ 'aito-studio--sidebar': sidebarOpen }">
+  <div class="aito-ai-theme aito-studio" :class="{ 'aito-studio--sidebar': sidebarOpen }">
     <button v-if="sidebarOpen" type="button" class="aito-studio__scrim" aria-label="Fechar conversas" @click="sidebarOpen = false" />
     <aside class="aito-studio__sidebar" aria-label="Conversas">
       <div class="aito-studio__brand-row">
@@ -114,7 +117,7 @@ onMounted(() => {
       <div class="aito-studio__sidebar-label">
         <span>Conversas</span>
         <button v-if="chats.length" type="button" class="aito-studio__icon" aria-label="Exportar conversas"><q-icon name="mdi-tray-arrow-down" size="18px" />
-          <q-menu dark anchor="bottom right" self="top right"><q-list dense style="min-width: 190px">
+          <q-menu dark class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 190px">
             <q-item v-close-popup clickable @click="state.exportChats('zip')"><q-item-section>Baixar tudo em ZIP</q-item-section></q-item>
             <q-item v-close-popup clickable @click="state.exportChats('json')"><q-item-section>Baixar JSON</q-item-section></q-item>
           </q-list></q-menu>
@@ -124,7 +127,7 @@ onMounted(() => {
         <div v-for="chat in chats" :key="chat.id" class="aito-studio__chat" :class="{ 'is-active': chat.id === activeId }">
           <button type="button" class="aito-studio__chat-name" :title="chat.title" :aria-current="chat.id === activeId ? 'true' : undefined" @click="chooseChat(chat.id)"><q-icon name="mdi-message-outline" size="17px" /><span>{{ chat.title }}</span></button>
           <button type="button" class="aito-studio__icon" :aria-label="'Opções de ' + chat.title"><q-icon name="mdi-dots-horizontal" size="18px" />
-            <q-menu dark anchor="bottom right" self="top right"><q-list dense style="min-width: 177px">
+            <q-menu dark class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 177px">
               <q-item v-close-popup clickable @click="askRename(chat)"><q-item-section>Renomear</q-item-section></q-item>
               <q-item v-close-popup clickable @click="state.exportChats('zip', chat)"><q-item-section>Baixar ZIP</q-item-section></q-item>
               <q-item v-close-popup clickable @click="state.exportChats('json', chat)"><q-item-section>Baixar JSON</q-item-section></q-item>
@@ -147,8 +150,11 @@ onMounted(() => {
           <button type="button" class="aito-studio__icon aito-studio__mobile-toggle" aria-label="Abrir conversas" :aria-expanded="sidebarOpen" @click="sidebarOpen = true"><q-icon name="mdi-menu" size="23px" /></button>
           <button type="button" class="aito-studio__top-model-button" aria-label="Configurar modelo" @click="showSettings"><q-icon name="mdi-auto-fix" size="18px" /><span>{{ currentModel?.label || (modelLoading ? 'Carregando modelos…' : 'Modelos OpenAI') }}</span><q-icon name="mdi-chevron-down" size="18px" /></button>
         </div>
-        <button v-if="signedIn" type="button" class="aito-studio__balance" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? usd(status.balanceUsdCents) : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="17px" /></button>
-        <button v-else type="button" class="aito-studio__signup" @click="showAuth()">Criar conta <q-icon name="mdi-arrow-top-right" size="17px" /></button>
+        <div class="aito-studio__header-actions">
+          <router-link class="aito-studio__video-link" :to="{ name: 'aito-ia-video-studio' }" aria-label="Estúdio de vídeo" title="Estúdio de vídeo"><q-icon name="mdi-movie-open-play-outline" size="19px" /><span>Estúdio de vídeo</span></router-link>
+          <button v-if="signedIn" type="button" class="aito-studio__balance" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? usd(status.balanceUsdCents) : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="17px" /></button>
+          <button v-else type="button" class="aito-studio__signup" @click="showAuth()">Criar conta <q-icon name="mdi-arrow-top-right" size="17px" /></button>
+        </div>
       </header>
 
       <div v-if="dragDepth" class="aito-studio__drop" aria-hidden="true"><q-icon name="mdi-tray-arrow-up" size="45px" /> Solte os arquivos para anexar</div>
@@ -207,7 +213,7 @@ onMounted(() => {
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="state" />
 
     <q-dialog v-model="settingsOpen">
-      <q-card dark class="aito-studio__dialog">
+      <q-card dark class="aito-ai-theme aito-studio__dialog">
         <div class="aito-studio__dialog-head"><q-icon name="mdi-tune-variant" size="22px" /><h2>Modelo e potência</h2><button v-close-popup type="button" class="aito-studio__icon" aria-label="Fechar configurações"><q-icon name="mdi-close" size="21px" /></button></div>
         <div class="aito-studio__settings">
           <div class="aito-studio__select-row">
@@ -223,7 +229,7 @@ onMounted(() => {
     </q-dialog>
 
     <q-dialog :model-value="Boolean(dialog)" @update:model-value="value => { if (!value) dialog = null }">
-      <q-card dark class="aito-studio__dialog">
+      <q-card dark class="aito-ai-theme aito-studio__dialog">
         <form v-if="dialog" @submit.prevent="completeDialog">
           <div class="aito-studio__dialog-head"><h2>{{ dialog.type === 'rename' ? 'Renomear conversa' : 'Excluir conversa' }}</h2><button v-close-popup type="button" class="aito-studio__icon" aria-label="Cancelar"><q-icon name="mdi-close" size="21px" /></button></div>
           <div class="aito-studio__settings">
@@ -238,100 +244,108 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.aito-studio { --bg: #141118; --panel: #1c1721; --line: #37303e; --muted: #b5aabc; --gold: #f5d893; --purple: #c2a5ff; display: grid; grid-template-columns: 262px minmax(0, 1fr); width: 100%; height: 100vh; height: 100dvh; overflow: hidden; color: #f6f0f9; background: var(--bg); font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+.aito-studio { display: grid; grid-template-columns: 262px minmax(0, 1fr); width: 100%; height: 100vh; height: 100dvh; overflow: hidden; color: var(--aito-ai-text); background: var(--aito-ai-bg); font-family: var(--aito-ai-font); }
 .aito-studio button, .aito-studio select, .aito-studio textarea, .aito-studio input { font: inherit; }
-.aito-studio button:focus-visible, .aito-studio a:focus-visible, .aito-studio select:focus-visible, .aito-studio input:focus-visible { outline: 2px solid #c2a5ff; outline-offset: 3px; }
-.aito-studio__sidebar { display: flex; flex-direction: column; min-height: 0; gap: 15px; padding: 16px 14px; border-right: 1px solid var(--line); background: #1b1720; }
+.aito-ai-theme :is(button, a, select, input):focus-visible { outline: 2px solid var(--aito-ai-purple); outline-offset: 3px; }
+.aito-studio__sidebar { display: flex; flex-direction: column; min-height: 0; gap: 15px; padding: 16px 14px; border-right: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
 .aito-studio__brand-row { display: flex; align-items: center; justify-content: space-between; }
-.aito-studio__brand { display: flex; align-items: center; gap: 4px; color: #fdfaff; text-decoration: none; font-size: 1.24rem; font-weight: 750; letter-spacing: -.045em; }
-.aito-studio__brand span span { color: var(--gold); }
-.aito-studio__new { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid #473b52; border-radius: 9px; color: #eee6f7; background: #282031; text-align: left; cursor: pointer; font-weight: 650 !important; font-size: .85rem !important; }
-.aito-studio__new:hover, .aito-studio__chat:hover, .aito-studio__chat.is-active { border-color: #55436a; background: #31283b; }
-.aito-studio__new .q-icon { color: var(--purple); }
-.aito-studio__sidebar-label { display: flex; justify-content: space-between; align-items: center; min-height: 30px; padding-left: 8px; color: #b7a9c2; font-size: .76rem; font-weight: 650; }
+.aito-studio__brand { display: flex; align-items: center; gap: 4px; color: var(--aito-ai-text); text-decoration: none; font-size: 1.24rem; font-weight: 750; letter-spacing: -.045em; }
+.aito-studio__brand span span { color: var(--aito-ai-accent); }
+.aito-studio__new { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-text); background: var(--aito-ai-panel); text-align: left; cursor: pointer; font-weight: 650 !important; font-size: .85rem !important; }
+.aito-studio__new:hover, .aito-studio__chat:hover, .aito-studio__chat.is-active { border-color: var(--aito-ai-line); background: var(--aito-ai-raised); }
+.aito-studio__new .q-icon { color: var(--aito-ai-accent); }
+.aito-studio__sidebar-label { display: flex; justify-content: space-between; align-items: center; min-height: 30px; padding-left: 8px; color: var(--aito-ai-muted); font-size: .76rem; font-weight: 650; }
 .aito-studio__chats { flex: 1; min-height: 0; overflow: auto; }
 .aito-studio__chat { display: flex; min-width: 0; align-items: center; padding: 0 2px 0 0; border: 1px solid transparent; border-radius: 8px; }
-.aito-studio__chat-name { display: flex; flex: 1; align-items: center; min-width: 0; gap: 9px; padding: 10px 6px 10px 8px; color: #e0d7e6; border: 0; background: transparent; text-align: left; cursor: pointer; font-size: .79rem !important; }
+.aito-studio__chat-name { display: flex; flex: 1; align-items: center; min-width: 0; gap: 9px; padding: 10px 6px 10px 8px; color: var(--aito-ai-text); border: 0; background: transparent; text-align: left; cursor: pointer; font-size: .79rem !important; }
 .aito-studio__chat-name span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.aito-studio__chat-name .q-icon { flex: 0 0 auto; color: #bba2d1; }
-.aito-studio__empty-list { padding: .2rem .5rem; color: #a294af; font-size: .77rem; }
-.aito-studio__sidebar-foot { display: grid; grid-template-columns: 17px 1fr; gap: 12px 7px; align-items: center; padding: 12px 3px 3px; border-top: 1px solid var(--line); color: #b5a9bf; font-size: .72rem; }
-.aito-studio__sidebar-foot a, .aito-studio__sidebar-foot button { grid-column: span 2; display: flex; align-items: center; gap: 9px; border: 0; padding: 4px 2px; color: #e4d9eb; background: transparent; text-decoration: none; text-align: left; cursor: pointer; font-size: .81rem; }
-.aito-studio__out { margin-left: auto; color: #a38eb7; }
-.aito-studio__main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: radial-gradient(ellipse at 50% 34%, #201729 0%, transparent 50%), var(--bg); }
-.aito-studio__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 63px; padding: 10px 23px; border-bottom: 1px solid #342c3b; background: #17131ac9; }
+.aito-studio__chat-name .q-icon { flex: 0 0 auto; color: var(--aito-ai-accent); }
+.aito-studio__empty-list { padding: .2rem .5rem; color: var(--aito-ai-muted); font-size: .77rem; }
+.aito-studio__sidebar-foot { display: grid; grid-template-columns: 17px 1fr; gap: 12px 7px; align-items: center; padding: 12px 3px 3px; border-top: 1px solid var(--aito-ai-line); color: var(--aito-ai-muted); font-size: .72rem; }
+.aito-studio__sidebar-foot a, .aito-studio__sidebar-foot button { grid-column: span 2; display: flex; align-items: center; gap: 9px; border: 0; padding: 4px 2px; color: var(--aito-ai-text); background: transparent; text-decoration: none; text-align: left; cursor: pointer; font-size: .81rem; }
+.aito-studio__sidebar-foot a:hover, .aito-studio__sidebar-foot button:hover { color: var(--aito-ai-accent); }
+.aito-studio__out { margin-left: auto; color: var(--aito-ai-muted); }
+.aito-studio__main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--aito-ai-glow), var(--aito-ai-bg); }
+.aito-studio__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 63px; padding: 10px 23px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
+.aito-studio__header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.aito-studio__video-link { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-accent); background: var(--aito-ai-panel); font-size: .8rem; font-weight: 650; text-decoration: none; }
+.aito-studio__video-link:hover { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-raised); }
 .aito-studio__top-model { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.aito-studio__top-model-button { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 0; border-radius: 7px; color: #e2d7e9; background: transparent; cursor: pointer; font-size: .84rem !important; font-weight: 650 !important; }
+.aito-studio__top-model-button { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 0; border-radius: 7px; color: var(--aito-ai-text); background: transparent; cursor: pointer; font-size: .84rem !important; font-weight: 650 !important; }
 .aito-studio__top-model-button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.aito-studio__top-model-button .q-icon:first-child { color: #cfadff; }
-.aito-studio__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; color: #c2b3ce; background: transparent; cursor: pointer; }
-.aito-studio__icon:hover, .aito-studio__top-model-button:hover { color: #fff; background: #ffffff0d; }
+.aito-studio__top-model-button .q-icon:first-child { color: var(--aito-ai-purple); }
+.aito-studio__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
+.aito-studio__icon:hover, .aito-studio__top-model-button:hover { color: var(--aito-ai-text); background: #ffffff0d; }
 .aito-studio__icon:disabled { opacity: .55; cursor: wait; }
-.aito-studio__balance, .aito-studio__signup { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 5px 10px; border: 1px solid #5a4930; border-radius: 9px; color: #f4d490; background: #2c231e; cursor: pointer; white-space: nowrap; font-size: .8rem !important; font-weight: 720 !important; }
-.aito-studio__signup { padding: 7px 12px; border-color: #f1d698; color: #22152a; background: linear-gradient(125deg, #f9e5ad, #e6b767); }
+.aito-studio__balance, .aito-studio__signup { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 5px 10px; border: 1px solid var(--aito-ai-gold-line); border-radius: 9px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); cursor: pointer; white-space: nowrap; font-size: .8rem !important; font-weight: 720 !important; }
+.aito-studio__signup { padding: 7px 12px; border-color: var(--aito-ai-accent); color: var(--aito-ai-ink); background: var(--aito-ai-gradient); }
 .aito-studio__signup:hover { filter: brightness(1.08); }
 .aito-studio__welcome { display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; padding: 16px 20px; overflow: auto; text-align: center; }
-.aito-studio__orb { display: grid; place-items: center; width: 86px; height: 86px; margin-bottom: 20px; border: 1px solid #6e567b; border-radius: 26px; background: radial-gradient(circle at 70% 0%, #624b7a, #332340 60%); box-shadow: 0 0 48px #b778f327, inset 0 1px 1px #ffffff35; }
+.aito-studio__orb { display: grid; place-items: center; width: 86px; height: 86px; margin-bottom: 20px; border: 1px solid var(--aito-ai-line); border-radius: 26px; background: radial-gradient(circle at 68% 0%, var(--aito-ai-accent-soft), var(--aito-ai-panel) 75%); box-shadow: 0 0 48px #13bc9d26, inset 0 1px 1px #ffffff24; }
 .aito-studio__orb img { width: 80px; height: 80px; filter: drop-shadow(0 4px 9px #111416b0); }
-.aito-studio__welcome h1 { margin: 0; color: #fbf5fc; font-size: clamp(1.85rem, 4vw, 3rem); font-weight: 730; line-height: 1.15; letter-spacing: -.065em; }
-.aito-studio__welcome p { max-width: 28rem; margin: 9px 0 0; color: #c0b1cb; font-size: clamp(.85rem, 2vw, 1rem); }
+.aito-studio__welcome h1 { margin: 0; color: var(--aito-ai-text); font-size: clamp(1.85rem, 4vw, 3rem); font-weight: 730; line-height: 1.15; letter-spacing: -.065em; }
+.aito-studio__welcome p { max-width: 28rem; margin: 9px 0 0; color: var(--aito-ai-muted); font-size: clamp(.85rem, 2vw, 1rem); }
 .aito-studio__ideas { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
-.aito-studio__ideas button { display: flex; align-items: center; gap: 7px; padding: 9px 10px; border: 1px solid #45374d; border-radius: 9px; color: #e3d8e9; background: #251d2b; cursor: pointer; font-size: .78rem; }
-.aito-studio__ideas button:hover { background: #382b44; border-color: #786088; }
-.aito-studio__ideas button .q-icon { color: #d6b9ff; }
+.aito-studio__ideas button { display: flex; align-items: center; gap: 7px; padding: 9px 10px; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-text); background: var(--aito-ai-panel); cursor: pointer; font-size: .78rem; }
+.aito-studio__ideas button:hover { background: var(--aito-ai-raised); border-color: var(--aito-ai-accent-strong); }
+.aito-studio__ideas button .q-icon { color: var(--aito-ai-purple); }
 .aito-studio__ideas button .q-icon:last-child { opacity: .65; }
 .aito-studio__messages { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .aito-studio__message-list { display: flex; flex-direction: column; gap: 20px; width: min(760px, 100%); margin: 0 auto; padding: 19px 24px 28px; }
-.aito-studio__conversation-title { margin: 0; color: #a79ab0; font-size: .75rem; overflow-wrap: anywhere; }
+.aito-studio__conversation-title { margin: 0; color: var(--aito-ai-muted); font-size: .75rem; overflow-wrap: anywhere; }
 .aito-studio__message { min-width: 0; max-width: 100%; }
-.aito-studio__message--user { align-self: flex-end; max-width: min(100%, 590px); min-width: min(9rem, 100%); padding: .7rem .9rem; border: 1px solid #4c3b57; border-radius: 14px 14px 4px 14px; color: #f8eefb; background: #302338; }
+.aito-studio__message--user { align-self: flex-end; max-width: min(100%, 590px); min-width: min(9rem, 100%); padding: .7rem .9rem; border: 1px solid var(--aito-ai-line); border-radius: 14px 14px 4px 14px; color: var(--aito-ai-text); background: var(--aito-ai-accent-soft); }
 .aito-studio__user-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .93rem; line-height: 1.56; }
-.aito-studio__speaker { display: flex; align-items: center; gap: 6px; min-height: 34px; margin-bottom: 6px; color: #e6d5f1; font-size: .85rem; }
-.aito-studio__speaker small { padding-left: 4px; color: #b2a4be; font-size: .72rem; overflow-wrap: anywhere; }
+.aito-studio__speaker { display: flex; align-items: center; gap: 6px; min-height: 34px; margin-bottom: 6px; color: var(--aito-ai-text); font-size: .85rem; }
+.aito-studio__speaker small { padding-left: 4px; color: var(--aito-ai-muted); font-size: .72rem; overflow-wrap: anywhere; }
 .aito-studio__copy { margin-top: 4px; }
-.aito-studio__thinking { display: flex; align-items: center; gap: .6rem; color: #cab3e1; font-size: .84rem; }
+.aito-studio__thinking { display: flex; align-items: center; gap: .6rem; color: var(--aito-ai-purple); font-size: .84rem; }
 .aito-studio__bottom { width: min(808px, 100%); margin: 0 auto; padding: 0 24px max(6px, env(safe-area-inset-bottom)); }
-.aito-studio__composer { padding: 9px 10px 8px; border: 1px solid #4b3d54; border-radius: 15px; background: #211a28; box-shadow: 0 13px 36px #09060d53; }
-.aito-studio__composer:focus-within { border-color: #9873b3; }
-.aito-studio__composer textarea { display: block; width: 100%; min-height: 56px; max-height: 168px; resize: vertical; padding: 6px 6px 0; border: 0; outline: 0; color: #f6eef8; background: transparent; font-size: .95rem; }
-.aito-studio__composer textarea::placeholder { color: #b6a6be; }
+.aito-studio__composer { padding: 9px 10px 8px; border: 1px solid var(--aito-ai-line); border-radius: 15px; background: var(--aito-ai-panel); box-shadow: 0 13px 36px #09060d53; }
+.aito-studio__composer:focus-within { border-color: var(--aito-ai-accent); }
+.aito-studio__composer textarea { display: block; width: 100%; min-height: 56px; max-height: 168px; resize: vertical; padding: 6px 6px 0; border: 0; outline: 0; color: var(--aito-ai-text); background: transparent; font-size: .95rem; }
+.aito-studio__composer textarea::placeholder { color: var(--aito-ai-muted); }
 .aito-studio__attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .aito-studio__tools { display: flex; align-items: center; gap: 4px; }
-.aito-studio__tool { display: flex; align-items: center; gap: 4px; min-height: 33px; padding: 4px 6px; border: 1px solid transparent; border-radius: 7px; color: #c5b5cf; background: transparent; cursor: pointer; white-space: nowrap; font-size: .74rem !important; }
-.aito-studio__tool:hover, .aito-studio__tool[aria-pressed=true] { border-color: #735288; color: #f1dbff; background: #49335d; }
-.aito-studio__effort { color: #d8b8ff; }
+.aito-studio__tool { display: flex; align-items: center; gap: 4px; min-height: 33px; padding: 4px 6px; border: 1px solid transparent; border-radius: 7px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; white-space: nowrap; font-size: .74rem !important; }
+.aito-studio__tool:hover, .aito-studio__tool[aria-pressed=true] { border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
+.aito-studio__effort { color: var(--aito-ai-purple); }
 .aito-studio__spacer { flex: 1; }
-.aito-studio__send { display: grid; flex: 0 0 auto; place-items: center; width: 39px; height: 39px; padding: 0; border: 0; border-radius: 10px; color: #21102c; background: linear-gradient(135deg, #ecd5fe, #caa2fa); cursor: pointer; }
+.aito-studio__send { display: grid; flex: 0 0 auto; place-items: center; width: 39px; height: 39px; padding: 0; border: 0; border-radius: 10px; color: var(--aito-ai-ink); background: var(--aito-ai-gradient); cursor: pointer; }
 .aito-studio__send:hover { filter: brightness(1.1); }
 .aito-studio__send:disabled { opacity: .4; cursor: default; }
-.aito-studio__privacy { display: flex; min-height: 29px; align-items: center; justify-content: center; gap: 4px; color: #a99cb3; font-size: .68rem; text-align: center; }
-.aito-studio__notice { display: flex; align-items: center; gap: .5rem; margin-bottom: 7px; padding: 7px 9px; border: 1px solid #554364; border-radius: 8px; color: #e2d5eb; background: #2a1f33; font-size: .78rem; }
+.aito-studio__privacy { display: flex; min-height: 29px; align-items: center; justify-content: center; gap: 4px; color: var(--aito-ai-muted); font-size: .68rem; text-align: center; }
+.aito-studio__notice { display: flex; align-items: center; gap: .5rem; margin-bottom: 7px; padding: 7px 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-accent-soft); font-size: .78rem; }
 .aito-studio__notice span { flex: 1; }
-.aito-studio__notice button { border: 0; color: #eed2ff; background: none; cursor: pointer; text-decoration: underline; }
-.aito-studio__notice--error { border-color: #855369; color: #ffd6e4; background: #432534; }
-.aito-studio__drop { z-index: 4; position: absolute; inset: 70px 12px 10px; display: grid; align-content: center; justify-items: center; gap: 12px; border: 2px dashed #bc8cef; border-radius: 19px; color: #f3dfff; background: #281b39ed; font-weight: 700; pointer-events: none; }
-.aito-studio__dialog { width: min(460px, calc(100vw - 2rem)); padding: 1rem; border: 1px solid #554364; border-radius: 15px; color: #f3ebf7; background: #211a29; }
+.aito-studio__notice button { border: 0; color: var(--aito-ai-accent); background: none; cursor: pointer; text-decoration: underline; }
+.aito-studio__notice--error { border-color: var(--aito-ai-error-line); color: var(--aito-ai-error); background: var(--aito-ai-error-soft); }
+.aito-studio__drop { z-index: 4; position: absolute; inset: 70px 12px 10px; display: grid; align-content: center; justify-items: center; gap: 12px; border: 2px dashed var(--aito-ai-accent); border-radius: 19px; color: var(--aito-ai-accent); background: var(--aito-ai-overlay); font-weight: 700; pointer-events: none; }
+.aito-studio__dialog { width: min(460px, calc(100vw - 2rem)); padding: 1rem; border: 1px solid var(--aito-ai-line); border-radius: 15px; color: var(--aito-ai-text); background: var(--aito-ai-surface); }
+.aito-studio__menu { border: 1px solid var(--aito-ai-line); color: var(--aito-ai-text); background: var(--aito-ai-surface); }
 .aito-studio__dialog-head { display: flex; align-items: center; gap: .45rem; }
-.aito-studio__dialog-head > .q-icon { color: #cfaaff; }
+.aito-studio__dialog-head > .q-icon { color: var(--aito-ai-purple); }
 .aito-studio__dialog-head h2 { flex: 1; margin: 0; font-size: 1.12rem; font-weight: 750; line-height: 1.25; }
 .aito-studio__settings { display: grid; gap: 13px; padding: 12px 0 2px; }
-.aito-studio__settings label { display: grid; flex: 1; gap: 5px; min-width: 0; color: #d3c2dc; font-size: .79rem; }
-.aito-studio__settings select, .aito-studio__settings label input:not([type=range]) { width: 100%; min-height: 39px; padding: 5px 8px; border: 1px solid #5c4969; border-radius: 8px; color: #f3ebf7; background: #2d2235; }
+.aito-studio__settings label { display: grid; flex: 1; gap: 5px; min-width: 0; color: var(--aito-ai-muted); font-size: .79rem; }
+.aito-studio__settings select, .aito-studio__settings label input:not([type=range]) { width: 100%; min-height: 39px; padding: 5px 8px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-raised); }
 .aito-studio__select-row { display: flex; gap: 6px; align-items: end; }
-.aito-studio__reasoning { padding: 10px; border: 1px solid #564067; border-radius: 9px; background: #2b2036; }
+.aito-studio__reasoning { padding: 10px; border: 1px solid var(--aito-ai-purple-line); border-radius: 9px; background: var(--aito-ai-purple-soft); }
 .aito-studio__reasoning div { display: flex; align-items: center; gap: 6px; }
-.aito-studio__reasoning strong { color: #dfbdff; font-size: .82rem; }
-.aito-studio__reasoning input { width: 100%; height: 19px; margin: 6px 0 0; accent-color: #cb9efa; cursor: pointer; }
-.aito-studio__rates, .aito-studio__setting-error { margin: 0; color: #c1b0ca; font-size: .78rem; line-height: 1.45; }
-.aito-studio__setting-error { color: #ffc5da; }
+.aito-studio__reasoning strong { color: var(--aito-ai-purple); font-size: .82rem; }
+.aito-studio__reasoning input { width: 100%; height: 19px; margin: 6px 0 0; accent-color: var(--aito-ai-purple); cursor: pointer; }
+.aito-studio__rates, .aito-studio__setting-error { margin: 0; color: var(--aito-ai-muted); font-size: .78rem; line-height: 1.45; }
+.aito-studio__setting-error { color: var(--aito-ai-error); }
 .aito-studio__mobile-toggle, .aito-studio__sidebar-close, .aito-studio__scrim { display: none; }
 @media (max-width: 740px) {
   .aito-studio { grid-template-columns: minmax(0, 1fr); }
   .aito-studio__mobile-toggle, .aito-studio__sidebar-close { display: inline-grid; }
   .aito-studio__sidebar { z-index: 7; position: fixed; top: 0; bottom: 0; left: 0; width: min(84vw, 280px); transform: translateX(-100%); visibility: hidden; }
   .aito-studio--sidebar .aito-studio__sidebar { transform: translateX(0); visibility: visible; }
-  .aito-studio__scrim { z-index: 6; position: fixed; inset: 0; display: block; border: 0; background: #08050caa; }
+  .aito-studio__scrim { z-index: 6; position: fixed; inset: 0; display: block; border: 0; background: var(--aito-ai-overlay); }
   .aito-studio__header { padding: 8px 11px 8px 7px; min-height: 53px; }
+  .aito-studio__header-actions { gap: 5px; }
+  .aito-studio__video-link { min-width: 39px; }
+  .aito-studio__video-link span { display: none; }
   .aito-studio__bottom, .aito-studio__message-list { padding-right: 11px; padding-left: 11px; }
   .aito-studio__welcome { padding: 12px 8px; }
   .aito-studio__orb { width: 62px; height: 62px; border-radius: 18px; margin-bottom: 14px; }
