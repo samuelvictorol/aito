@@ -184,7 +184,7 @@ onBeforeUnmount(() => currentLoad?.abort())
       <q-tab name="projects" label="AitoKeys de projetos" />
       <q-tab name="licenses" label="Licenças e configurações" />
     </q-tabs>
-    <AdminAitoTokenUsage v-if="tab === 'usage'" />
+    <AdminAitoTokenUsage v-if="tab === 'usage'" @reauthenticated="emit('reauthenticated', $event)" />
     <AdminAitoTokenProjects v-else-if="tab === 'projects'" @reauthenticated="emit('reauthenticated', $event)" @open-projects="emit('open-projects')" />
     <template v-else>
     <q-banner v-if="loadError" rounded class="bg-red-10 text-white" role="alert">{{ loadError }}</q-banner>

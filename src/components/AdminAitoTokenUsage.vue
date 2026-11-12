@@ -1,7 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseDate } from 'src/services/purchase-history'
+import LoginMfaDialog from './LoginMfaDialog.vue'
+
+const emit = defineEmits(['reauthenticated'])
+const $q = useQuasar()
 
 const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' })
 function calendarDay(date) {
@@ -25,6 +30,7 @@ const scopes = [
   { label: 'Todos os usos', value: 'all' },
   { label: 'Projetos', value: 'project' },
   { label: 'Produtos', value: 'product' },
+  { label: 'Carteiras AitoIA Web', value: 'web' },
   { label: 'Aito Comunicação', value: 'embedded' },
 ]
 const products = [
@@ -42,8 +48,14 @@ const projects = ref([])
 const clients = ref([])
 const pagination = ref({ page: 1, rowsPerPage: 50, rowsNumber: 0 })
 const simulatedCost = ref('')
+const reconciliation = ref(null)
+const reconciliationCost = ref('')
+const reconciliationBusy = ref(false)
+const challenge = ref(null)
+const mfaOpen = ref(false)
 let controller
 let submitted
+let verifiedDecision
 
 const numbers = new Intl.NumberFormat('pt-BR')
 const dollars = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })
@@ -53,7 +65,7 @@ const formatTokens = row => numbers.format((row.inputTokens || 0) + (row.outputT
 const productName = value => products.find(product => product.value === value)?.label || value || 'Produto'
 const subject = row => row.title || (row.scope === 'embedded' ? 'Aito Comunicação' : row.scope === 'project' ? 'Projeto' : productName(row.productType))
 const combinedColumns = [
-  { name: 'subject', label: 'Produto ou projeto', field: subject, align: 'left' },
+  { name: 'subject', label: 'Origem', field: subject, align: 'left' },
   { name: 'license', label: 'Licença', field: row => row.licenseId || '—', align: 'left' },
   { name: 'client', label: 'Cliente', field: row => row.clientName || '—', align: 'left' },
   { name: 'model', label: 'Modelo', field: row => row.model || '—', align: 'left' },
@@ -63,7 +75,7 @@ const costColumns = [
   { name: 'provider', label: 'Custo OpenAI', field: row => money(row.providerUsdCents) },
   { name: 'margin', label: 'Margem bruta', field: row => money(row.marginUsdCents) },
 ]
-const logStates = { applied: 'Concluída', reserved: 'Em processamento', released: 'Reserva liberada' }
+const logStates = { applied: 'Concluída', reserved: 'Em processamento', released: 'Reserva liberada', reconciliation: 'Conciliação pendente' }
 const groupColumns = [...combinedColumns, { name: 'requests', label: 'Chamadas', field: row => numbers.format(row.requests || 0) }, { name: 'tokens', label: 'Tokens', field: formatTokens }, ...costColumns]
 const logColumns = [
   { name: 'date', label: 'Horário', field: row => purchaseDate(row.createdAt), align: 'left' },
@@ -73,6 +85,7 @@ const logColumns = [
   { name: 'input', label: 'Entrada', field: row => numbers.format(row.inputTokens || 0) },
   { name: 'output', label: 'Saída', field: row => numbers.format(row.outputTokens || 0) },
   ...costColumns,
+  { name: 'reconciliation', label: 'Conciliação', field: row => row.state, align: 'right' },
 ]
 const metrics = computed(() => {
   const data = summary.value || {}
@@ -162,6 +175,47 @@ async function loadOptions() {
   clients.value = [...new Map(available.map(item => [item._id, { label: [item.name, item.email].filter(Boolean).join(' · '), value: item._id }])).values()]
 }
 
+function reviewReconciliation(row) {
+  reconciliationCost.value = ''
+  reconciliation.value = row
+}
+
+async function requestReconciliationMfa() {
+  const value = String(reconciliationCost.value ?? '').trim()
+  if (!reconciliation.value || !/^\d+(?:\.\d{1,6})?$/.test(value)) return
+  const providerUsdMicros = Math.round(Number(value) * 1000000)
+  if (!Number.isSafeInteger(providerUsdMicros) || providerUsdMicros > 1000000000) return
+  const decision = { entryId: reconciliation.value._id, providerUsdMicros }
+  reconciliationBusy.value = true
+  try {
+    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    verifiedDecision = decision
+    challenge.value = data
+    mfaOpen.value = true
+  } catch (cause) {
+    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível solicitar a confirmação.' })
+  } finally {
+    reconciliationBusy.value = false
+  }
+}
+
+async function applyReconciliation(session) {
+  if (!session?.token || !verifiedDecision || reconciliationBusy.value) return
+  emit('reauthenticated', session)
+  reconciliationBusy.value = true
+  try {
+    await api.post('/aitoia/admin/reconcile', verifiedDecision, { headers: { Authorization: 'Bearer ' + session.token } })
+    reconciliation.value = null
+    $q.notify({ type: 'positive', message: 'Conciliação registrada.' })
+    await load(pagination.value.page)
+  } catch (cause) {
+    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível concluir a conciliação.' })
+  } finally {
+    verifiedDecision = null
+    reconciliationBusy.value = false
+  }
+}
+
 onMounted(() => {
   load()
   loadOptions()
@@ -236,14 +290,37 @@ onBeforeUnmount(() => controller?.abort())
       <q-table v-model:pagination="pagination" flat bordered dark wrap-cells row-key="rowKey" :rows="logs" :columns="logColumns"
         :rows-per-page-options="[pagination.rowsPerPage]" :loading="loading" class="token-usage__table" title="Logs de consumo"
         no-data-label="Nenhuma chamada encontrada." @request="load($event.pagination.page)"
-      />
+      >
+        <template #body-cell-reconciliation="props">
+          <q-td :props="props">
+            <q-btn v-if="props.row.origin === 'web' && props.row.state === 'reconciliation'" flat dense no-caps color="amber-4" label="Conciliar" @click="reviewReconciliation(props.row)" />
+          </q-td>
+        </template>
+      </q-table>
     </template>
     <q-linear-progress v-else-if="loading" indeterminate color="teal-4" aria-label="Carregando consumo" />
+    <q-dialog :model-value="Boolean(reconciliation)" :persistent="reconciliationBusy" @update:model-value="!$event && (reconciliation = null)">
+      <q-card dark class="token-usage__reconciliation">
+        <q-form @submit.prevent="requestReconciliationMfa">
+          <q-card-section>
+            <h4>Conciliar reserva AitoIA</h4>
+            <p>Reserva de {{ money(reconciliation?.reservedUsdCents) }}. Informe o custo confirmado na OpenAI. Use zero se a OpenAI confirmou que a chamada não gerou cobrança.</p>
+            <q-input v-model="reconciliationCost" dark outlined label="Custo confirmado na OpenAI" prefix="US$" type="number" min="0" max="1000" step="0.000001" required />
+          </q-card-section>
+          <q-card-actions align="right">
+            <q-btn flat no-caps label="Cancelar" v-close-popup :disable="reconciliationBusy" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Confirmar por e-mail" :loading="reconciliationBusy" />
+          </q-card-actions>
+        </q-form>
+      </q-card>
+    </q-dialog>
+    <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="applyReconciliation" />
   </section>
 </template>
 
 <style scoped>
 .token-usage { display: grid; gap: 1rem; }
+.token-usage__reconciliation { width: min(31rem, 94vw); }
 .token-usage h3, .token-usage h4 { margin: 0; color: #edfff8; font-weight: 700; line-height: 1.3; }
 .token-usage h3 { font-size: 1.3rem; }
 .token-usage h4 { font-size: 1.1rem; }

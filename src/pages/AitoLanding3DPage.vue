@@ -185,11 +185,16 @@
     <router-link class="landing-3d__whatsapp-fixed" :to="landing3dSections[0].secondaryCta.to">
       <q-icon name="mdi-whatsapp" aria-hidden="true"/><span>{{ landing3dSections[0].secondaryCta.label }}</span><q-icon name="mdi-arrow-top-right" aria-hidden="true"/>
     </router-link>
+    <router-link v-if="introTextVisible" class="landing-3d__aitoia-fixed" :to="{ name: 'aito-ia', query: { auth: 'register' } }">
+      <img src="/chatgpt-mark.svg" alt="" width="23" height="23" />
+      <span>AitoIA <small>com GPT-6.1</small></span>
+      <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
+    </router-link>
     <p class="landing-3d__counter" aria-live="polite">
       <span>{{ String(activeSection + 1).padStart(2, '0') }}</span><i></i><span>{{ String(landing3dSections.length).padStart(2, '0') }}</span>
     </p>
 
-    <button class="landing-3d__ai-float" type="button" aria-label="Abrir IA da Aito" @click="iaChat = true">
+    <button class="landing-3d__ai-float" type="button" aria-label="Abrir assistente do site" @click="iaChat = true">
       <img src="/ia.gif" alt="" />
     </button>
     <button class="landing-3d__surprise-float" type="button" aria-label="Abrir Surpreenda-me" @click="router.push('/surpresa')">
@@ -482,6 +487,12 @@ onBeforeUnmount(() => {
 .landing-3d__whatsapp-fixed:focus-visible { outline: 3px solid white; outline-offset: 4px; }
 .landing-3d--intro-loading .landing-3d__whatsapp-fixed,.landing-3d--intro-object-only .landing-3d__whatsapp-fixed { opacity: 0; pointer-events: none; }
 @media(max-width:767px) { .landing-3d__whatsapp-fixed { left: 1rem; right: 1rem; max-width: none; bottom: .8rem; padding: .8rem 1rem; gap: .6rem; font-size: .68rem; border-radius: 13px; } .landing-3d__whatsapp-fixed span { flex: 1; } .landing-3d__counter { bottom: 5.3rem!important; left: 1rem; right: auto!important; } }
+.landing-3d__aitoia-fixed { position: fixed; z-index: 9; left: clamp(1rem,5vw,5rem); bottom: 5.75rem; display: inline-flex; align-items: center; gap: .65rem; padding: .63rem .84rem; border: 1px solid #ffe6a3; border-radius: 13px; color: #241702; background: linear-gradient(115deg,#ffe5a2,#edbe62 55%,#dca14b); box-shadow: 0 8px 34px #dca14b55; font: 800 .83rem/1.3 'Montserrat', sans-serif; text-decoration: none; transition: box-shadow 180ms, transform 180ms; }
+.landing-3d__aitoia-fixed img { border-radius: 6px; background: #fff6dc; }
+.landing-3d__aitoia-fixed small { font-size: .69rem; font-weight: 700; }
+.landing-3d__aitoia-fixed:hover { transform: translateY(-2px); box-shadow: 0 12px 40px #dca14b80; }
+.landing-3d__aitoia-fixed:focus-visible { outline: 3px solid #fff7e2; outline-offset: 4px; }
+@media (max-width:767px) { .landing-3d__aitoia-fixed { left: 1rem; bottom: 4.6rem; } .landing-3d:has(.landing-3d__aitoia-fixed) .landing-3d__counter { bottom: 8rem!important; } }
 .landing-3d {
   --aito-teal: #13bc9d;
   --aito-teal-dark: #12ad89;

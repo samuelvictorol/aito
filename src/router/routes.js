@@ -31,6 +31,7 @@ const routes = [
   },
   { path: '/whatsapp-solucoes', name: 'whatsapp-solutions-product', component: () => import('pages/WhatsAppBotBuilderProductPage.vue') },
   { path: '/aitotokens', name: 'aito-tokens-product', component: () => import('pages/AitoTokensPage.vue') },
+  { path: '/aitoia', name: 'aito-ia', component: () => import('pages/AitoIAPage.vue') },
   { path: '/whatsapp-solucoes-whitelabel', name: 'whatsapp-solutions-source', component: () => import('pages/WhatsAppWhitelabelProductPage.vue') },
   { path: '/whatsappbotbuilder', name: 'whatsappbotbuilder-product', redirect: to => ({ path: '/whatsapp-solucoes', query: to.query, hash: to.hash }) },
   {
