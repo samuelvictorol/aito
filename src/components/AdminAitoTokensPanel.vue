@@ -4,11 +4,14 @@ import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseMoney } from 'src/services/purchase-history'
 import AitoTokenHistory from './AitoTokenHistory.vue'
+import AdminAitoTokenProjects from './AdminAitoTokenProjects.vue'
+import AdminAitoTokenUsage from './AdminAitoTokenUsage.vue'
 import LoginMfaDialog from './LoginMfaDialog.vue'
 
-const emit = defineEmits(['reauthenticated'])
+const emit = defineEmits(['reauthenticated', 'open-projects'])
 const $q = useQuasar()
 const root = '/aito-tokens/admin'
+const tab = ref('usage')
 const wallets = ref([])
 const search = ref('')
 const pagination = ref({ page: 1, rowsPerPage: 100, rowsNumber: 0 })
@@ -161,7 +164,11 @@ async function applyGrant(session) {
   }
 }
 
-onMounted(() => load())
+function changeTab(value) {
+  if (value === 'licenses' && !loaded.value) load()
+}
+
+onMounted(() => changeTab(tab.value))
 onBeforeUnmount(() => currentLoad?.abort())
 </script>
 
@@ -169,9 +176,17 @@ onBeforeUnmount(() => currentLoad?.abort())
   <section class="token-admin" aria-labelledby="token-admin-title">
     <header class="token-admin__head">
       <img src="/aitotokens.svg" alt="" width="56" height="56" />
-      <div><h2 id="token-admin-title">AitoTokens</h2><p>Consumo, recargas e configuração da Aito IA.</p></div>
-      <q-btn flat round icon="mdi-refresh" aria-label="Atualizar AitoTokens" :loading="loading" @click="load({ refreshSettings: true })" />
+      <div><h2 id="token-admin-title">AitoTokens</h2><p>Consumo, chaves de projetos e recargas.</p></div>
+      <q-btn v-if="tab === 'licenses'" flat round icon="mdi-refresh" aria-label="Atualizar AitoTokens" :loading="loading" @click="load({ refreshSettings: true })" />
     </header>
+    <q-tabs v-model="tab" dense align="left" no-caps active-color="teal-3" indicator-color="teal-3" class="token-admin__tabs" @update:model-value="changeTab">
+      <q-tab name="usage" label="Uso e custos" />
+      <q-tab name="projects" label="AitoKeys de projetos" />
+      <q-tab name="licenses" label="Licenças e configurações" />
+    </q-tabs>
+    <AdminAitoTokenUsage v-if="tab === 'usage'" />
+    <AdminAitoTokenProjects v-else-if="tab === 'projects'" @reauthenticated="emit('reauthenticated', $event)" @open-projects="emit('open-projects')" />
+    <template v-else>
     <q-banner v-if="loadError" rounded class="bg-red-10 text-white" role="alert">{{ loadError }}</q-banner>
     <div v-if="loaded" class="token-admin__forms">
       <q-form class="token-admin__box" @submit.prevent="saveExchangeRate">
@@ -234,6 +249,7 @@ onBeforeUnmount(() => currentLoad?.abort())
       </q-card>
     </q-dialog>
     <LoginMfaDialog v-model="mfaOpen" :challenge="grantChallenge" @verified="applyGrant" />
+    </template>
   </section>
 </template>
 
@@ -242,6 +258,7 @@ onBeforeUnmount(() => currentLoad?.abort())
 .token-admin__head { display: flex; align-items: center; gap: .9rem; }
 .token-admin__head > div { flex: 1; }
 .token-admin__head h2 { margin: 0; font-size: clamp(1.65rem, 4vw, 2.5rem); line-height: 1.2; }
+.token-admin__tabs { border-bottom: 1px solid #345857; }
 .token-admin p, .token-admin__dialog p { margin: .35rem 0; color: #c2d9d3; }
 .token-admin__forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
 .token-admin__box { display: grid; align-content: start; gap: .8rem; padding: 1rem; border: 1px solid #345857; border-radius: .8rem; background: #0c2022; }

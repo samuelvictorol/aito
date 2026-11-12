@@ -34,6 +34,7 @@
       </button>
 
       <div class="landing-3d__header-actions">
+        <router-link class="landing-3d__product-link" to="/aitotokens">AitoTokens</router-link>
         <button class="landing-3d__account-link" type="button" aria-label="Abrir acesso" @click="openAccessChooser">
           <q-icon name="mdi-account-outline" aria-hidden="true" />
           <span class="landing-3d__account-label">{{ accountLabel }}</span>

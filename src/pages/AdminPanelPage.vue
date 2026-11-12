@@ -8,7 +8,7 @@
           <q-tab-panels v-model="tab" class="admin-app__panels">
             <q-tab-panel name="desktop-expirations"><DesktopExpirations/></q-tab-panel>
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
-            <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @reauthenticated="refreshAdminSession" /></q-tab-panel>
+            <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @reauthenticated="refreshAdminSession" @open-projects="openDetail('projects')" /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="access-security">
               <AdminPasswordChangeCard :auth-options="headers" @changed="finishPasswordChange" />
@@ -129,7 +129,7 @@ export default {
   },
   mounted () {
     document.body.classList.add('aito-admin-dark')
-    if (this.$route.query.tab === 'access-security') this.tab = 'access-security'
+    if (['access-security', 'aito-tokens', 'projects'].includes(this.$route.query.tab)) this.tab = this.$route.query.tab
     try { this.admin = JSON.parse(localStorage.getItem('aito_admin_user') || '{}') } catch (error) { this.admin = {} }
     this.loadAll()
   },
