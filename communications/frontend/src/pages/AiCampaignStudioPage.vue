@@ -2,6 +2,7 @@
 import { fabMeta } from '@quasar/extras/fontawesome-v6'
 import { computed, nextTick, ref } from 'vue'
 import { useQuasar } from 'quasar'
+import { onBeforeRouteLeave } from 'vue-router'
 import AdminAssistant from '../components/AdminAssistant.vue'
 import NotificationsPage from './NotificationsPage.vue'
 import NotificationSchedulesPage from './NotificationSchedulesPage.vue'
@@ -73,6 +74,7 @@ function refreshAfterAction() {
   library.value?.refresh()
   schedules.value?.refresh()
 }
+onBeforeRouteLeave(() => window.confirm('Sair da tela de campanhas? As alterações ainda não salvas podem ser perdidas.'))
 </script>
 
 <template>
@@ -162,7 +164,7 @@ function refreshAfterAction() {
 .studio-hero h1 { font-size: clamp(1.85rem, 5vw, 3rem); line-height: 1.1; margin: 10px 0; letter-spacing: -.045em; font-weight: 850; }
 .studio-hero p { margin: 0 0 15px; max-width: 560px; color: #385b78; }
 .studio-channels, .studio-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
-.studio-channels .q-badge { border: 1px solid #ffffff35; padding: 6px 10px; gap: 6px; }
+.studio-channels .q-badge { color: #fff; border: 1px solid #ffffff70; padding: 6px 10px; gap: 6px; }
 .studio-actions { justify-content: flex-end; flex: 0 0 auto; }
 .studio-grid { margin-top: 20px; }
 .studio-workspace, .studio-panel { min-width: 0; }

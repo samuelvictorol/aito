@@ -589,6 +589,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+        <q-item
+          v-if="canChannel(auth.user, 'whatsapp_web')"
+          clickable
+          :to="inPrototype() ? '/prototype/whatsapp-web' : '/whatsapp-web'"
+          class="channel-config-header channel-config-header--whatsapp-web text-weight-bold"
+        >
+          <q-item-section avatar><q-icon name="mdi-whatsapp" /></q-item-section>
+          <q-item-section>
+            <q-item-label>WhatsApp Web</q-item-label>
+            <q-item-label caption>Conversas, conexão e automações</q-item-label>
+          </q-item-section>
+          <q-item-section side><q-icon name="chevron_right" /></q-item-section>
+        </q-item>
         <q-expansion-item
           icon="mdi-whatsapp"
           label="WhatsApp Cloud API"
@@ -1288,6 +1301,15 @@ onBeforeUnmount(() => {
   color: #248bd6;
 }
 
+.channel-config-header--whatsapp-web {
+  background: #e5faed;
+  color: #166444;
+  border-left-color: #55c887;
+}
+.channel-config-header--whatsapp-web :deep(.q-item__section--avatar > .q-icon) {
+  background: #c7f0d8;
+  color: #20804f;
+}
 :deep(.channel-config-header--whatsapp) {
   background: linear-gradient(105deg, rgba(71, 211, 162, 0.15), rgba(18, 140, 106, 0.045));
   color: #116b59;

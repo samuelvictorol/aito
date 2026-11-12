@@ -108,7 +108,7 @@ async function save() {
         <div>
           <span>ADMINISTRAÇÃO DE LICENÇAS</span>
           <h3>{{ title }}</h3>
-          <p>{{ customer?.name || license?.ownerName || license?.ownerEmail || 'Kit AitoNotify + WhatsApp BotBuilder' }}</p>
+          <p>{{ customer?.name || license?.ownerName || license?.ownerEmail || 'AitoIA + Kit AitoNotify e WhatsApp Bot Builder' }}</p>
         </div>
         <q-btn flat round dense icon="mdi-close" aria-label="Fechar validade" :disable="busy" @click="open = false" />
       </q-card-section>

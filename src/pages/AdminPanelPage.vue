@@ -8,6 +8,7 @@
           <q-tab-panels v-model="tab" class="admin-app__panels">
             <q-tab-panel name="desktop-expirations"><DesktopExpirations/></q-tab-panel>
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
+            <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @reauthenticated="refreshAdminSession" /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="access-security">
               <AdminPasswordChangeCard :auth-options="headers" @changed="finishPasswordChange" />
@@ -101,10 +102,11 @@ import BotBuilderLicensesManager from 'components/BotBuilderLicensesManager.vue'
 import SiteAssistantHistoryManager from 'components/SiteAssistantHistoryManager.vue'
 
 const AdminEmailTemplates = defineAsyncComponent(() => import('components/AdminEmailTemplates.vue'))
+const AdminAitoTokensPanel = defineAsyncComponent(() => import('components/AdminAitoTokensPanel.vue'))
 
 export default {
   name: 'AdminPanelPage',
-  components: { AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  components: { AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   data () {
     return {
       drawerOpen:false,detailExpanded:false,licenseGrantOpen:false,licenseCustomer:null, tab: 'overview', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
@@ -116,7 +118,7 @@ export default {
     }
   },
   computed: {
-    sortedDetailOptions () { return [...this.detailOptions,{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
+    sortedDetailOptions () { return [...this.detailOptions,{name:'aito-tokens',label:'AitoTokens',description:'Recargas, consumo, cotação e configuração da Aito IA.',icon:'mdi-circle-multiple-outline'},{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
     sectionTitle () { return this.tab==='overview'?'Dashboard':this.tab==='projects'?'Projetos':this.tab==='detail'?'Detalhar':this.sortedDetailOptions.find(item=>item.name===this.tab)?.label || 'Administração' },
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
@@ -166,6 +168,14 @@ export default {
       this.token = ''
       localStorage.removeItem('aito_admin_token')
       localStorage.removeItem('aito_admin_user')
+    },
+    refreshAdminSession ({ token, user }) {
+      this.token = token
+      localStorage.setItem('aito_admin_token', token)
+      if (user) {
+        this.admin = user
+        localStorage.setItem('aito_admin_user', JSON.stringify(user))
+      }
     },
     async finishPasswordChange () {
       this.clearAdminSession()

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
+import { onBeforeRouteLeave } from 'vue-router'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MarkerType, VueFlow } from '@vue-flow/core'
@@ -251,6 +252,14 @@ function onAgentVisibility(open) {
   if (open && $q.screen.lt.md) closeSimulation()
 }
 
+function onFullscreenChange(open) {
+  editorFullscreen.value = open
+  if (open) {
+    agent.value?.minimize()
+    closeSimulation()
+  }
+}
+
 watch(mode, () => {
   closeSimulation()
   editor.value?.exitFullscreen()
@@ -284,6 +293,12 @@ async function copyLink(url) {
     $q.notify({ type: 'warning', message: 'Selecione o endereço exibido para copiar.' })
   }
 }
+
+onBeforeRouteLeave(() => window.confirm(
+  activeFlow.value?.dirty
+    ? 'O fluxo tem alterações sem salvar. Sair da tela e descartar essas alterações?'
+    : 'Sair da tela Criar chatbot?',
+))
 
 onMounted(() => loadFlows())
 onBeforeUnmount(() => { destroyed = true })
@@ -333,7 +348,7 @@ onBeforeUnmount(() => { destroyed = true })
           <div v-if="selected" v-show="mode === 'editor'" class="studio-builder whatsapp-web-workspace">
             <FlowBuilderPage ref="editor" :key="selected._id" :flow-id="selected._id" studio :locked="actionInProgress"
               @state-change="editorState = $event" @saved="onSaved"
-              @fullscreen-change="editorFullscreen = $event" @simulation-change="editorSimulationOpen = $event" />
+              @fullscreen-change="onFullscreenChange" @simulation-change="editorSimulationOpen = $event" />
           </div>
         </Teleport>
         <div v-if="!selected && mode === 'editor'" class="studio-empty">
@@ -354,7 +369,7 @@ onBeforeUnmount(() => { destroyed = true })
           </q-banner>
           <p v-else-if="previewMayBePartial" class="studio-review-hint">A prévia mostra até 100 etapas ou conexões. Confirme a proposta para testar o diagrama completo.</p>
           <p v-else class="studio-review-hint">Teste a proposta no simulador com respostas fictícias e confirme a alteração pelo painel do agente.</p>
-          <VueFlow :id="`studio-preview-${proposal.id}`" :key="proposal.id" class="studio-graph" :nodes="graph.nodes" :edges="graph.edges" :nodes-draggable="false" :nodes-connectable="false" :elements-selectable="false" :edges-updatable="false" :delete-key-code="null" fit-view-on-init :min-zoom="0.02">
+          <VueFlow :id="`studio-preview-${proposal.id}`" :key="proposal.id" class="studio-graph" :nodes="graph.nodes" :edges="graph.edges" :nodes-draggable="false" :nodes-connectable="false" :edges-updatable="false" :delete-key-code="null" fit-view-on-init :min-zoom="0.02">
             <template #node-bot="node"><FlowNode v-bind="node" /></template>
             <Background pattern-color="#b5d5cc" :gap="20" />
             <Controls :show-interactive="false" />
@@ -417,11 +432,18 @@ onBeforeUnmount(() => { destroyed = true })
 </template>
 
 <style scoped>
+.flow-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-path),
+.studio-graph :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
+  stroke: #007c64 !important;
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 4px #43dfbc);
+}
+
 .chatbot-studio { max-width: 1660px; margin: auto; padding: clamp(12px, 2vw, 26px); padding-bottom: 90px; color: #13352d; background: linear-gradient(155deg,#f8fffc,#ebf9f2); }
 .studio-hero { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 16px; padding: clamp(18px, 3vw, 35px); border: 1px solid #b9e6d2; border-radius: 24px; background: radial-gradient(ellipse at top right, #a1e3cb, transparent 69%), linear-gradient(135deg,#f4fff9,#c5efdc); color: #143d30; }
 .studio-back { margin: -8px 0 16px; color: #1c5d48; }
 .studio-badges, .studio-hero-actions, .studio-resources, .studio-modes { display: flex; flex-wrap: wrap; gap: 8px; }
-.studio-badges span { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; background: #f7fffbba; border: 1px solid #8ccdb4; padding: 5px 10px; font-size: .75rem; font-weight: 700; }
+.studio-badges span { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; background: #f6fffb; color: #194b38; border: 1px solid #8ccdb4; padding: 5px 10px; font-size: .75rem; font-weight: 700; }
 .studio-hero h1 { margin: 10px 0 5px; font-size: clamp(1.9rem, 4vw, 3.25rem); line-height: 1.12; font-weight: 800; letter-spacing: -.04em; }
 .studio-hero p { max-width: 510px; margin: 0; color: #315e51; }
 .studio-simulate { background: #18765b; color: white; font-weight: 750; }

@@ -134,7 +134,7 @@ const usefulNavigationLinks = computed(() => normalizeUsefulLinks(app.settings?.
 })))
 
 const navigation = computed(() => {
-  const entries = createAppNavigation({ invitesAvailable: app.canAccessInvites, inviteAccessExplanation, usefulLinks: usefulNavigationLinks.value, channelEnabled: app.isChannelEnabled }).map(item => item.children ? { ...item, children: item.children.map(child => child.to === '/whatsapp-web' ? { ...child, to: firstAllowedWeb(auth.user) || child.to } : child).filter(child => routeAllowed(child.to, auth.user)) } : item).filter(item => !auth.isCollaborator || (item.separator ? true : item.children ? item.children.length > 0 : item.external ? canArea(auth.user, 'help') : item.to && routeAllowed(item.to, auth.user)))
+  const entries = createAppNavigation({ invitesAvailable: app.canAccessInvites, inviteAccessExplanation, usefulLinks: usefulNavigationLinks.value, channelEnabled: app.isChannelEnabled, creditsAvailable: auth.user?.role === 'admin' }).map(item => item.children ? { ...item, children: item.children.map(child => child.to === '/whatsapp-web' ? { ...child, to: firstAllowedWeb(auth.user) || child.to } : child).filter(child => routeAllowed(child.to, auth.user)) } : item).filter(item => !auth.isCollaborator || (item.separator ? true : item.children ? item.children.length > 0 : item.external ? canArea(auth.user, 'help') : item.to && routeAllowed(item.to, auth.user)))
   return entries.filter((item,index) => { if(!item.separator)return true;const next=entries.findIndex((entry,position)=>position>index&&entry.separator);return entries.slice(index+1,next<0?entries.length:next).some(entry=>!entry.separator) })
 })
 
@@ -806,6 +806,7 @@ onBeforeUnmount(() => {
               <q-item-section>
                 <q-item-label>{{ item.label }}</q-item-label>
               </q-item-section>
+              <q-item-section v-if="item.trailingIcon" side><q-icon :name="item.trailingIcon" size="16px" /></q-item-section>
               <q-item-section v-if="!item.available" side>
                 <q-icon name="lock" size="16px" />
               </q-item-section>

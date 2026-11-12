@@ -65,6 +65,11 @@ const routes = [
     component: () => import('pages/UserHomePage.vue'),
   },
   {
+    path: '/app/wpp-colab/:slug([a-f0-9-]{36})',
+    name: 'desktop-whatsapp-collaborator',
+    component: () => import('pages/DesktopWhatsappCollaboratorPage.vue'),
+  },
+  {
     path: '/affiliate',
     name: 'affiliate-app',
     meta: { requiresAuth: 'affiliate' },

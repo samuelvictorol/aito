@@ -57,6 +57,7 @@ const routes = [
       { path: 'app-mobile/cloud', name: 'app-mobile-cloud', component: () => import('../pages/MobileAppPage.vue'), props: { channel: 'cloud' }, meta: { appMobile: true } },
       { path: 'collaborators', name: 'collaborators', component: () => import('../pages/CollaboratorsPage.vue') },
       { path: 'agent-ai', alias: '/agente-ia', name: 'ai-agent', component: () => import('../pages/AiAgentPage.vue'), meta: { adminOnly: true } },
+      { path: 'aitotokens', name: 'aito-tokens', component: () => import('../pages/AitoCreditsPage.vue'), meta: { adminOnly: true } },
       { path: 'agent-ai/campaigns', name: 'ai-campaigns', component: () => import('../pages/AiCampaignStudioPage.vue'), meta: { adminOnly: true } },
       { path: 'agent-ai/campaigns/logs', name: 'ai-campaign-logs', component: () => import('../pages/AiCampaignLogsPage.vue'), meta: { adminOnly: true } },
       { path: 'agent-ai/chatbot', name: 'ai-chatbot', component: () => import('../pages/AiChatbotStudioPage.vue'), meta: { adminOnly: true } },

@@ -6,11 +6,11 @@ import { desktopSolutions } from 'src/data/desktopSolutions'
 import { desktopSolutionVideos } from 'src/data/landingHeroVideo'
 
 const modules = [
-  { id: 'notificacoes', tone: 'blue', name: '01 · AITONOTIFY', icon: 'mdi-bullhorn-outline', ...desktopSolutions.notifications,
+  { id: 'agentes', tone: 'gold', name: 'AITO IA', icon: 'mdi-auto-fix', ...desktopSolutions.agent },
+  { id: 'notificacoes', tone: 'blue', name: 'AITONOTIFY', icon: 'mdi-bullhorn-outline', ...desktopSolutions.notifications,
     video: desktopSolutionVideos.notifications, videoTitle: 'Notificações com a API oficial', videoIntro: 'Da preparação à entrega em cada canal.' },
-  { id: 'chatbots', tone: 'green', name: '02 · WHATSAPP BOTBUILDER', icon: 'mdi-sitemap-outline', ...desktopSolutions.bot,
-    video: desktopSolutionVideos.botBuilder, videoTitle: 'Conheça o WhatsApp BotBuilder', videoIntro: 'Do primeiro card à conversa pronta.' },
-  { id: 'agentes', tone: 'gold', name: '03 · AITO I.A.', icon: 'mdi-auto-fix', ...desktopSolutions.agent },
+  { id: 'chatbots', tone: 'green', name: 'WHATSAPP BOT BUILDER', icon: 'mdi-sitemap-outline', ...desktopSolutions.bot,
+    video: desktopSolutionVideos.botBuilder, videoTitle: 'Conheça o WhatsApp Bot Builder', videoIntro: 'Do primeiro card à conversa pronta.' },
 ]
 
 const actionPreview = [
@@ -33,7 +33,7 @@ const actionPreview = [
     </div>
 
     <div class="desktop-module__grid">
-      <div class="desktop-module__features" :aria-label="`Recursos de ${item.name.slice(5)}`">
+      <div class="desktop-module__features" :aria-label="`Recursos de ${item.name}`">
         <details v-for="(feature, index) in item.features" :key="feature.title" :open="index === 0">
           <summary><q-icon :name="feature.icon" aria-hidden="true" />{{ feature.title }}<q-icon name="mdi-chevron-down" class="desktop-module__chevron" aria-hidden="true" /></summary>
           <p>{{ feature.text }}</p>
@@ -41,9 +41,9 @@ const actionPreview = [
       </div>
       <LandingVideoMonitor v-if="item.video" :video="item.video" :title="item.videoTitle" :headline="item.videoTitle"
         eyebrow="DEMONSTRAÇÃO DO MÓDULO" :description="item.videoIntro" />
-      <div v-else class="desktop-module__preview" aria-label="Exemplo de fluxo de trabalho da Aito I.A.">
-        <div class="desktop-module__preview-top"><img src="/ia.gif" alt="" width="48" height="48" loading="lazy" /> <strong>Aito I.A.</strong><span>EXEMPLO</span></div>
-        <p class="desktop-module__prompt">“Prepare um lembrete de retorno para a equipe revisar.”</p>
+      <div v-else class="desktop-module__preview" aria-label="Exemplo de fluxo de trabalho da Aito IA">
+        <div class="desktop-module__preview-top"><img src="/ia.gif" alt="" width="48" height="48" loading="lazy" /> <strong>Aito IA</strong><span>EXEMPLO</span></div>
+        <p class="desktop-module__prompt">“Prepare um lembrete pelo WhatsApp oficial, Telegram e Gmail para a equipe revisar.”</p>
         <ol><li v-for="step in actionPreview" :key="step.text"><q-icon :name="step.icon" aria-hidden="true" />{{ step.text }}</li></ol>
       </div>
     </div>
@@ -72,7 +72,7 @@ const actionPreview = [
       <p class="desktop-module__boundary"><q-icon name="mdi-qrcode" aria-hidden="true" /> O QR Code conecta uma sessão do WhatsApp Web, uma modalidade não oficial. Use a API oficial para notificações em escala.</p>
     </template>
 
-    <p v-else class="desktop-module__boundary"><q-icon name="mdi-key-outline" aria-hidden="true" /> A IA usa a chave e os créditos da sua conta de provedor.</p>
+    <p v-else class="desktop-module__boundary"><img src="/aitotokens.svg" alt="" width="28" height="28" loading="lazy" /> AitoTokens acompanham o uso da Aito IA por licença. Consulte o saldo e o histórico de recargas na sua conta.</p>
   </section>
 </template>
 

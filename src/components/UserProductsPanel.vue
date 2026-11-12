@@ -135,7 +135,7 @@ onBeforeUnmount(() => {
 <section class="products">
   <LoginMfaDialog v-model="reauthOpen" :challenge="reauthChallenge" @verified="verifiedRotation"/>
   <KitProductCart ref="cart" @catalog="applyCatalog" @purchased="load"/>
-  <header class="products__top"><img class="products__box" src="/whatsapp-solutions/product-kit.webp" alt="Kit AitoNotify + WhatsApp BotBuilder" width="62" height="90"/><div><span>MINHA BIBLIOTECA</span><h1>Meus produtos e licenças</h1><p>Desktop e Whitelabel são produtos separados, cada um com seu próprio token.</p></div><q-btn flat round icon="mdi-refresh" aria-label="Atualizar produtos" :loading="busy" @click="load"/></header>
+  <header class="products__top"><img class="products__box" src="/whatsapp-solutions/product-kit.webp" alt="AitoIA + Kit AitoNotify e WhatsApp Bot Builder" width="62" height="90"/><div><span>MINHA BIBLIOTECA</span><h1>Meus produtos e licenças</h1><p>Desktop e Whitelabel são produtos separados, cada um com seu próprio token.</p></div><q-btn flat round icon="mdi-refresh" aria-label="Atualizar produtos" :loading="busy" @click="load"/></header>
   <DesktopTrialOffer v-if="data && !hasActiveLicense" @claimed="load" />
   <div class="products__catalog">
     <article v-for="type in PRODUCT_TYPES" :key="type" :class="['product-card','product-card--'+type]">
@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
   <q-skeleton v-if="busy&&!data" dark height="220px"/>
   <div v-if="licenses.length" class="products__licenses">
     <article v-for="license in licenses" :key="license._id" class="license-card">
-      <header><q-icon :name="definitions[licenseProductType(license)]?.icon||'mdi-license'" size="30px"/><div><small>KIT AITONOTIFY + WHATSAPP BOTBUILDER</small><h2>{{productLabel(licenseProductType(license))}}</h2></div><LicenseValidity :license="license"/></header>
+      <header><q-icon :name="definitions[licenseProductType(license)]?.icon||'mdi-license'" size="30px"/><div><small>AITOIA + KIT AITONOTIFY E WHATSAPP BOT BUILDER</small><h2>{{productLabel(licenseProductType(license))}}</h2></div><LicenseValidity :license="license"/></header>
       <div v-if="canRenew(license)" class="license-card__renewal">
         <q-badge v-if="license.sourceId?.startsWith('desktop-trial:') && !license.renewedAt" color="amber-4" text-color="dark" label="Teste de 7 dias" />
         <p>Ao renovar antes do vencimento, o novo prazo é somado à validade atual. Se já venceu, ele começa na confirmação do pagamento.</p>

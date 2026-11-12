@@ -1,5 +1,5 @@
 export const desktopSolutions = {
-  intro: 'No Windows, seu time atende pelo WhatsApp, automatiza conversas e envia avisos pelo WhatsApp oficial, e-mail e Telegram.',
+  intro: 'A Aito IA ajuda sua equipe a preparar disparos em massa, montar chatbots e investigar falhas de atendimento. O Kit reúne WhatsApp oficial e Web, Gmail e Telegram em um aplicativo Windows.',
   notifications: {
     title: 'Envie seus avisos de um só lugar.',
     summary: 'AitoNotify reúne campanhas, confirmações e lembretes na API oficial do WhatsApp, no Gmail e no Telegram.',
@@ -14,7 +14,7 @@ export const desktopSolutions = {
   },
   bot: {
     title: 'Tire as perguntas repetidas da fila.',
-    summary: 'O WhatsApp BotBuilder conduz a conversa até o pedido, o agendamento ou a hora de chamar alguém da equipe.',
+    summary: 'O WhatsApp Bot Builder conduz a conversa até o pedido, o agendamento ou a hora de chamar alguém da equipe.',
     features: [
       { icon: 'mdi-sitemap-outline', title: 'Fluxograma que vira bot', text: 'Ligue mensagens, escolhas e ações no editor visual. Importe fluxos e teste cada caminho no simulador antes de ativar.' },
       { icon: 'mdi-robot-outline', title: 'IA no atendimento', text: 'Conecte sua chave de IA para o bot responder com contexto e encaminhar a conversa quando precisar de uma pessoa.' },
@@ -25,12 +25,12 @@ export const desktopSolutions = {
     ],
   },
   agent: {
-    title: 'Peça o trabalho. A IA prepara a ação.',
-    summary: 'O agente Aito I.A. conhece as ferramentas do Desktop. Descreva o objetivo, confira o que ele preparou e autorize a execução.',
+    title: 'Agente especializado em campanhas e atendimento.',
+    summary: 'A Aito IA usa as ferramentas do Kit para preparar disparos pelo WhatsApp oficial, Telegram e Gmail e montar o atendimento por QR Code no WhatsApp Web. Revise as ações antes de autorizar a execução.',
     features: [
-      { icon: 'mdi-bullhorn-outline', title: 'Agente de campanhas', text: 'Transforme uma ideia em mensagens e modelos por canal. Revise o público e o conteúdo antes de programar.' },
-      { icon: 'mdi-sitemap-outline', title: 'Agente de chatbot', text: 'Descreva como a conversa deve funcionar. A IA prepara os cards e as conexões para você testar no simulador.' },
-      { icon: 'mdi-magnify', title: 'Agente administrativo', text: 'Consulte a operação, entenda falhas de envio e veja quais configurações precisam de atenção.' },
+      { icon: 'mdi-bullhorn-outline', title: 'Disparos em massa', text: 'Prepare mensagens, modelos e públicos para WhatsApp pela API oficial da Meta, Gmail e Telegram. Confira a prévia de cada canal antes de programar.' },
+      { icon: 'mdi-sitemap-outline', title: 'Fluxos no WhatsApp Web', text: 'Descreva como a conversa deve funcionar. A IA prepara os cards e conexões para o simulador do Bot Builder, que usa WhatsApp Web por QR Code, uma integração não oficial.' },
+      { icon: 'mdi-magnify', title: 'Diagnóstico da operação', text: 'Consulte históricos e logs autorizados para identificar falhas de envio e configurações que precisam de atenção.' },
       { icon: 'mdi-shield-check-outline', title: 'Ações com revisão', text: 'As ações seguem as permissões da conta. A IA mostra o que será alterado para você aprovar.' },
     ],
   },
@@ -38,23 +38,23 @@ export const desktopSolutions = {
 
 export const desktopSolutionsFaq = [
   { question: 'Qual é a diferença entre WhatsApp oficial e WhatsApp Web?', answer: 'A API oficial da Meta é usada para notificações, modelos aprovados e conversas no canal oficial. A conexão por QR Code do BotBuilder usa o WhatsApp Web, em uma modalidade não oficial voltada à conversa, aos bots e ao atendimento em equipe.' },
-  { question: 'Quanto custa e o que o plano Desktop inclui?', answer: 'Os valores dos planos de 1, 6 e 12 meses aparecem nesta página. Cada plano inclui AitoNotify, BotBuilder, acesso em equipe e Aito I.A. no instalador Windows. Tarifas da Meta, créditos de IA e serviços externos podem ser cobrados separadamente por cada provedor.' },
+  { question: 'Quanto custa e o que o plano Desktop inclui?', answer: 'Os valores dos planos de 1, 6 e 12 meses aparecem nesta página. Cada plano inclui Aito IA, AitoNotify, WhatsApp Bot Builder e acesso em equipe no instalador Windows. A licença usa AitoTokens para as tarefas do agente. Tarifas da Meta e serviços externos seguem as condições de cada provedor.' },
   { question: 'Como funcionam os 7 dias grátis?', answer: 'Crie e confirme sua primeira conta e abra Meus produtos para resgatar o teste. Os 7 dias começam no resgate. A oferta é única para novos clientes elegíveis sem licença ativa, com acesso aos módulos do Desktop e sem cartão.' },
   { question: 'Posso renovar antes de vencer?', answer: 'Sim. Com a licença ativa, o prazo comprado é somado à data de vencimento. Se já venceu, o novo prazo começa quando o pagamento é confirmado.' },
   { question: 'Como controlo os envios em massa?', answer: 'Selecione contatos autorizados, revise os modelos e acompanhe o resultado por canal. A API oficial está sujeita às políticas, à qualidade e aos limites da conta Meta.' },
-  { question: 'Minha equipe consegue atender fora do escritório?', answer: 'Sim. O aplicativo fica aberto no computador Windows e sua equipe usa o painel pelo navegador, com logins individuais e acesso remoto HTTPS configurado.' },
+  { question: 'Minha equipe consegue atender fora do escritório?', answer: 'Sim. Mantenha o Desktop aberto e ative o acesso da equipe na área do cliente da AitoSoftwares. A equipe abre o link no navegador e entra com os logins cadastrados na instalação.' },
 ]
 
 const canonical = 'https://aitosoftwares.com/whatsapp-solucoes'
-const title = 'WhatsApp para empresas, chatbot com IA e disparos oficiais | AitoSoftwares Desktop'
-const description = 'Atenda em equipe, crie chatbots e envie avisos pelo WhatsApp oficial, Gmail e Telegram em um aplicativo Windows. Experimente o kit Desktop por 7 dias.'
+const title = 'AitoIA para disparos e atendimento no WhatsApp | AitoSoftwares Desktop'
+const description = 'AitoIA prepara campanhas pelo WhatsApp oficial, Gmail e Telegram, monta fluxos para WhatsApp Web e ajuda a diagnosticar falhas. Experimente o Kit Desktop por 7 dias.'
 const image = 'https://aitosoftwares.com/whatsapp-solutions/product-kit.webp'
 
 export function desktopSolutionsSeo(offer) {
   const plans = (offer?.desktopPlans || []).filter(plan => offer.available && plan.enabled && Number.isSafeInteger(plan.priceCents) && plan.priceCents > 0)
   const application = {
     '@context': 'https://schema.org', '@type': 'SoftwareApplication',
-    name: 'AitoNotify + WhatsApp BotBuilder Desktop', url: canonical, image, description,
+    name: 'AitoIA + Kit AitoNotify e WhatsApp Bot Builder Desktop', url: canonical, image, description,
     operatingSystem: 'Windows 10 e Windows 11 (x64)', applicationCategory: 'BusinessApplication',
     publisher: { '@type': 'Organization', name: 'AitoSoftwares', url: 'https://aitosoftwares.com/' },
     featureList: ['WhatsApp Cloud API oficial da Meta', 'WhatsApp Web com conexão por QR Code', 'Editor visual e simulador de chatbot', 'Notificações pelo Gmail e Telegram', 'Atendimento com logins individuais', 'Agentes de IA para campanhas, fluxos e diagnóstico'],

@@ -8,8 +8,10 @@
       <main v-else-if="activeMenu === 'certificates'" class="user-app__main user-app__wide"><UserCertificatesPanel /></main>
       <main v-else-if="activeMenu === 'products'" class="user-app__main user-app__wide"><UserProductsPanel /></main>
       <main v-else-if="activeMenu === 'webhooks'" class="user-app__main user-app__wide"><UserWebhooksPanel /></main>
+      <main v-else-if="activeMenu === 'wpp-colab'" class="user-app__main user-app__wide"><UserWhatsappCollaboratorsPanel /></main>
       <main v-else-if="activeMenu === 'profile'" class="user-app__main user-app__profile"><span class="user-app__eyebrow">Meu perfil</span><h1>Seu acesso, do seu jeito.</h1><q-form class="user-app__profile-form" @submit.prevent="saveProfile"><q-input v-model="profile.name" outlined label="Nome" /><q-input v-model="profile.email" outlined label="E-mail" readonly /><q-input v-model="profile.phone" outlined label="Telefone" readonly /><q-btn unelevated no-caps type="submit" label="Salvar nome" icon="mdi-content-save" :loading="saving" /></q-form></main>
       <main v-else-if="activeMenu === 'finance'" class="user-app__main user-app__wide"><UserFinancePanel /></main>
+      <main v-else-if="activeMenu === 'aito-tokens'" class="user-app__main user-app__wide"><UserAitoTokensPanel /></main>
       <main v-else class="user-app__main user-app__wide"><SupportTicketsPanel /></main>
     </div></q-page></q-page-container>
   </q-layout>
@@ -27,7 +29,9 @@ import UserProductsPanel from 'components/UserProductsPanel.vue'
 import NotificationBell from 'components/NotificationBell.vue'
 
 const UserWebhooksPanel = defineAsyncComponent(() => import('components/UserWebhooksPanel.vue'))
+const UserWhatsappCollaboratorsPanel = defineAsyncComponent(() => import('components/UserWhatsappCollaboratorsPanel.vue'))
 const UserFinancePanel = defineAsyncComponent(() => import('components/UserFinancePanel.vue'))
+const UserAitoTokensPanel = defineAsyncComponent(() => import('components/UserAitoTokensPanel.vue'))
 const router = useRouter()
 const route = useRoute()
 const $q = useQuasar()
@@ -38,7 +42,9 @@ const profile = reactive({ name: '', email: '', phone: '' })
 const menu = [
   { id: 'products', label: 'Meus produtos', icon: 'mdi-shield-key-outline' },
   { id: 'finance', label: 'Financeiro', icon: 'mdi-receipt-text-clock-outline' },
+  { id: 'aito-tokens', label: 'AitoTokens', icon: 'mdi-circle-multiple-outline' },
   { id: 'webhooks', label: 'Webhooks', icon: 'mdi-webhook' },
+  { id: 'wpp-colab', label: 'WhatsApp da equipe', icon: 'mdi-whatsapp' },
   { id: 'tickets', label: 'Chamados', icon: 'mdi-lifebuoy' },
   { id: 'profile', label: 'Meus dados', icon: 'mdi-account-outline' },
 ]

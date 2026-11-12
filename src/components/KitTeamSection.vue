@@ -22,11 +22,11 @@ const benefits = [
       <span class="eyebrow">VÁRIOS ACESSOS. UM WHATSAPP COMPARTILHADO.</span>
       <h2 id="kit-team-title">Um QR Code.<br/><em>Uma equipe inteira atendendo.</em></h2>
       <p>Seu WhatsApp não precisa ficar na mão de uma pessoa só. Abra o painel em vários computadores e celulares, com <strong>login próprio e identificação para cada colaborador.</strong></p>
-      <p>Conecte a sessão uma vez na instalação. Com o acesso remoto HTTPS configurado, cada atendente entra pelo navegador, sem repetir o pareamento por QR Code em cada estação.</p>
-      <a class="team-cta" href="#planos">Leve o kit AitoNotify + WhatsApp BotBuilder <q-icon name="mdi-arrow-right"/></a>
+      <p>Conecte a sessão uma vez na instalação. Ative WhatsApp da equipe na área do cliente e envie o link. Cada atendente entra pelo navegador, com o próprio login, usando a mesma sessão.</p>
+      <a class="team-cta" href="#planos">Leve o AitoIA + Kit AitoNotify e WhatsApp Bot Builder <q-icon name="mdi-arrow-right"/></a>
     </div>
     <div class="team-visual">
-      <img v-if="image && !imageFailed" class="team-print" :src="image" width="1353" height="1163" loading="lazy" alt="Painel de atendimento compartilhado do kit AitoNotify + WhatsApp BotBuilder" @error="imageFailed = true"/>
+      <img v-if="image && !imageFailed" class="team-print" :src="image" width="1353" height="1163" loading="lazy" alt="Painel de atendimento compartilhado do AitoIA + Kit AitoNotify e WhatsApp Bot Builder" @error="imageFailed = true"/>
       <div v-else class="team-demo" aria-label="Exemplo ilustrativo de uma sessão com três atendentes identificados">
         <div class="team-demo__bar"><span class="team-live"/> Uma conexão. Vários pontos de atendimento.</div>
         <div class="team-session"><div class="team-session__icon"><q-icon name="mdi-whatsapp"/></div><div><strong>WhatsApp da sua empresa</strong><span>Sessão conectada à instalação</span></div><q-icon name="mdi-shield-check-outline" color="teal-3"/></div>

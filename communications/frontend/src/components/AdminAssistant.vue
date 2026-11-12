@@ -5,7 +5,7 @@ import { fabMeta } from '@quasar/extras/fontawesome-v6'
 import { useAuthStore } from '../stores/auth.js'
 import { useWhiteLabel } from '../services/whitelabel.js'
 import { errorMessage } from '../services/http.js'
-import { ASSISTANT_NAME, ASSISTANT_SHORTCUTS, assistantApi, assistantAttachmentError, assistantCapabilities, assistantTheme, ASSISTANT_CONFIG_EVENT, ASSISTANT_SESSION_API, createAssistantSessionApi, formatAssistantCost, formatAssistantTokens } from '../services/admin-assistant.js'
+import { ASSISTANT_SHORTCUTS, assistantApi, assistantAttachmentError, assistantCapabilities, assistantTheme, ASSISTANT_CONFIG_EVENT, ASSISTANT_SESSION_API, createAssistantSessionApi, formatAssistantCost, formatAssistantTokens } from '../services/admin-assistant.js'
 import { assistantClipboardFiles, createAssistantAttachmentQueue } from '../services/assistant-attachments.js'
 import AssistantMessage from './AssistantMessage.vue'
 import AssistantActionReview from './AssistantActionReview.vue'
@@ -39,28 +39,35 @@ const $q = useQuasar(), auth = useAuthStore(), { branding } = useWhiteLabel()
 const canConfigure = ref(!auth.isCollaborator), canExecute = ref(!auth.isCollaborator), sharedAccount = ref(auth.isCollaborator)
 const dialog = ref(false), introDialog = ref(false), settingsDialog = ref(false), logsDialog = ref(false), loadErrorDialog = ref(false), shortcutsVisible = ref(true), opening = ref(false)
 const thread = ref(null), input = ref(null), fileInput = ref(null), draft = ref('')
-const attachmentQueue = createAssistantAttachmentQueue({ upload: sessionApi.upload, validate: assistantAttachmentError })
+const attachmentQueue = createAssistantAttachmentQueue({ upload: sessionApi.upload, validate: file => assistantAttachmentError(file, managed.value) })
 const { files: attachments, uploading, error: attachmentError, progress: attachmentProgress } = attachmentQueue
 const loading = ref(false), sending = ref(false), transcribing = ref(false), confirming = ref(false), error = ref(''), configError = ref(''), dragging = ref(false)
 const configured = ref(false), models = ref([])
+const managed = ref(false)
+const canImportKey = ref(false)
+const attachmentFormats = '.png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.csv,.json,.html,.css'
+const creditsBlocked = ref(false)
+const insufficientCreditsCode = 'AITO_TOKENS_INSUFFICIENT'
+let lastCreditErrorRun
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
 const robotIcon = import.meta.env.BASE_URL + 'ia.gif'
+const coinIcon = import.meta.env.BASE_URL + 'aitotokens.svg'
 const profiles = {
   campaign: {
-    name: 'Agente de campanhas', icon: fabMeta, color: '#2087e0',
+    name: 'Aito IA', icon: fabMeta, color: '#2087e0',
     heading: 'Vamos montar sua campanha?', hint: 'Defina o público, a mensagem e os canais. Revise o resultado antes de enviar.',
     placeholder: 'Descreva sua campanha…',
     shortcuts: ['campaign', 'meta', 'email'],
   },
   chatbot: {
-    name: 'Agente de chatbot', icon: 'qr_code_2', color: '#28a97d',
+    name: 'Aito IA', icon: 'qr_code_2', color: '#28a97d',
     heading: 'Como seu bot deve atender?', hint: 'Descreva a jornada do cliente. Posso preparar o fluxo, conectar integrações e sugerir testes.',
     placeholder: 'Descreva o atendimento…',
     shortcuts: ['flow', 'flow-payment', 'flow-improve'],
   },
 }
 const profile = computed(() => profiles[props.scope])
-const agentName = computed(() => profile.value?.name || ASSISTANT_NAME)
+const agentName = computed(() => profile.value?.name || 'Aito IA')
 const shortcuts = computed(() => profile.value
   ? profile.value.shortcuts.map(id => ASSISTANT_SHORTCUTS.find(item => item.id === id)).filter(Boolean)
   : ASSISTANT_SHORTCUTS.filter(item => !item.id.startsWith('flow-')))
@@ -87,6 +94,9 @@ let timer, pollVersion = 0, destroyed = false, recorder, recorderStream, recordi
 
 function applyConfig(value) {
   configured.value=Boolean(value.configured);models.value=value.models||[]
+  managed.value = Boolean(value.managed)
+  canImportKey.value = !managed.value && value.canImportKey !== false
+  creditsBlocked.value = managed.value && value.canUseCredits === false
   const grants=assistantCapabilities(value,auth.user?.role);sharedAccount.value=grants.sharedAccount;canConfigure.value=grants.canConfigure;canExecute.value=grants.canExecute
   for (const key of ['model', 'effort', 'speed']) {
     if (value[key] !== undefined) config[key] = value[key]
@@ -99,6 +109,10 @@ async function scrollBottom(force=false) {
 async function loadConfig(refresh=false) {
   configError.value=''
   try { applyConfig(await assistantApi.config(refresh));return true } catch(cause){configError.value=errorMessage(cause);return false}
+}
+function showActionError(cause) {
+  if (cause.response?.data?.error?.code === insufficientCreditsCode) creditsBlocked.value = true
+  error.value = errorMessage(cause)
 }
 function openSettings() {
   if (!canConfigure.value) return
@@ -169,6 +183,10 @@ async function loadState() {
     const value=await sessionApi.state();if(destroyed||version!==pollVersion)return
     Object.assign(session, emptySession(), value)
     syncWorkspace(value)
+    if (value.errorCode === insufficientCreditsCode && value.runId !== lastCreditErrorRun) {
+      lastCreditErrorRun = value.runId
+      creditsBlocked.value = true
+    }
     error.value=value.error||'';scrollBottom()
   } catch(cause) { if(version===pollVersion)error.value=errorMessage(cause,'Não foi possível atualizar a conversa.') }
 }
@@ -199,13 +217,13 @@ async function savePreference() {
 }
 function chooseShortcut(item) {if(!configured.value||!dialog.value)return;draft.value=item.prompt;nextTick(()=>input.value?.focus());scrollBottom(true)}
 async function send() {
-  if(busy.value||(!draft.value.trim()&&!attachments.value.length))return
+  if(creditsBlocked.value||busy.value||(!draft.value.trim()&&!attachments.value.length))return
   if(!configured.value||!dialog.value)return
   resetKeys();sending.value=true;error.value=''
   try {
     await sessionApi.message({text:draft.value.trim(),attachmentIds:attachments.value.map(file=>file.id), ...(profile.value && props.workspaceContext ? { workspaceContext: props.workspaceContext.slice(0, 12000) } : {}) })
     draft.value='';attachmentQueue.clear();session.running=true;if($q.screen.lt.md)shortcutsVisible.value=false;await loadState();await scrollBottom(true)
-  }catch(cause){error.value=errorMessage(cause)}finally{sending.value=false;poll()}
+  }catch(cause){showActionError(cause)}finally{sending.value=false;poll()}
 }
 async function attachFiles(files) {
   dragging.value=false
@@ -225,10 +243,10 @@ function drop(event) {const files=event.dataTransfer?.files;if(!files?.length)re
 function fileSize(size) {return Number(size)>=1048576?`${(size/1048576).toFixed(1)} MB`:`${Math.max(1,Math.ceil(Number(size||0)/1024))} KB`}
 async function confirmAction(value) {
   const action = pending.value.find(item => item.id === value.actionId)
-  if (!canExecute.value || !action || !props.actionAllowed(action)) return
+  if (creditsBlocked.value || !canExecute.value || !action || !props.actionAllowed(action)) return
   if(!configured.value||!dialog.value)return
   confirming.value=true;error.value=''
-  try{await sessionApi.confirm(value);session.running=true;await loadState();await scrollBottom(true)}catch(cause){error.value=errorMessage(cause)}finally{confirming.value=false;poll()}
+  try{await sessionApi.confirm(value);session.running=true;await loadState();await scrollBottom(true)}catch(cause){showActionError(cause)}finally{confirming.value=false;poll()}
 }
 async function cancelAction(action) {
   if(!configured.value||!dialog.value)return
@@ -294,16 +312,20 @@ onBeforeUnmount(() => {
       <img :src="robotIcon" alt="" />
     </AssistantFloat>
   </Teleport>
-  <q-dialog v-model="introDialog" :maximized="$q.screen.lt.sm"><AssistantIntroduction :app-name="branding.appName" :can-configure="canConfigure" :shared-account="sharedAccount" :style="theme" :error="configError" @configure="openSettings" @retry="loadConfig" @close="introDialog=false"/></q-dialog>
+  <q-dialog v-model="introDialog" :maximized="$q.screen.lt.sm"><AssistantIntroduction :app-name="branding.appName" :can-configure="canConfigure" :can-import-key="canImportKey" :shared-account="sharedAccount" :style="theme" :error="configError" @configure="openSettings" @retry="loadConfig" @close="introDialog=false"/></q-dialog>
   <q-dialog v-model="loadErrorDialog"><q-card class="aito-config-unavailable aito-assistant-shell" :style="theme"><q-card-section><q-icon name="cloud_off" size="36px"/><h2>Não foi possível consultar o agente</h2><p>Isso não significa que sua configuração foi apagada. Tente novamente para carregar a chave e as preferências já salvas.</p><q-banner rounded class="aito-error" role="alert">{{configError}}</q-banner></q-card-section><q-card-actions align="right"><q-btn flat no-caps label="Fechar" v-close-popup/><q-btn class="aito-primary" unelevated no-caps icon="refresh" label="Tentar novamente" :loading="opening" @click="retryOpen"/></q-card-actions></q-card></q-dialog>
   <Teleport to="body">
     <AssistantPanel v-show="dialog" :kind="scope || 'admin'" :label="agentName" @close="minimize" v-slot="{ startMove }">
     <q-card class="aito-assistant-shell" :class="scope && 'aito-assistant-shell--' + scope" :style="theme" @paste="pasteFiles" @dragover="dragOver" @dragleave.self="dragging=false" @drop="drop">
-      <header class="aito-assistant-header" @pointerdown="startMove"><img :src="robotIcon" alt="" /><div><strong>{{agentName}}</strong><span v-if="!profile">Seu agente do {{branding.appName}}</span></div><nav v-if="configured"><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="profile && speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/></nav><q-btn flat round dense icon="close" :aria-label="'Minimizar ' + agentName" @click="minimize"/></header>
+      <header class="aito-assistant-header" @pointerdown="startMove"><img :src="robotIcon" alt="" /><div><strong class="aito-agent-name">{{agentName}} <img :src="coinIcon" alt="" width="22" height="22" /></strong><span v-if="!profile">Seu agente do {{branding.appName}}</span></div><nav v-if="configured"><q-btn flat round dense aria-label="Nova conversa e limpar contexto" :disable="busy" @click="clearContext"><svg class="aito-new-conversation-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10a9 9 0 1 1 2.6 8.4"/><path d="M3 4v6h6"/></svg><q-tooltip>Nova conversa · limpar contexto</q-tooltip></q-btn><q-btn flat round dense aria-label="Logs e consumo" @click="logsDialog=true"><svg class="aito-header-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3v17h17"/><path d="M8 16v-5m5 5V6m5 10v-8"/></svg><q-tooltip>Logs e consumo</q-tooltip></q-btn><q-btn v-if="canConfigure" flat round dense icon="tune" aria-label="Configurar Aito I.A" @click="openSettings"><q-tooltip>Configurações</q-tooltip></q-btn><q-btn v-if="profile && speechSupported" flat round dense :icon="spoken?'volume_up':'volume_off'" :aria-label="spoken?'Desativar leitura em voz alta':'Ativar leitura em voz alta'" :aria-pressed="spoken" @click="spoken=!spoken"/></nav><q-btn flat round dense icon="close" :aria-label="'Minimizar ' + agentName" @click="minimize"/></header>
       <WhatsAppWebShortcuts v-if="scope === 'chatbot' && configured" :user="auth.user" compact />
       <div v-if="opening && !configured || loading" class="aito-initial-loading"><q-spinner color="primary"/> Preparando seu espaço…</div>
       <template v-else-if="configured">
-      <div ref="thread" class="aito-assistant-thread"><q-banner v-if="sharedAccount" dense rounded class="aito-shared-account" role="status"><template #avatar><q-icon name="policy"/></template>Você usa a conta OpenAI configurada pela administração. {{canExecute?'Ações seguem suas permissões e exigem revisão.':'Seu acesso permite conversar e consultar dados autorizados, sem executar alterações.'}}</q-banner>
+      <q-banner v-if="creditsBlocked" dense class="bg-amber-1 text-brown-10" role="status">
+        {{ auth.isCollaborator ? 'Solicite uma recarga de AitoTokens à administração.' : 'Recarregue AitoTokens para continuar usando os agentes.' }}
+        <template v-if="!auth.isCollaborator" #action><q-btn flat dense no-caps label="Recarregar Créditos" to="/aitotokens" @click="minimize" /></template>
+      </q-banner>
+      <div ref="thread" class="aito-assistant-thread"><q-banner v-if="sharedAccount" dense rounded class="aito-shared-account" role="status"><template #avatar><q-icon name="policy"/></template>{{managed ? 'Você usa os AitoTokens desta instalação.' : 'Você usa a conta OpenAI configurada pela administração.'}} {{canExecute?'Ações seguem suas permissões e exigem revisão.':'Seu acesso permite conversar e consultar dados autorizados, sem executar alterações.'}}</q-banner>
         <section v-if="!session.messages.length" class="aito-assistant-welcome">
           <span class="aito-welcome-mark"><q-icon :name="profile?.icon || 'auto_awesome'"/></span>
           <h2>{{ profile?.heading || 'Como posso ajudar no ' + branding.appName + '?' }}</h2>
@@ -311,7 +333,7 @@ onBeforeUnmount(() => {
         </section>
         <AssistantMessage v-for="message in session.messages" :key="message.id" :message="message"/>
         <section v-if="generatedFiles.length" class="aito-generated"><h3><q-icon name="folder_open"/> Arquivos desta conversa</h3><div><AssistantFile v-for="file in generatedFiles" :key="file.id" :file="file"/></div></section>
-        <AssistantActionReview v-for="action in pending" :key="action.id" :action="action" :busy="busy" :execute-allowed="canExecute && actionAllowed(action)" @confirm="confirmAction" @cancel="cancelAction" @revise="reviseAction"/>
+        <AssistantActionReview v-for="action in pending" :key="action.id" :action="action" :busy="busy" :execute-allowed="canExecute && !creditsBlocked && actionAllowed(action)" @confirm="confirmAction" @cancel="cancelAction" @revise="reviseAction"/>
         <div v-if="session.running" class="aito-running" role="status"><div><q-spinner-dots size="24px" color="primary"/><span>{{lastEvent?.message||'Analisando a solicitação…'}}</span><button type="button" @click="logsDialog=true">Acompanhar</button></div><q-linear-progress :value="progress/100" :indeterminate="!progress" color="primary" track-color="grey-2" rounded/></div>
         <q-banner v-if="error" rounded class="aito-error" role="alert"><template #avatar><q-icon name="info_outline"/></template>{{error}}<template #action><q-btn flat dense no-caps label="Atualizar" @click="loadState"/></template></q-banner>
       </div>
@@ -325,7 +347,7 @@ onBeforeUnmount(() => {
           <p v-if="attachmentError" class="aito-attachment-error" role="alert">{{attachmentError}}</p>
           <div v-if="recording" class="aito-recording"><span/><strong>Gravando {{Math.floor(recordSeconds/60)}}:{{String(recordSeconds%60).padStart(2,'0')}}</strong><q-btn flat dense no-caps label="Descartar" @click="cancelRecording"/><q-btn unelevated dense no-caps class="aito-primary" icon="stop" label="Transcrever" @click="toggleRecording"/></div>
           <q-input v-else ref="input" v-model="draft" type="textarea" autogrow borderless :disable="sending||transcribing" :placeholder="profile?.placeholder || 'Escreva sua mensagem…'" maxlength="30000" :aria-label="'Mensagem para ' + agentName" @keydown="keyDown" @blur="resetKeys"/>
-          <div class="aito-composer-controls"><input ref="fileInput" type="file" hidden multiple accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.html,.css" @change="attachFiles($event.target.files)"/><q-btn flat round dense icon="add" :loading="uploading" :disable="busy||recording" aria-label="Anexar arquivos ou prints" @click="fileInput?.click()"><q-tooltip>Selecionar vários arquivos · até 8 por mensagem, 20 MB cada e 40 MB por conversa</q-tooltip></q-btn><q-btn v-if="recordingSupported" flat round dense :icon="recording?'stop':'mic_none'" :loading="transcribing" :disable="busy" aria-label="Ditar mensagem" @click="toggleRecording"><q-tooltip>Ditar e revisar antes de enviar</q-tooltip></q-btn><q-space/><q-btn v-if="!configured" flat no-caps dense icon="key" label="Conectar chave" @click="openSettings"/><template v-else-if="canConfigure"><q-btn flat dense no-caps icon="bolt" :label="currentEffort" v-if="usesReasoning" class="aito-effort-button" :disable="busy"><q-popup-proxy class="aito-effort-popup" :style="theme"><section><strong>{{currentEffort}}</strong><small>{{selectedModel}}</small><q-slider v-model="effortIndex" :min="0" :max="effortOptions.length-1" :step="1" markers color="primary" @change="savePreference"/><div><span>Mais rápido</span><span>Mais profundo</span></div></section></q-popup-proxy></q-btn><q-btn flat dense round icon="expand_more" aria-label="Escolher modelo" @click="openSettings"/></template><span v-else class="aito-assigned-model">{{selectedModel}}</span><q-btn round unelevated class="aito-primary" icon="arrow_upward" :disable="busy||recording||(!draft.trim()&&!attachments.length)" :loading="sending" aria-label="Enviar para Aito I.A" @click="send"/></div>
+          <div class="aito-composer-controls"><input ref="fileInput" type="file" hidden multiple :accept="managed ? attachmentFormats : attachmentFormats + ',.docx,.xlsx,.pptx'" @change="attachFiles($event.target.files)"/><q-btn flat round dense icon="add" :loading="uploading" :disable="busy||recording" aria-label="Anexar arquivos ou prints" @click="fileInput?.click()"><q-tooltip>{{ managed ? 'Imagens, texto e PDFs de até 4 MB por arquivo' : 'Selecionar vários arquivos · até 8 por mensagem, 20 MB cada e 40 MB por conversa' }}</q-tooltip></q-btn><q-btn v-if="recordingSupported && !managed" flat round dense :icon="recording?'stop':'mic_none'" :loading="transcribing" :disable="busy" aria-label="Ditar mensagem" @click="toggleRecording"><q-tooltip>Ditar e revisar antes de enviar</q-tooltip></q-btn><q-space/><q-btn v-if="!configured" flat no-caps dense icon="key" label="Conectar chave" @click="openSettings"/><template v-else-if="canConfigure"><q-btn flat dense no-caps icon="bolt" :label="currentEffort" v-if="usesReasoning" class="aito-effort-button" :disable="busy"><q-popup-proxy class="aito-effort-popup" :style="theme"><section><strong>{{currentEffort}}</strong><small>{{selectedModel}}</small><q-slider v-model="effortIndex" :min="0" :max="effortOptions.length-1" :step="1" markers color="primary" @change="savePreference"/><div><span>Mais rápido</span><span>Mais profundo</span></div></section></q-popup-proxy></q-btn><q-btn flat dense round icon="expand_more" aria-label="Escolher modelo" @click="openSettings"/></template><span v-else class="aito-assigned-model">{{selectedModel}}</span><q-btn round unelevated class="aito-primary" icon="arrow_upward" :disable="creditsBlocked||busy||recording||(!draft.trim()&&!attachments.length)" :loading="sending" aria-label="Enviar para Aito I.A" @click="send"/></div>
         </div>
         <footer v-if="transcribing || session.usage.totalTokens"><span v-if="transcribing" role="status">Transcrevendo áudio…</span><span v-if="session.usage.totalTokens" class="aito-composer-cost" @click="logsDialog=true">{{formatAssistantTokens(session.usage.totalTokens)}} tokens</span></footer>
       </section>
@@ -343,10 +365,12 @@ onBeforeUnmount(() => {
 
   <AssistantSettingsDialog v-if="canConfigure" v-model="settingsDialog" @saved="onSettingsSaved" />
 
-  <q-dialog v-if="configured" v-model="logsDialog" :maximized="$q.screen.lt.md"><q-card class="aito-logs aito-assistant-shell" :style="theme"><header><div><strong>Atividade e consumo</strong><span>Aito I.A · atividade da conversa e consumo deste usuário</span></div><q-btn flat round dense icon="refresh" aria-label="Atualizar atividade" @click="loadState"/><q-btn flat round dense icon="close" aria-label="Fechar atividade" v-close-popup/></header><div class="aito-usage"><article><small>Total de tokens</small><strong>{{formatAssistantTokens(session.usage.totalTokens)}}</strong><span>{{formatAssistantTokens(session.usage.cachedTokens)}} em cache</span></article><article><small>Entrada / saída</small><strong>{{formatAssistantTokens(session.usage.inputTokens)}} / {{formatAssistantTokens(session.usage.outputTokens)}}</strong><span>Consumo retornado pela API</span></article><article><small>Estimativa em US$</small><strong>{{estimatedUsd}}</strong><span>{{session.usage.unpricedCalls?session.usage.unpricedCalls+' chamada(s) sem estimativa':'Estimativa de texto; confira os detalhes'}}</span></article></div><section class="aito-logs-progress"><div><span>{{session.running?'Trabalhando…':'Aguardando sua próxima solicitação'}}</span><b>{{progress}}%</b></div><q-linear-progress :value="progress/100" :indeterminate="session.running&&!progress" color="primary" rounded/></section><div class="aito-event-list"><article v-for="event in session.events.slice().reverse()" :key="event.id" :class="'aito-event--'+event.level"><q-icon :name="event.level==='error'?'error_outline':event.level==='success'?'check_circle':event.level==='warning'?'warning_amber':'fiber_manual_record'"/><div><span>{{event.message}}</span><time>{{new Date(event.at).toLocaleString('pt-BR')}}</time></div></article><p v-if="!session.events.length">As etapas das solicitações aparecerão aqui.</p></div><footer class="aito-log-note">O consumo fica registrado para este usuário mesmo ao limpar o contexto. A auditoria das ações executadas segue a retenção do sistema. Tokens e estimativas não representam a fatura da OpenAI.</footer></q-card></q-dialog>
+  <q-dialog v-if="configured" v-model="logsDialog" :maximized="$q.screen.lt.md"><q-card class="aito-logs aito-assistant-shell" :style="theme"><header><div><strong>Atividade e consumo</strong><span>Aito I.A · atividade da conversa e consumo deste usuário</span></div><q-btn flat round dense icon="refresh" aria-label="Atualizar atividade" @click="loadState"/><q-btn flat round dense icon="close" aria-label="Fechar atividade" v-close-popup/></header><div class="aito-usage"><article><small>Total de tokens</small><strong>{{formatAssistantTokens(session.usage.totalTokens)}}</strong><span>{{formatAssistantTokens(session.usage.cachedTokens)}} em cache</span></article><article><small>Entrada / saída</small><strong>{{formatAssistantTokens(session.usage.inputTokens)}} / {{formatAssistantTokens(session.usage.outputTokens)}}</strong><span>Consumo retornado pela API</span></article><article v-if="!managed"><small>Estimativa em US$</small><strong>{{estimatedUsd}}</strong><span>{{session.usage.unpricedCalls?session.usage.unpricedCalls+' chamada(s) sem estimativa':'Estimativa de texto; confira os detalhes'}}</span></article></div><section class="aito-logs-progress"><div><span>{{session.running?'Trabalhando…':'Aguardando sua próxima solicitação'}}</span><b>{{progress}}%</b></div><q-linear-progress :value="progress/100" :indeterminate="session.running&&!progress" color="primary" rounded/></section><div class="aito-event-list"><article v-for="event in session.events.slice().reverse()" :key="event.id" :class="'aito-event--'+event.level"><q-icon :name="event.level==='error'?'error_outline':event.level==='success'?'check_circle':event.level==='warning'?'warning_amber':'fiber_manual_record'"/><div><span>{{event.message}}</span><time>{{new Date(event.at).toLocaleString('pt-BR')}}</time></div></article><p v-if="!session.events.length">As etapas das solicitações aparecerão aqui.</p></div><footer class="aito-log-note">O consumo fica registrado para este usuário mesmo ao limpar o contexto. A auditoria das ações executadas segue a retenção do sistema. {{ managed ? 'Consulte o saldo em Recarregar Créditos.' : 'Tokens e estimativas não representam a fatura da OpenAI.' }}</footer></q-card></q-dialog>
 </template>
 
 <style scoped>
+.aito-assistant-header .aito-agent-name { display: flex; align-items: center; gap: 5px; }
+.aito-agent-name img { flex: none; }
 .aito-new-conversation-icon,.aito-header-action-icon{display:block;width:22px;height:22px;flex:none;overflow:visible}
 
 .aito-shared-account{background:var(--aito-tint);color:var(--aito-text);font-size:11px;line-height:1.7;margin-bottom:16px}.aito-shared-account .q-icon{color:var(--aito-accent)}.aito-assigned-model{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--aito-muted)}

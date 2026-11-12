@@ -230,8 +230,18 @@ function connect(params) {
   edges.value.push({ ...params, id, label: 'nova condição', markerEnd: MarkerType.ArrowClosed, data: { keywords: [], regex: '', matchMode: 'any', priority: 0, event: '' }, style: { stroke: '#249e85', strokeWidth: 2 } })
   selectedEdgeId.value = id; selectedNodeId.value = ''; previewOpen.value = false
 }
-function selectNode({ node }) { selectedNodeId.value = node.id; selectedEdgeId.value = ''; previewOpen.value = false }
-function selectEdge({ edge }) { selectedEdgeId.value = edge.id; selectedNodeId.value = ''; previewOpen.value = false }
+function selectNode({ node }) {
+  selectedNodeId.value = node.id
+  selectedEdgeId.value = ''
+  previewOpen.value = false
+  if (props.studio) inspectorOpen.value = true
+}
+function selectEdge({ edge }) {
+  selectedEdgeId.value = edge.id
+  selectedNodeId.value = ''
+  previewOpen.value = false
+  if (props.studio) inspectorOpen.value = true
+}
 function clearSelection() { selectedNodeId.value = ''; selectedEdgeId.value = '' }
 function removeSelected() {
   if (!mayEdit.value) return
@@ -341,7 +351,7 @@ function keydown(event) {
   if ((event.key === 'Delete' || event.key === 'Backspace') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName) && (selectedNode.value || selectedEdge.value)) { event.preventDefault(); removeSelected() }
 }
 
-onBeforeRouteLeave((_to, _from, next) => { if (!prototype && dirty.value && !confirm('Há alterações não salvas. Sair e descartá-las?')) next(false); else next() })
+onBeforeRouteLeave((_to, _from, next) => { if (!props.studio && !prototype && dirty.value && !confirm('Há alterações não salvas. Sair e descartá-las?')) next(false); else next() })
 onMounted(() => { load(); window.addEventListener('beforeunload', beforeUnload); window.addEventListener('keydown', keydown); window.addEventListener('keydown', escapeFullscreen, true) })
 onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('keydown', keydown); window.removeEventListener('keydown', escapeFullscreen, true) })
 </script>
@@ -382,7 +392,7 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
       </div>
       <div class="flow-canvas">
         <VueFlow :nodes-draggable="mayEdit" :nodes-connectable="mayEdit" :edges-updatable="mayEdit" @init="onFlowInit" v-model:nodes="nodes" v-model:edges="edges" :delete-key-code="null" fit-view-on-init :min-zoom="0.03" :max-zoom="1.8" @connect="connect" @node-click="selectNode" @edge-click="selectEdge" @pane-click="clearSelection">
-          <template #node-bot="props"><FlowNode v-bind="props" :assets="assets" :order-stage="meta.settings.order?.enabled ? Object.entries(meta.settings.order.nodes || {}).find(([, id]) => id === props.id)?.[0] : ''" :class="{ 'simulating-node': simulationNode === props.id }" /></template>
+          <template #node-bot="props"><FlowNode v-bind="props" :selected="props.selected || selectedNodeId === props.id" :assets="assets" :order-stage="meta.settings.order?.enabled ? Object.entries(meta.settings.order.nodes || {}).find(([, id]) => id === props.id)?.[0] : ''" :class="{ 'simulating-node': simulationNode === props.id }" /></template>
           <Background pattern-color="#cbdad6" :gap="22" />
           <MiniMap pannable zoomable node-color="#75d9c3" />
           <Controls />
@@ -477,6 +487,13 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
 </template>
 
 <style scoped>
+.flow-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-path),
+.studio-graph :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
+  stroke: #007c64 !important;
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 4px #43dfbc);
+}
+
 .permission-fields{border:0;padding:0;margin:0;min-width:0}.tool-button:disabled{opacity:.4;cursor:default}
 .builder-page{max-width:none}.builder-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}.builder-head>div:nth-child(2){flex:1}.builder-head span{display:block;color:#70827d;font-size:.68rem}.title-input{width:min(520px,100%);border:0;background:transparent;font:800 1.25rem Inter,'Segoe UI',sans-serif;outline:none}.validation{margin-bottom:10px;padding:9px 13px;border:1px solid #eedcad;border-radius:10px;color:#795e16;background:#fffaf0;font-size:.75rem}.validation.danger{border-color:#f3c1c8;color:#a82d40;background:#fff2f4}.builder-shell{display:grid;height:calc(100vh - 170px);min-height:680px;grid-template-columns:minmax(0,1fr) 390px;grid-template-rows:auto 1fr;overflow:hidden}.canvas-toolbar{display:flex;align-items:center;gap:6px;padding:9px;border-bottom:1px solid var(--line);grid-column:1;overflow:visible}.tool-button{position:relative;min-height:36px;padding:0 11px;border:1px solid var(--line);border-radius:11px;color:#17342e;background:white;font-size:.7rem;font-weight:750}.tool-button:hover{border-color:#45b89f;background:#f3fcf9}.tool-button.extra{color:#586e68;background:#f8fbfa}.tool-button:hover::after{position:absolute;top:44px;left:0;z-index:40;width:210px;padding:9px;border-radius:9px;color:white;background:#173d35;box-shadow:0 8px 20px rgba(0,0,0,.18);content:attr(data-help);font-size:.65rem;font-weight:500;line-height:1.4;text-align:left}.toolbar-spacer{flex:1}.canvas-toolbar .icon-button{flex:0 0 36px;width:36px;height:36px}.icon-button.active{color:white;background:#147561}.icon-button:disabled{opacity:.35}.delete-button{color:#c7354b}.flow-canvas{min-width:0;background:#f7faf9}.inspector{grid-column:2;grid-row:1/3;padding:20px;border-left:1px solid var(--line);overflow-y:auto;background:#fff}.inspector h2{margin:6px 0 18px;font:800 1.05rem Inter,'Segoe UI',sans-serif}.inspector .field{margin-bottom:13px}.inspector-title{display:flex;align-items:flex-start;justify-content:space-between}.two-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px;align-items:center}.checks{display:flex;gap:14px}.checks.compact{align-items:flex-start;flex-direction:column;gap:6px;font-size:.67rem}.tip{padding:10px;border-radius:10px;color:#567069;background:#eef8f5;font-size:.7rem;line-height:1.45}.conflict textarea{border-color:#d6485d;background:#fff8f9}.conflict small{color:#c1364a}.messages-head{display:flex;align-items:center;justify-content:space-between;margin:17px 0 9px}.messages-head b,.messages-head small{display:block}.messages-head b{font-size:.78rem}.messages-head small{margin-top:2px;color:#83928e;font-size:.6rem}.add-output{display:flex;gap:4px}.add-output button,.subhead button{padding:5px 7px;border:1px solid var(--line);border-radius:7px;color:#176d5d;background:white;font-size:.6rem}.output-card{display:grid;gap:8px;margin-bottom:10px;padding:10px;border:1px solid #dfe9e6;border-radius:12px;background:#f9fcfb}.output-card header{display:flex;align-items:center;gap:6px}.output-card header span{flex:1;color:#5e736d;font-size:.64rem;font-weight:750}.output-card header select{width:auto;padding:4px 7px;border:1px solid var(--line);border-radius:7px;font-size:.62rem}.output-card header button,.header-row button{border:0;color:#ba3549;background:transparent}.output-card textarea,.output-card input,.output-card>select,.method-url input,.method-url select,.header-row input{width:100%;padding:8px 9px;border:1px solid #d7e3df;border-radius:8px;background:white;font-size:.7rem}.output-card textarea{min-height:86px;resize:vertical}.inline-upload{display:inline-flex;justify-content:center;padding:7px;border:1px dashed #8fcabb;border-radius:8px;color:#17715f;background:#f1fbf8;font-size:.65rem;cursor:pointer}.inline-upload input{display:none}.method-url{display:grid;grid-template-columns:92px 1fr;gap:6px;margin-bottom:12px}.subhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:.7rem}.header-row{display:grid;grid-template-columns:.8fr 1.2fr auto;gap:5px;margin-bottom:6px}.code-input{min-height:130px!important;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.68rem}.toggle.compact{margin:4px 0 13px;font-size:.7rem}.test-button{width:100%}.test-result,.data-preview{max-height:310px;padding:11px;border-radius:10px;overflow:auto;color:#d8fff6;background:#12342d;font-size:.62rem;line-height:1.45;white-space:pre-wrap}.test-result.failed{color:#ffe2e6;background:#4b1f27}.data-preview{max-height:calc(100vh - 290px)}.channel-only{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:11px;border:1px solid #cce8e1;border-radius:11px;background:#f0fbf8}.channel-only>span{font-size:1.2rem}.channel-only b,.channel-only small{display:block}.channel-only b{font-size:.72rem}.channel-only small{color:#72837e;font-size:.62rem}.full-button{width:100%}@media(max-width:1150px){.builder-shell{grid-template-columns:minmax(0,1fr) 340px}}@media(max-width:900px){.builder-shell{height:auto;grid-template-columns:1fr;grid-template-rows:auto 560px auto}.canvas-toolbar{grid-column:1;flex-wrap:wrap;overflow:visible}.toolbar-spacer{flex:1 1 12px}.tool-button:hover::after{display:none}.flow-canvas{grid-row:2}.flow-canvas :deep(.vue-flow__minimap){display:none}.inspector{grid-column:1;grid-row:3;max-height:none;border-top:1px solid var(--line);border-left:0}.builder-head{align-items:stretch;flex-wrap:wrap}.builder-head>div:nth-child(2){min-width:60%}}@media(max-width:600px){.builder-shell{grid-template-rows:auto 470px auto}.builder-head .toggle{order:4}.canvas-toolbar{align-items:stretch}.toolbar-spacer{display:none}.two-fields,.method-url{grid-template-columns:1fr}.inspector{padding:15px}}
 </style>
@@ -546,6 +563,12 @@ onBeforeUnmount(() => { clearTimeout(historyTimer); window.removeEventListener('
   overflow-wrap: anywhere;
   z-index: 4601;
 }
+.inspector--studio .field { display: grid; gap: 5px; }
+.inspector--studio .field label { color: #31594c; font-size: .8rem; font-weight: 650; }
+.inspector--studio .field input,
+.inspector--studio .field select,
+.inspector--studio .field textarea { width: 100%; padding: 9px 11px; border: 1px solid #c9ddd3; border-radius: 9px; background: #f9fdfb; color: #152f29; }
+.inspector--studio .field :focus-visible { outline: 2px solid #11896f; outline-offset: 2px; }
 .inspector--studio .inspector-close { display: inline-grid; float: right; margin-left: 8px; }
 .inspector--studio .inspector-title > div { min-width: 0; }
 .inspector--studio .two-fields > *, .inspector--studio .method-url > *, .inspector--studio .header-row > * { min-width: 0; }

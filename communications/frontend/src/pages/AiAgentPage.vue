@@ -1,9 +1,18 @@
 <script setup>
 import { fabMeta } from '@quasar/extras/fontawesome-v6'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import AssistantSettingsDialog from '../components/AssistantSettingsDialog.vue'
+import { assistantApi } from '../services/admin-assistant.js'
 
 const settings = ref(false)
+const canConfigure = ref(false)
+const managed = ref(false)
+
+onMounted(async () => {
+  const value = await assistantApi.config().catch(() => null)
+  canConfigure.value = Boolean(value?.canConfigure)
+  managed.value = Boolean(value?.managed)
+})
 const workspaces = [
   {
     name: 'ai-campaigns', icon: fabMeta, marker: '01 · Campanhas',
@@ -28,7 +37,8 @@ const workspaces = [
       <div class="agent-intro__label"><q-icon name="auto_awesome" /> Aito I.A</div>
       <h1>Agente de IA</h1>
       <p>Escolha um agente para montar campanhas ou criar o atendimento pelo WhatsApp.</p>
-      <q-btn outline no-caps icon="tune" label="Configurar OpenAI" @click="settings = true" />
+      <q-btn v-if="canConfigure" outline no-caps icon="tune" label="Configurar OpenAI" @click="settings = true" />
+      <q-btn v-else-if="managed" outline no-caps icon="auto_awesome" label="AitoTokens" to="/aitotokens" />
       <div class="agent-intro__graphic" aria-hidden="true"><q-icon name="auto_awesome" /></div>
     </section>
     <div class="agent-workspaces">
@@ -36,13 +46,13 @@ const workspaces = [
         <span class="agent-workspace__icon"><q-icon :name="item.icon" /></span>
         <span class="agent-workspace__marker">{{ item.marker }}</span>
         <h2>{{ item.title }}</h2>
-        <div class="agent-workspace__badges"><q-badge v-for="badge in item.badges" :key="badge" outline :label="badge" /></div>
+        <div class="agent-workspace__badges"><q-badge v-for="badge in item.badges" :key="badge" :label="badge" /></div>
         <p>{{ item.description }}</p>
         <ul><li v-for="step in item.steps" :key="step"><q-icon name="check" />{{ step }}</li></ul>
         <q-btn unelevated no-caps :label="item.title" icon-right="arrow_forward" :to="{ name: item.name }" />
       </article>
     </div>
-    <AssistantSettingsDialog v-model="settings" />
+    <AssistantSettingsDialog v-if="canConfigure" v-model="settings" />
   </q-page>
 </template>
 
@@ -60,7 +70,8 @@ const workspaces = [
 .agent-workspace__icon{display:grid;place-items:center;width:50px;height:50px;font-size:25px;background:#ffffffaa;color:var(--agent-accent);border-radius:15px;margin-bottom:18px}
 .agent-workspace__marker{color:#526d65}
 .agent-workspace h2{font-size:clamp(1.35rem,3vw,2.1rem);line-height:1.15;font-weight:750;margin:8px 0 12px}
-.agent-workspace__badges{display:flex;flex-wrap:wrap;gap:7px;color:var(--agent-accent)}
+.agent-workspace__badges{display:flex;flex-wrap:wrap;gap:7px}
+.agent-workspace__badges .q-badge{color:var(--agent-accent);background:#fff;border:1px solid var(--agent-border);font-weight:650}
 .agent-workspace p{color:#526d65;line-height:1.6;margin:16px 0}
 .agent-workspace ul{list-style:none;padding:0;margin:0 0 22px;display:grid;gap:8px;color:#38574d}
 .agent-workspace li{display:flex;gap:8px;align-items:center}

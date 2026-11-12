@@ -14,6 +14,7 @@ const config = reactive({ apiKey: '', keyMode: 'new', keySourceId: null, model: 
 const priceInput = reactive({ enabled: false, input: '', output: '', cached: '' })
 const configured = ref(false), models = ref([]), currentSource = ref(null), modelsWarning = ref(''), modelsStatus = ref('not_loaded')
 const hasCustomPricing = ref(false)
+const canImportKey = ref(false)
 const configError = ref(''), saving = ref(false), loading = ref(false)
 const keySources = ref([]), sourcesLoading = ref(false), sourceError = ref('')
 const keySourceOptions = computed(() => keySources.value.map(item => ({ ...item, value: item.id, disable: !item.available })))
@@ -27,6 +28,7 @@ const effortOptions = computed(() => [
 
 function applyConfig(value) {
   configured.value = Boolean(value.configured)
+  canImportKey.value = value.canImportKey !== false
   models.value = value.models || []
   currentSource.value = value.keySource || null
   modelsStatus.value = value.modelsStatus || 'not_loaded'
@@ -65,7 +67,7 @@ async function saveConfig() {
   saving.value = true
   try {
     if (!configured.value && config.keyMode === 'new' && !config.apiKey.trim()) {
-      throw Error('Informe uma nova chave OpenAI ou importe uma chave cadastrada.')
+      throw Error(canImportKey.value ? 'Informe uma nova chave OpenAI ou importe uma chave cadastrada.' : 'Informe uma chave OpenAI dedicada à Aito I.A.')
     }
     const saved = await assistantApi.saveConfig(assistantConfigInput(config, priceInput, hasCustomPricing.value))
     applyConfig(saved)
@@ -95,7 +97,7 @@ watch(visible, value => {
   config.apiKey = ''
   config.keyMode = 'new'
   config.keySourceId = null
-  if (value) { void loadConfig(); void loadSources() }
+  if (value) void loadConfig().then(() => { if (canImportKey.value && visible.value) void loadSources() })
 })
 watch(() => config.keyMode, () => { config.apiKey = ''; config.keySourceId = null })
 watch(() => config.model, () => {
@@ -110,7 +112,7 @@ watch(() => config.model, () => {
       <q-form @submit="saveConfig">
         <q-card-section>
           <q-banner v-if="configError" rounded class="aito-error" role="alert">{{configError}}</q-banner>
-          <div class="aito-key-methods" aria-label="Origem da chave OpenAI">
+          <div v-if="canImportKey" class="aito-key-methods" aria-label="Origem da chave OpenAI">
             <button type="button" :class="{'is-selected':config.keyMode==='new'}" @click="config.keyMode='new'"><q-icon name="add_circle_outline"/><strong>{{configured?'Manter ou trocar chave':'Adicionar nova chave'}}</strong><small>Usar um token da sua conta OpenAI</small></button>
             <button type="button" :class="{'is-selected':config.keyMode==='import'}" @click="config.keyMode='import'"><q-icon name="key"/><strong>Importar chave cadastrada</strong><small>Reutilizar uma integração deste sistema</small></button>
           </div>

@@ -7,8 +7,8 @@ export function normalizeProductTypes(value) {
 }
 export function defaultProductCatalog() {
   return {
-    desktop: { productType: 'desktop', title: 'Kit AitoNotify + WhatsApp BotBuilder · Desktop', priceCents: 199700, originalPriceCents: 199700,desktopPlans:[{months:1,label:'Mensal',priceCents:11000,enabled:true},{months:6,label:'Semestral',priceCents:59700,enabled:true},{months:12,label:'Anual',priceCents:199700,enabled:true}],durationMonths:12, available: false, durationDays: null, permanent: false, media: {} },
-    cloud: { productType: 'cloud', title: 'AitoNotify + WhatsApp BotBuilder · Código-fonte Whitelabel', priceCents: 199700, originalPriceCents: 249000, available: false, durationDays: null, permanent: true, media: {} },
+    desktop: { productType: 'desktop', title: 'AitoIA + Kit AitoNotify e WhatsApp Bot Builder · Desktop', priceCents: 199700, originalPriceCents: 199700,desktopPlans:[{months:1,label:'Mensal',priceCents:11000,enabled:true},{months:6,label:'Semestral',priceCents:59700,enabled:true},{months:12,label:'Anual',priceCents:199700,enabled:true}],durationMonths:12, available: false, durationDays: null, permanent: false, media: {} },
+    cloud: { productType: 'cloud', title: 'AitoIA + Kit AitoNotify e WhatsApp Bot Builder · Código-fonte Whitelabel', priceCents: 199700, originalPriceCents: 249000, available: false, durationDays: null, permanent: true, media: {} },
   }
 }
 export function normalizeProductCatalog(payload = {}) {

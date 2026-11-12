@@ -1,5 +1,5 @@
 <script setup>
-defineProps({ appName: { type: String, required: true }, error: String, canConfigure: { type: Boolean, default: true }, sharedAccount: Boolean })
+defineProps({ appName: { type: String, required: true }, error: String, canConfigure: { type: Boolean, default: true }, canImportKey: { type: Boolean, default: true }, sharedAccount: Boolean })
 defineEmits(['configure', 'retry', 'close'])
 const abilities = [
   { icon: 'school', title: 'Entende o seu sistema', text: 'Explica canais, campos, regras e configurações do seu painel.' },
@@ -13,7 +13,7 @@ const abilities = [
   <q-card class="assistant-introduction">
     <q-btn class="assistant-introduction__close" flat round dense icon="close" aria-label="Fechar apresentação" @click="$emit('close')"/>
     <section class="assistant-introduction__hero">
-      <div class="assistant-introduction__robot"><img src="/comunicacao/app/ia.gif" alt="Robô Aito I.A"/></div>
+      <div class="assistant-introduction__robot"><img src="/ia.gif" alt="Robô Aito I.A"/></div>
       <span class="assistant-introduction__eyebrow">UM ASSISTENTE DENTRO DO SEU PAINEL</span>
       <h2>Conheça a Aito I.A</h2>
       <p>Seu agente para entender, criar e agir no <strong>{{ appName }}</strong>. Conte o que você precisa em uma conversa simples.</p>
@@ -24,7 +24,11 @@ const abilities = [
     <div class="assistant-introduction__review"><q-icon name="fact_check"/><p><strong>Você acompanha e decide.</strong> Antes de alterar dados ou enviar mensagens, o agente apresenta a ação para sua confirmação. Remoções exigem uma frase de segurança.</p></div>
     <q-banner v-if="error" rounded class="assistant-introduction__error" role="alert">{{error}}<template #action><q-btn flat no-caps dense label="Tentar novamente" @click="$emit('retry')"/></template></q-banner>
     <footer>
-      <div class="assistant-introduction__account"><q-icon name="key"/><p>{{canConfigure?'Para começar, conecte uma chave OpenAI sua ou importe uma já cadastrada neste sistema. O uso é cobrado pela OpenAI na conta da chave escolhida.':'A administração precisa configurar a chave OpenAI da instalação antes do seu acesso. O consumo usa a conta da chave configurada; seus dados e ações continuam limitados às permissões do seu perfil.'}}</p></div>
+      <div class="assistant-introduction__account">
+        <q-icon name="key"/>
+        <p v-if="canConfigure">{{ canImportKey ? 'Conecte uma chave OpenAI própria ou importe uma já cadastrada.' : 'Conecte uma chave OpenAI dedicada aos agentes.' }} O uso é cobrado pela OpenAI na conta associada.</p>
+        <p v-else>A administração precisa configurar o provedor de IA da instalação. Você poderá usar o agente conforme as permissões do seu perfil.</p>
+      </div>
       <q-btn v-if="canConfigure" unelevated no-caps icon="arrow_forward" label="Configurar meu agente" class="assistant-introduction__start" @click="$emit('configure')"/>
       <q-btn v-else unelevated no-caps label="Entendi" class="assistant-introduction__start" @click="$emit('close')"/>
     </footer>

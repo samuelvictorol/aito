@@ -23,6 +23,14 @@ export const ASSISTANT_SHORTCUTS = Object.freeze([
 
 export const ASSISTANT_CONFIG_EVENT = 'aito-assistant:configuration'
 export const ASSISTANT_SESSION_API = Symbol('assistant-session-api')
+export const assistantCreditsApi = {
+  status: () => http.get(ROOT + '/credits').then(unwrap),
+  events: signal => http.get(ROOT + '/credits/events', { adapter: 'fetch', responseType: 'stream', timeout: 0, signal }).then(response => response.data),
+  history: offset => http.get(ROOT + '/credits/history', { params: { offset } }).then(unwrap),
+  checkout: usdCents => http.post(ROOT + '/credits/checkout', { usdCents }).then(unwrap),
+  confirm: orderNsu => http.post(ROOT + '/credits/confirm', { orderNsu }).then(unwrap),
+  setProvider: provider => http.put(ROOT + '/credits/provider', { provider }).then(unwrap),
+}
 
 export function createAssistantSessionApi(scope = '') {
   const params = scope ? { scope } : undefined
@@ -110,8 +118,9 @@ export function assistantSafeDetails(value, depth = 0) {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, /token|password|secret|api.?key|authorization|credential/i.test(key) ? '•••••• (protegido)' : assistantSafeDetails(item, depth + 1)]))
 }
 
-export function assistantAttachmentError(file) {
+export function assistantAttachmentError(file, managed = false) {
   if (!file || !file.size) return 'O arquivo está vazio.'
+  if (managed && (file.size > 4 * 1024 * 1024 || !/\.(png|jpe?g|webp|gif|pdf|txt|md|csv|json|html|css)$/i.test(file.name || ''))) return 'Use imagens, arquivos de texto ou PDFs de até 4 MB.'
   if (file.size > 20 * 1024 * 1024) return 'Use arquivos de até 20 MB.'
   if (!/\.(png|jpe?g|webp|gif|pdf|txt|md|csv|json|docx|xlsx|pptx|html|css)$/i.test(file.name || '')) return 'Use uma imagem, PDF, documento, planilha, TXT, Markdown, JSON, HTML ou CSS.'
   return ''

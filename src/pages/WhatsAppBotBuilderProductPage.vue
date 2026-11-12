@@ -38,9 +38,9 @@ const demos = [
   { key: 'flow', tab: 'Fluxos', title: 'Do desenho à conversa', copy: 'Conecte as etapas do bot e teste o caminho do cliente antes de publicar.', media: 'botFlow', image: '/whatsapp-solutions/experience/botbuilder-clinic.webp' },
 ]
 const modules = [
+  { id: 'agentes', tone: 'gold', icon: 'mdi-auto-fix', title: 'Aito IA', text: 'Agente para campanhas, atendimento e diagnóstico.' },
   { id: 'notificacoes', tone: 'blue', icon: 'mdi-bullhorn-outline', title: 'AitoNotify', text: 'Disparos em massa em vários canais.' },
-  { id: 'chatbots', tone: 'green', icon: 'mdi-qrcode', title: 'WhatsApp BotBuilder', text: 'Chatbots e atendimento em equipe.' },
-  { id: 'agentes', tone: 'gold', icon: 'mdi-auto-fix', title: 'Aito I.A.', text: 'Agentes que operam o painel com você.' },
+  { id: 'chatbots', tone: 'green', icon: 'mdi-qrcode', title: 'WhatsApp Bot Builder', text: 'Chatbots e atendimento em equipe.' },
 ]
 
 const seo = computed(() => desktopSolutionsSeo(offer.value))
@@ -123,8 +123,8 @@ function scrollToProductSection(event) {
               headline="Da primeira mensagem ao próximo passo." description="Notificações, atendimento e automação em um só aplicativo." />
           </div>
           <div class="copy">
-            <span class="kit-label">AITONOTIFY + WHATSAPP BOTBUILDER</span>
-            <h1>Atenda melhor.<br /><em>Avise no canal certo.</em></h1>
+            <span class="kit-label">AITOIA + KIT AITONOTIFY E WHATSAPP BOT BUILDER</span>
+            <h1>Aito IA para campanhas<br /><em>e atendimento.</em></h1>
             <p>{{ desktopSolutions.intro }}</p>
             <div class="hero-actions">
               <a class="trial-cta" href="#teste-desktop"><q-icon name="mdi-download-outline" /><span>Experimentar 7 dias</span></a>
@@ -138,7 +138,7 @@ function scrollToProductSection(event) {
         <section id="pacote" class="solution-package">
           <div class="section-heading">
             <span class="eyebrow">TRÊS FERRAMENTAS NO MESMO APLICATIVO</span>
-            <h2>Menos abas. <em>Mais trabalho resolvido.</em></h2>
+            <h2>O agente e as ferramentas <em>da sua operação.</em></h2>
           </div>
           <div class="module-links">
             <a v-for="module in modules" :key="module.id" :href="'#' + module.id" :class="'module-link--' + module.tone">
@@ -178,7 +178,7 @@ function scrollToProductSection(event) {
           <div>
             <span class="eyebrow">ATENDIMENTO NO NAVEGADOR</span>
             <h2>Seu time também atende <em>pelo celular.</em></h2>
-            <p>O aplicativo roda no seu Windows. Com acesso remoto HTTPS configurado, os colaboradores usam o painel pelo navegador e entram com seus próprios logins.</p>
+            <p>Mantenha o Desktop aberto e ative o acesso em WhatsApp da equipe, na área do cliente. Cada colaborador entra pelo navegador com seu próprio login e usa o WhatsApp já conectado. Sem configurar ngrok.</p>
             <small>O computador precisa ficar ligado e com o aplicativo em execução.</small>
           </div>
           <div class="mobile-frames">
@@ -211,7 +211,7 @@ function scrollToProductSection(event) {
             <button class="trial-cta" type="button" @click="startTrial"><q-icon name="mdi-download-outline" /> Começar meu teste</button>
             <small>Sem cartão. Uma oferta por novo cliente elegível, sem licença ativa. Os 7 dias começam quando você resgata.</small>
           </div>
-          <img src="/whatsapp-solutions/product-kit.webp" alt="Kit AitoNotify + WhatsApp BotBuilder" width="128" height="192" loading="lazy" />
+          <img src="/whatsapp-solutions/product-kit.webp" alt="AitoIA + Kit AitoNotify e WhatsApp Bot Builder" width="128" height="192" loading="lazy" />
         </section>
 
         <section id="planos" class="solution-plans">
@@ -227,7 +227,7 @@ function scrollToProductSection(event) {
                 <div><span class="plan-chip">KIT DESKTOP</span><h3>{{ plan.label }}</h3><span class="kit-plan-platform"><q-icon name="mdi-microsoft-windows" /> Windows 10 e 11</span></div>
               </div>
               <div class="price"><strong>{{ money(plan.priceCents) }}</strong><span>{{ plan.months === 1 ? '1 mês' : plan.months + ' meses' }} · Uma instalação ativa</span></div>
-              <ul><li>WhatsApp oficial, BotBuilder e atendimento em equipe.</li><li>Campanhas no Gmail, Telegram e WhatsApp oficial.</li><li>Agentes de IA, instalador e guia de configuração.</li></ul>
+              <ul><li>Aito IA para preparar campanhas, fluxos e diagnósticos.</li><li>Disparos pelo WhatsApp oficial, Gmail e Telegram.</li><li>WhatsApp Web, Bot Builder e atendimento em equipe.</li></ul>
               <q-btn unelevated no-caps color="teal-6" label="Adicionar ao carrinho" icon="mdi-cart-plus"
                 :disable="!offer.available || !plan.enabled" @click="buy(plan.months)" />
               <small>Pagamento pela InfinitePay. Download após a confirmação.</small>
@@ -257,7 +257,7 @@ function scrollToProductSection(event) {
           <details v-for="item in desktopSolutionsFaq" :key="item.question"><summary>{{ item.question }}</summary><p>{{ item.answer }}</p></details>
         </section>
 
-        <footer>Kit AitoNotify + WhatsApp BotBuilder · AitoSoftwares <router-link :to="productsPath">Já comprei: acessar meus produtos →</router-link></footer>
+        <footer>AitoIA + Kit AitoNotify e WhatsApp Bot Builder · AitoSoftwares <router-link :to="productsPath">Já comprei: acessar meus produtos →</router-link></footer>
         <KitProductCart ref="checkout" product-type="desktop" @catalog="value => catalog = value" />
         <AuthDialog v-model="trialAuthOpen" initial-mode="register" audience="user" :return-path="productsPath"
           :show-project-login="false" @authenticated="openProducts" />

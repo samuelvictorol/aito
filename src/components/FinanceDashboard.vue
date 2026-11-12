@@ -8,7 +8,7 @@
     <div class="finance-dashboard__stats">
       <article><span>Total</span><strong>{{ totalNativeText }}</strong><small>{{ totalConversionText }}</small></article>
       <article><span>Projecao recorrente · proximo mes</span><strong>{{ projectionNativeText }}</strong><small>{{ projectionConversionText }}</small></article>
-      <article><span>Conversao semanal</span><strong>US$ 1 = {{ money(exchangeRate, 'BRL') }}</strong><small>{{ exchangeLabel }}</small></article>
+      <article><span>Cotação USD/BRL</span><strong>US$ 1 = {{ money(exchangeRate, 'BRL') }}</strong><small>{{ exchangeLabel }}</small></article>
     </div>
 
     <div v-if="activeFilter" class="finance-dashboard__filter">
@@ -118,8 +118,10 @@ const activeFilter = computed(() => {
   return ''
 })
 const exchangeLabel = computed(() => {
-  const date = summary.value.exchangeRate?.date ? formatDate(summary.value.exchangeRate.date) : 'sem data'
-  return `${summary.value.exchangeRate?.stale ? 'Ultimo valor disponivel' : `Atualizado em ${date}`} · renova semanalmente`
+  const quote = summary.value.exchangeRate
+  const date = quote?.date ? formatDate(quote.date) : 'sem data'
+  const freshness = quote?.stale ? 'Último valor disponível' : `Atualizado em ${date}`
+  return `${freshness} · ${quote?.autoRefresh === false ? 'cotação manual' : 'busca diária'}`
 })
 
 function calculateFinancials(items, rate) {

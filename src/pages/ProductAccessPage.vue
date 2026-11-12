@@ -72,7 +72,7 @@ onBeforeUnmount(() => clearInterval(clock))
 <template>
   <q-layout><q-page-container><q-page class="purchase-portal"><div class="purchase-shell">
     <header><router-link :to="landingLink"><img src="/aito-logo-restored.png" alt="" width="36" height="36"/><strong>AitoSoftwares</strong></router-link><span><q-icon name="mdi-lock-check-outline"/> Acesso privado à compra</span></header>
-    <main><div class="purchase-intro"><span class="eyebrow">KIT AITONOTIFY + WHATSAPP BOTBUILDER</span><h1>Sua operação começa aqui.</h1><p>{{message}}</p><q-linear-progress v-if="busy && !product" indeterminate color="teal"/><q-btn v-if="!product && !busy" flat no-caps color="teal" icon="mdi-refresh" label="Tentar novamente" @click="load"/></div>
+    <main><div class="purchase-intro"><span class="eyebrow">AITOIA + KIT AITONOTIFY E WHATSAPP BOT BUILDER</span><h1>Sua operação começa aqui.</h1><p>{{message}}</p><q-linear-progress v-if="busy && !product" indeterminate color="teal"/><q-btn v-if="!product && !busy" flat no-caps color="teal" icon="mdi-refresh" label="Tentar novamente" @click="load"/></div>
       <div v-if="product" class="purchase-grid">
         <article class="purchase-card authorized-packages">
           <q-icon :name="packageIcon(productType)" size="39px" color="teal"/>

@@ -1,5 +1,5 @@
 // Shared ordering and grouping for the real panel and the public demonstration.
-export function createAppNavigation({invitesAvailable=true,inviteAccessExplanation='',usefulLinks=[],channelEnabled=()=>true}={}) {
+export function createAppNavigation({invitesAvailable=true,inviteAccessExplanation='',usefulLinks=[],channelEnabled=()=>true,creditsAvailable=false}={}) {
   return [
     {key: 'home',label: 'Início',icon: 'space_dashboard',children:[
       {label: 'Configurações',icon: 'settings',to: '/',available:true},
@@ -20,6 +20,7 @@ export function createAppNavigation({invitesAvailable=true,inviteAccessExplanati
     {label: 'Telegram',icon: 'bi-telegram',to: '/telegram',available:channelEnabled('telegram'),channelColor:'telegram'},
     {label: 'Gmail',icon: 'mdi-gmail',to: '/email',available:channelEnabled('email'),channelColor:'gmail'},
     {separator:true,label: 'Úteis'},
+    ...(creditsAvailable ? [{ label: 'Recarregar Créditos', icon: 'img:' + import.meta.env.BASE_URL + 'aitotokens.svg', trailingIcon: 'auto_awesome', to: '/aitotokens', available: true }] : []),
     {label: 'Ajuda',caption: 'Guias e primeiros passos',icon: 'help_center',to: '/help',available:true},
     ...usefulLinks,
     {key:'governance',label:'Governança',icon:'account_balance',children:[
