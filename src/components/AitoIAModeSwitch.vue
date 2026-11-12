@@ -1,17 +1,24 @@
 <script setup>
 import { ref } from 'vue'
 
-defineProps({ studio: Boolean, busy: Boolean })
+defineProps({
+  mode: { type: String, default: 'chat' },
+  busy: Boolean,
+})
 const emit = defineEmits(['chat-video'])
 const open = ref(false)
 </script>
 
 <template>
   <nav class="aito-mode" aria-label="Ferramentas AitoIA">
-    <router-link v-if="studio && !busy" :to="{ name: 'aito-ia' }"><q-icon name="mdi-message-text-outline" /> Chat</router-link>
-    <span v-else :class="{ 'is-current': !studio }" :aria-current="!studio ? 'page' : undefined"><q-icon name="mdi-message-text-outline" /> Chat</span>
-    <span v-if="studio" class="is-current" aria-current="page"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo</span>
-    <button v-else type="button" :disabled="busy" @click="open = true"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo</button>
+    <router-link v-if="mode !== 'chat' && !busy" :to="{ name: 'aito-ia' }"><q-icon name="mdi-message-text-outline" /> Chat</router-link>
+    <span v-else :class="{ 'is-current': mode === 'chat' }" :aria-current="mode === 'chat' ? 'page' : undefined"><q-icon name="mdi-message-text-outline" /> Chat</span>
+    <span v-if="mode === 'video'" class="is-current" aria-current="page"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo</span>
+    <button v-else-if="mode === 'chat'" type="button" :disabled="busy" @click="open = true"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo</button>
+    <router-link v-else-if="!busy" :to="{ name: 'aito-ia-video-studio' }"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo</router-link>
+    <span v-else aria-disabled="true"><q-icon name="mdi-movie-open-play-outline" /> Estúdio de vídeo</span>
+    <router-link v-if="mode !== 'marketing' && !busy" :to="{ name: 'aito-ia-marketing-studio' }"><q-icon name="mdi-image-multiple-outline" /> Estúdio de Marketing</router-link>
+    <span v-else :class="{ 'is-current': mode === 'marketing' }" :aria-current="mode === 'marketing' ? 'page' : undefined"><q-icon name="mdi-image-multiple-outline" /> Estúdio de Marketing</span>
   </nav>
   <q-dialog v-model="open">
     <q-card dark class="aito-ai-theme aito-mode-dialog">
@@ -40,5 +47,5 @@ const open = ref(false)
 .aito-mode-dialog__actions :is(button, a):hover { border-color: var(--aito-ai-accent); }
 .aito-mode-dialog__actions span { color: var(--aito-ai-muted); font-size: .83rem; }
 .aito-mode-dialog__close { padding: 6px; border: 0; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
-@media (max-width: 520px) { .aito-mode :is(a, span, button) { gap: 4px; padding-inline: 5px; font-size: .69rem; } .aito-mode :deep(.q-icon) { font-size: 14px; } }
+@media (max-width: 520px) { .aito-mode :is(a, span, button) { gap: 4px; padding-inline: 4px; font-size: .69rem; } .aito-mode :deep(.q-icon) { font-size: 14px; } }
 </style>

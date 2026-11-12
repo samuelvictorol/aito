@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import AuthDialog from 'components/AuthDialog.vue'
 import AitoIAWallet from 'components/AitoIAWallet.vue'
+import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
 import { aitoTokens, brl, useAitoIA } from 'src/composables/useAitoIA'
 import 'src/css/aitoia-theme.css'
 
@@ -100,16 +101,17 @@ useMeta({
         <p class="tokens-landing__tag">Créditos de IA</p>
         <h1 id="aitotokens-title">Aito<span>Tokens</span></h1>
         <p class="tokens-landing__lead">Converse, crie vídeos e conecte seus projetos com saldo pré-pago.</p>
-        <p>Recarregue em reais e use seu saldo no chat AitoIA ou no Estúdio de vídeo.</p>
+        <p>Recarregue em reais e use o mesmo saldo no chat, no Estúdio de vídeo e no Estúdio de Marketing.</p>
         <div class="tokens-landing__actions">
           <a class="tokens-landing__button" href="#pacotes">Ver pacotes <q-icon name="mdi-arrow-down" /></a>
           <router-link class="tokens-landing__link" to="/aitoia">Abrir AitoIA <q-icon name="mdi-message-text-outline" /></router-link>
           <router-link class="tokens-landing__link" to="/aitoia-video-studio">Estúdio de vídeo <q-icon name="mdi-movie-open-play-outline" /></router-link>
+          <router-link class="tokens-landing__link" to="/aitoia-marketing-studio">Estúdio de Marketing <q-icon name="mdi-image-multiple-outline" /></router-link>
           <a class="tokens-landing__link" :href="contact" target="_blank" rel="noopener noreferrer">Conectar meu projeto <q-icon name="mdi-arrow-top-right" /></a>
         </div>
       </div>
       <figure class="tokens-landing__visual">
-        <img src="/aitotokens.svg" alt="Moeda dourada dos AitoTokens com a marca da AitoSoftwares" width="320" height="320" fetchpriority="high" />
+        <LandingVideoMonitor :video="null" title="Apresentação dos AitoTokens" eyebrow="AITOTOKENS" headline="Um saldo para criar com IA." description="Converse, crie imagens e produza vídeos." />
         <figcaption><q-icon name="mdi-swap-horizontal" /> Saldo em dólares · recarga em reais</figcaption>
       </figure>
     </section>
@@ -184,9 +186,7 @@ useMeta({
 .tokens-landing__button, .tokens-landing__link { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 46px; font-weight: 720; }
 .tokens-landing__actions .tokens-landing__button { padding: .65rem 1rem; border-radius: .6rem; color: #281901; background: var(--gold); text-decoration: none; }
 .tokens-landing__button:hover { background: #fff2c9; }
-.tokens-landing__visual { display: grid; place-items: center; isolation: isolate; position: relative; margin: 0; padding: 1.5rem 0 0; background: radial-gradient(ellipse at 50% 45%, #664b2370 0%, #12352d70 48%, transparent 71%); }
-.tokens-landing__visual::before { content: ''; position: absolute; z-index: -1; width: 85%; aspect-ratio: 1; border: 1px solid #caad6840; border-radius: 50%; box-shadow: inset 0 0 0 2rem #715e3414, 0 0 0 2rem #715e3414; }
-.tokens-landing__visual img { display: block; width: min(100%, 360px); height: auto; filter: drop-shadow(0 18px 32px #1b0e00b0); }
+.tokens-landing__visual { display: grid; gap: 1.1rem; place-items: center; margin: 0; padding: 1rem 0 0; background: radial-gradient(ellipse at 50% 45%, #664b2370 0%, #12352d70 48%, transparent 71%); }
 .tokens-landing__visual figcaption { position: relative; padding: .55rem .9rem; border: 1px solid #6e5c34; border-radius: 2rem; background: #171e15; color: var(--gold); text-align: center; font-size: .85rem; }
 .tokens-landing__section { padding-block: clamp(2rem, 6vw, 4rem); border-top: 1px solid #294338; }
 .tokens-landing h2 { margin: 0 0 1rem; font-size: clamp(1.65rem, 4vw, 2.8rem); font-weight: 700; line-height: 1.15; letter-spacing: -.035em; }
@@ -209,8 +209,6 @@ useMeta({
 .tokens-landing a:focus-visible, .tokens-landing summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 4px; }
 @media (max-width: 720px) {
   .tokens-landing__hero { min-height: 0; grid-template-columns: 1fr; gap: 1rem; }
-  .tokens-landing__visual img { width: min(66vw, 270px); }
-  .tokens-landing__visual::before { width: min(65vw, 290px); }
   .tokens-landing__steps, .tokens-landing__faq { grid-template-columns: 1fr; }
   .tokens-landing__pack-grid { grid-template-columns: repeat(2, 1fr); }
 }

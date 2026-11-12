@@ -43,6 +43,7 @@ const activityItems = ref([])
 const activityOverview = ref({})
 const activityDetail = ref(null)
 const revealedToken = ref('')
+const embedded = /^\/comunicacao\/app(?:\/|$)/.test(window.location.pathname)
 const pagination = reactive({ page: 1, rowsPerPage: 20, rowsNumber: 0 })
 const activityPagination = reactive({ page: 1, rowsPerPage: 12, rowsNumber: 0 })
 const activityFilters = reactive({ search: '', type: null, status: null, channel: null })
@@ -345,6 +346,13 @@ onMounted(async () => {
       </template>
     </PageHeader>
     <CommerceIntegrationCard v-if="getStoredUser()?.role === 'admin'"/>
+
+    <q-banner v-if="embedded && getStoredUser()?.role === 'admin'" rounded class="glass-card section-card">
+      <template #avatar><q-icon name="verified_user" color="primary" /></template>
+      <div class="text-subtitle2">Códigos de acesso da AitoSoftwares</div>
+      <div>O app autorizado a validar acesso por e-mail também entrega o mesmo código pelo WhatsApp Web quando o QR Code está conectado.</div>
+      <template #action><q-btn flat no-caps type="a" href="/admin?tab=access-security" target="_top" label="Ver integração de acesso" /></template>
+    </q-banner>
 
     <section class="glass-card section-card">
       <div class="toolbar-row integrations-toolbar">

@@ -89,7 +89,7 @@ async function confirm() {
     <q-icon name="mdi-lock-reset" size="30px" aria-hidden="true" />
     <div>
       <h2>Senha do administrador</h2>
-      <p>Troque sua senha com um código por e-mail. Seu e-mail de acesso permanece o mesmo.</p>
+      <p>Troque sua senha confirmando um código de acesso.</p>
     </div>
     <q-btn unelevated no-caps color="teal-8" label="Alterar senha" @click="open" />
   </section>
@@ -99,7 +99,7 @@ async function confirm() {
       <q-card-section class="row items-start no-wrap">
         <div class="col">
           <h2 class="text-h6 q-my-none">Alterar senha do administrador</h2>
-          <p class="q-mb-none q-mt-xs">Confirme seu acesso pelo Gmail e pelo multifator.</p>
+          <p class="q-mb-none q-mt-xs">Informe a senha atual para solicitar o código de segurança.</p>
         </div>
         <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar" :disable="busy" />
       </q-card-section>
@@ -111,13 +111,13 @@ async function confirm() {
           Conecte o Gmail na Comunicação e salve a integração de validação por e-mail nesta página.
         </q-banner>
         <q-form v-else-if="!challenge" class="password-form" @submit="requestCode">
-          <p class="q-mb-sm">Enviaremos um código para <strong>{{ status.emailMasked }}</strong>.</p>
+          <p class="q-mb-sm">Enviaremos um código para <strong>{{ status.emailMasked }}</strong><template v-if="status.whatsappAvailable"> e para o WhatsApp <strong>{{ status.phoneMasked }}</strong></template>.</p>
           <q-input v-model="currentPassword" outlined autofocus type="password" autocomplete="current-password"
             maxlength="256" label="Senha atual" :disable="busy" :rules="[v => Boolean(v) || 'Informe sua senha atual.']" />
-          <q-btn class="self-end" unelevated no-caps color="teal-8" type="submit" label="Receber código por e-mail" :loading="busy" />
+          <q-btn class="self-end" unelevated no-caps color="teal-8" type="submit" label="Receber código" :loading="busy" />
         </q-form>
         <q-form v-else class="password-form" @submit="confirm">
-          <p class="q-mb-sm">Código enviado para <strong>{{ challenge.emailMasked }}</strong>. Ele pode ser usado uma vez e expira em {{ Math.ceil(challenge.expiresInSeconds / 60) }} min.</p>
+          <p class="q-mb-sm">{{ challenge.message || 'Código enviado ao e-mail cadastrado.' }} Ele pode ser usado uma vez e expira em {{ Math.ceil(challenge.expiresInSeconds / 60) }} min.</p>
           <q-input v-model="code" outlined autofocus mask="######" inputmode="numeric" autocomplete="one-time-code"
             label="Código de 6 dígitos" :disable="busy" :rules="[v => /^\d{6}$/.test(v) || 'Informe os seis dígitos.']" />
           <q-input v-model="newPassword" outlined type="password" autocomplete="new-password" :maxlength="status.passwordMaxBytes"

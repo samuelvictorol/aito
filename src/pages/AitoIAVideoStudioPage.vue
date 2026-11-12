@@ -680,7 +680,7 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
   <div class="aito-ai-theme video-studio">
     <header class="video-studio__bar">
       <router-link to="/" class="video-studio__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="37" height="37" alt="" /> <strong>AitoIA</strong></router-link>
-      <div class="video-studio__mode"><AitoIAModeSwitch studio :busy="guarded" /></div>
+      <div class="video-studio__mode"><AitoIAModeSwitch mode="video" :busy="guarded" /></div>
       <div class="video-studio__account">
         <button v-if="signedIn" class="video-studio__balance" type="button" aria-label="Abrir carteira AitoTokens" :disabled="guarded" @click="showWallet"><img src="/aitotokens.svg" width="26" height="26" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="16px" /></button>
         <template v-else><button class="video-studio__login" type="button" @click="showAuth('login')">Entrar</button><button class="video-studio__primary" type="button" @click="showAuth()">Criar conta</button></template>

@@ -13,13 +13,13 @@ const root = '/aito-tokens/admin/provider-credentials'
 const providers = [
   { id: 'openai', label: 'OpenAI', icon: 'mdi-creation-outline', description: 'Chat, roteiros e locução.' },
   { id: 'higgsfield', label: 'Higgsfield', icon: 'mdi-movie-open-outline', description: 'Geração de vídeo no chat e no estúdio.' },
-  { id: 'infinitepay', label: 'InfinitePay', icon: 'mdi-wallet-plus-outline', description: 'Checkout das recargas de AitoTokens.' },
+  { id: 'infinitepay', label: 'InfinitePay', icon: 'mdi-wallet-plus-outline', description: 'Configuração de pagamentos do servidor.', readOnly: true },
 ]
 const sourceLabels = { vault: 'No cofre', environment: 'No ambiente', missing: 'Pendente', unreadable: 'Chave inacessível' }
 const checkoutMessages = {
-  missing_key: 'Cadastre a chave da API InfinitePay para liberar o checkout de recargas.',
-  unreadable_key: 'Cadastre uma nova chave InfinitePay para restabelecer o checkout de recargas.',
-  missing_merchant: 'O checkout aguarda a identificação da conta InfinitePay na configuração comercial do produto.',
+  missing_key: 'O checkout de recargas aguarda INFINITEPAY_API_KEY no ambiente da API.',
+  missing_merchant: 'O checkout aguarda uma INFINITEPAY_HANDLE válida no ambiente da API.',
+  invalid_endpoints: 'Confira INFINITEPAY_API_URL e INFINITEPAY_WEBHOOK_URL no ambiente da API.',
 }
 const status = shallowRef(null)
 const selected = ref(null)
@@ -54,6 +54,7 @@ async function load() {
 }
 
 function startEdit(provider) {
+  if (provider.readOnly) return
   credential.value = ''
   saveError.value = ''
   pending = null
@@ -83,7 +84,7 @@ async function requestMfa() {
   } catch (error) {
     pending = null
     if (!operations.signal.aborted) {
-      saveError.value = error.response ? 'Não foi possível solicitar a confirmação por e-mail. Confira as configurações de autenticação.' :
+      saveError.value = error.response ? 'Não foi possível solicitar o código de acesso. Confira as configurações de autenticação.' :
         error.message || 'Não foi possível proteger a chave neste navegador.'
     }
   } finally {
@@ -133,7 +134,7 @@ onBeforeUnmount(() => {
     <header class="provider-keys__heading">
       <div>
         <h3 id="aito-provider-keys-title">Chaves mestras</h3>
-        <p>As chaves são criptografadas no navegador antes do envio e armazenadas criptografadas.</p>
+        <p>As chaves de IA são criptografadas no navegador antes do envio e armazenadas criptografadas.</p>
       </div>
       <q-btn flat round icon="mdi-refresh" aria-label="Atualizar estado das chaves" :loading="loading" @click="load" />
     </header>
@@ -147,10 +148,16 @@ onBeforeUnmount(() => {
             <strong>{{ provider.label }}</strong>
             <q-badge v-if="status" outline :color="statusOf(provider.id).configured ? 'green-4' : 'orange-4'"
               :label="sourceLabels[statusOf(provider.id).source] || 'Pendente'" />
+            <q-badge v-if="provider.readOnly" outline color="blue-grey-3" label="Somente leitura" />
           </div>
           <p>{{ provider.description }}</p>
+          <dl v-if="provider.readOnly && status" class="provider-keys__config">
+            <div><dt>InfiniteTag</dt><dd>{{ statusOf(provider.id).handle || 'Pendente' }}</dd></div>
+            <div><dt>URL da API</dt><dd>{{ statusOf(provider.id).apiUrl || 'Pendente' }}</dd></div>
+            <div><dt>Webhook</dt><dd>{{ statusOf(provider.id).webhookUrl || 'Pendente' }}</dd></div>
+          </dl>
         </div>
-        <q-btn flat dense no-caps color="teal-3" :label="statusOf(provider.id).configured ? 'Trocar chave' : 'Cadastrar chave'"
+        <q-btn v-if="!provider.readOnly" flat dense no-caps color="teal-3" :label="statusOf(provider.id).configured ? 'Trocar chave' : 'Cadastrar chave'"
           :aria-label="`${statusOf(provider.id).configured ? 'Trocar' : 'Cadastrar'} chave ${provider.label}`"
           :disable="!status?.encryption || loading || submitting" @click="startEdit(provider)" />
       </article>
@@ -164,12 +171,12 @@ onBeforeUnmount(() => {
             <h3>Chave {{ selected?.label }}</h3>
             <q-input v-model="credential" type="password" dark outlined autofocus autocomplete="new-password"
               spellcheck="false" autocapitalize="off" label="Nova chave" maxlength="512" :disable="submitting || mfaOpen" />
-            <p>Confirme por e-mail para gravar a nova chave no cofre.</p>
+            <p>Confirme com um código de acesso para gravar a nova chave no cofre.</p>
             <p v-if="saveError" role="alert" class="provider-keys__warning">{{ saveError }}</p>
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" :disable="submitting || mfaOpen" @click="closeEdit" />
-            <q-btn unelevated no-caps color="teal-7" type="submit" label="Confirmar por e-mail" :loading="submitting" :disable="!lengthValid || mfaOpen" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Solicitar código" :loading="submitting" :disable="!lengthValid || mfaOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
@@ -187,6 +194,9 @@ onBeforeUnmount(() => {
 .provider-keys__entry { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .4rem .6rem; align-items: start; padding: .7rem; border: 1px solid #345857; border-radius: .7rem; }
 .provider-keys__entry .q-btn { grid-column: 2; justify-self: start; }
 .provider-keys__name { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.provider-keys__config { display: grid; gap: .35rem; margin: .5rem 0 0; color: #c2d9d3; font-size: .78rem; }
+.provider-keys__config dt { font-weight: 700; }
+.provider-keys__config dd { margin: 0; overflow-wrap: anywhere; }
 .provider-keys .provider-keys__warning, .provider-keys__dialog .provider-keys__warning { color: #ffd190; }
 .provider-keys__dialog { width: min(94vw, 470px); border: 1px solid #345857; background: #0c2022; }
 .provider-keys__form { display: grid; gap: .6rem; }
