@@ -19,7 +19,7 @@ const $q = useQuasar()
 const state = useAitoIA()
 const { signedIn, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
   modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
-  activeId, active, request, chatList, storageError, loadingConversation, hasInput, walletLoading } = state
+  activeId, active, request, chatList, storageError, loadingConversation, hasInput, walletLoading, imageQuote } = state
 const composer = ref(null)
 const fileInput = ref(null)
 const authOpen = ref(false)
@@ -42,7 +42,8 @@ const effortIndex = computed({ get: () => Math.max(0, efforts.value.indexOf(effo
 const promptIdeas = [
   { icon: 'mdi-code-braces', title: 'Revisar código', text: 'Revise este código e sugira melhorias de legibilidade, desempenho e testes. Explique suas decisões.' },
   { icon: 'mdi-file-document-outline', title: 'Analisar um documento', text: 'Analise o documento que vou anexar. Resuma os pontos principais e liste as decisões ou ações que merecem atenção.' },
-  { icon: 'mdi-lightning-bolt-outline', title: 'Planejar um projeto', text: 'Ajude-me a transformar uma ideia em um plano prático. Comece perguntando sobre o objetivo, o prazo e os recursos disponíveis.' },
+  { icon: 'mdi-image-plus-outline', title: 'Criar uma imagem', text: 'Gere uma imagem quadrada de ' },
+  { icon: 'mdi-file-pdf-box', title: 'Criar um PDF', text: 'Crie um PDF para baixar sobre ' },
 ]
 
 function showAuth(mode = 'register') {
@@ -182,19 +183,20 @@ onMounted(() => {
           <p class="aito-studio__conversation-title">{{ active.title }}</p>
           <article v-for="message in active.messages" :key="message.id" class="aito-studio__message" :class="'aito-studio__message--' + message.role">
             <div v-if="message.role === 'assistant'" class="aito-studio__speaker"><img src="/ia.gif" alt="" width="27" height="27" /><strong>AitoIA</strong><small>{{ message.model }}<template v-if="Number.isFinite(message.billedUsdCents)"> · {{ usd(message.billedUsdCents) }}</template></small></div>
-            <div v-if="message.attachments?.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in message.attachments" :key="file.id" :attachment="file" /></div>
+            <div v-if="message.attachments?.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in message.attachments" :key="file.id" :attachment="file" :preview="message.role === 'assistant'" /></div>
             <p v-if="message.role === 'user' && message.text" class="aito-studio__user-text">{{ message.text }}</p>
             <AitoIAResponse v-else-if="message.text" :text="message.text" />
+            <button v-if="message.imagePlan" type="button" class="aito-studio__tool" :disabled="busy" @click="state.quoteImage(message)"><q-icon name="mdi-image-plus-outline" size="19px" /> Gerar imagem</button>
             <button v-if="message.role === 'assistant' && message.text" type="button" class="aito-studio__icon aito-studio__copy" :aria-label="copiedId === message.id ? 'Resposta copiada' : 'Copiar resposta'" @click="copyMessage(message)"><q-icon :name="copiedId === message.id ? 'mdi-check' : 'mdi-content-copy'" size="17px" /></button>
           </article>
-          <div v-if="loadingConversation" class="aito-studio__thinking" role="status"><q-spinner-dots size="25px" /> Preparando resposta…</div>
+          <div v-if="loadingConversation" class="aito-studio__thinking" role="status"><q-spinner-dots size="25px" /> {{ request?.kind === 'image' ? 'Gerando imagem…' : request?.kind === 'quote' ? 'Consultando valor…' : 'Preparando resposta…' }}</div>
         </div>
       </div>
 
       <section v-else class="aito-studio__welcome" aria-labelledby="aito-ia-title">
         <div class="aito-studio__orb"><img src="/ia.gif" alt="" width="88" height="88" /></div>
         <h1 id="aito-ia-title">No que vamos trabalhar?</h1>
-        <p>Converse, escreva código e analise arquivos com AitoIA.</p>
+        <p>Converse, crie imagens e prepare arquivos para baixar.</p>
         <div class="aito-studio__ideas">
           <button v-for="idea in promptIdeas" :key="idea.title" type="button" @click="selectIdea(idea)"><q-icon :name="idea.icon" size="19px" /> {{ idea.title }}<q-icon name="mdi-arrow-top-right" size="13px" /></button>
         </div>
@@ -230,6 +232,16 @@ onMounted(() => {
 
     <AuthDialog v-if="authOpen" v-model="authOpen" :initial-mode="authMode" return-path="/aitoia" :show-project-login="false" @authenticated="state.syncSession({ keepDraft: true })" />
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="state" />
+
+    <q-dialog :model-value="Boolean(imageQuote)" @update:model-value="value => { if (!value) imageQuote = null }">
+      <q-card v-if="imageQuote" dark class="aito-ai-theme aito-studio__dialog">
+        <div class="aito-studio__dialog-head"><q-icon name="mdi-image-plus-outline" size="22px" /><h2>Gerar imagem</h2></div>
+        <div class="aito-studio__settings">
+          <p>Limite de débito <strong>{{ usd(imageQuote.maxBilledUsdCents) }}</strong> do seu saldo de AitoTokens.</p>
+          <div class="aito-studio__select-row"><q-btn v-close-popup flat no-caps label="Voltar" /><q-btn unelevated no-caps color="teal-8" label="Confirmar geração" @click="state.confirmImage()" /></div>
+        </div>
+      </q-card>
+    </q-dialog>
 
     <q-dialog v-model="settingsOpen">
       <q-card dark class="aito-ai-theme aito-studio__dialog">

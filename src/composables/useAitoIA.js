@@ -3,6 +3,7 @@ import { api } from 'boot/axios'
 import { createAitoIALocalStore } from 'src/services/aitoiaLocal'
 import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/services/aitoiaArchive'
 import { checkAttachment, checkoutLink, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
+import { artifactReferences, fileFromArtifact, fileFromImage, prepareArtifactReferences } from 'src/services/aitoiaArtifacts'
 
 const sessionKey = 'aito_user_token'
 const DAY = 24 * 60 * 60 * 1000
@@ -47,6 +48,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   const chats = shallowRef([])
   const activeId = ref('')
   const request = shallowRef(null)
+  const imageQuote = shallowRef(null)
   const pending = ref(null)
   const history = ref([])
   const historyLoading = ref(false)
@@ -120,6 +122,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     historyEpoch++
     stop()
     request.value = null
+    imageQuote.value = null
     store?.dispose?.()
     store = null
     storeAccount = ''
@@ -252,13 +255,14 @@ export function useAitoIA({ chatHistory = true } = {}) {
   function saveChat(chat) {
     if ((chat.expiresAt || chat.createdAt + LOCAL_LIFETIME) <= Date.now()) { pruneLocal(); return }
     chats.value = [chat, ...chats.value.filter(item => item.id !== chat.id)]
-    store?.save(chat).catch(() => {
+    return store?.save(chat).catch(() => {
       if (chats.value.includes(chat)) storageError.value = 'O navegador não salvou esta conversa. Você ainda pode baixar os dados desta aba.'
     })
   }
 
   function selectChat(chatId) {
     activeId.value = chatId
+    imageQuote.value = null
     draft.value = ''
     attachments.value = []
     contextShortened.value = false
@@ -327,6 +331,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     const sentLabel = currentModel.value.label
     const parameters = { model: sentModel, service_tier: speed.value, walletId: walletId.value,
       ...(effort.value && { reasoning: { effort: effort.value } }), ...(webSearch.value && { webSearch: true }) }
+    let imageMessage
     request.value = { chatId: chat.id, controller, id }
     error.value = ''
     contextShortened.value = false
@@ -339,17 +344,37 @@ export function useAitoIA({ chatHistory = true } = {}) {
       const { input, shortened } = await requestMessages(messages)
       if (controller.signal.aborted || sessionEpoch !== epoch) return
       contextShortened.value = shortened
-      const body = { input, ...parameters }
+      const body = { input, ...parameters, artifacts: true }
       if (new Blob([JSON.stringify(body)]).size > 8 * 1024 * 1024) throw new Error('A conversa ultrapassou o limite de envio. Inicie uma nova conversa com menos anexos.')
       const { data } = await api.post('/aitoia/responses', body, { ...config({ 'X-Aito-Request-Id': id }), signal: controller.signal })
       if (sessionEpoch !== epoch) return
-      const answer = readAnswer(data?.data ?? data)
+      const response = data?.data ?? data
+      const artifact = response.artifact
+      let answer = readAnswer(response)
+      let attachment
+      let imagePlan
+      if (artifact?.kind === 'image') {
+        imagePlan = { format: artifact.format, prompt: artifact.prompt, referenceIds: artifact.useReferences ? artifactReferences(messages).map(file => file.id) : [] }
+        answer = 'A imagem está pronta para gerar. Confira o valor antes de continuar.'
+      } else if (artifact?.kind === 'file') {
+        try { attachment = await fileFromArtifact(artifact) }
+        catch {
+          attachment = await fileFromArtifact({ ...artifact, format: 'txt' })
+          answer = 'O formato solicitado não pôde ser exportado. O conteúdo está disponível em texto.'
+        }
+        answer ||= 'Seu arquivo está pronto para baixar.'
+      }
+      if (controller.signal.aborted || sessionEpoch !== epoch) return
       if (!answer) throw new Error('O modelo não retornou uma resposta de texto.')
       const current = chats.value.find(item => item.id === chat.id)
       const now = Date.now()
-      if (current) saveChat({ ...current, updatedAt: now, messages: [...current.messages,
-        { id: crypto.randomUUID(), role: 'assistant', text: answer, model: sentLabel || sentModel, createdAt: now,
-          billedUsdCents: Number.isFinite(data?.aito?.billedUsdCents) ? data.aito.billedUsdCents : undefined }] })
+      if (current) {
+        const reply = { id: crypto.randomUUID(), role: 'assistant', text: answer, model: sentLabel || sentModel, createdAt: now,
+          ...(imagePlan && { imagePlan }), ...(attachment && { attachments: [attachment], artifactContext: artifact.content.slice(0, 8000) }),
+          billedUsdCents: Number.isFinite(data?.aito?.billedUsdCents) ? data.aito.billedUsdCents : undefined }
+        await saveChat({ ...current, updatedAt: now, messages: [...current.messages, reply] })
+        if (imagePlan) imageMessage = reply
+      }
     } catch (cause) {
       if (controller.signal.aborted || sessionEpoch !== epoch) return
       if (statusOf(cause) === 401) { forgetSession(); return }
@@ -375,8 +400,64 @@ export function useAitoIA({ chatHistory = true } = {}) {
         request.value = null
         if (activeId.value === chat.id) scrollToEnd()
         refreshStatus({ silent: true })
+        if (imageMessage && activeId.value === chat.id && !controller.signal.aborted) void processImage(imageMessage)
       }
     }
+  }
+
+  async function processImage(message, confirmed = null) {
+    const chat = active.value
+    const plan = message?.imagePlan
+    if (!chat || !plan || request.value || !signedIn.value || !chat.messages.some(item => item.id === message.id)) return
+    const references = chat.messages.flatMap(item => item.attachments || []).filter(file => plan.referenceIds.includes(file.id))
+    const controller = new AbortController()
+    const id = crypto.randomUUID()
+    const epoch = sessionEpoch
+    const wallet = walletId.value
+    const stillActive = () => !controller.signal.aborted && epoch === sessionEpoch
+    const sameChat = () => stillActive() && activeId.value === chat.id
+    request.value = { chatId: chat.id, controller, id, kind: confirmed ? 'image' : 'quote' }
+    imageQuote.value = null
+    error.value = ''
+    try {
+      const { format, prompt } = plan
+      const options = { ...config({ 'X-Aito-Request-Id': id }), signal: controller.signal }
+      if (confirmed) {
+        if (wallet !== confirmed.walletId) throw new Error('A carteira mudou. Confira o valor novamente.')
+        const images = await prepareArtifactReferences(references)
+        if (!stillActive()) return
+        const { data } = await api.post('/aitoia/images/generations', {
+          walletId: wallet, format, prompt, references: images, maxBilledUsdCents: confirmed.maxBilledUsdCents,
+        }, options)
+        const file = fileFromImage(data.data?.image)
+        const current = chats.value.find(item => item.id === chat.id)
+        if (!stillActive() || !current) return
+        await saveChat({ ...current, updatedAt: Date.now(), messages: current.messages.map(item => item.id !== message.id ? item : {
+          ...item, imagePlan: null, text: 'Sua imagem está pronta.', attachments: [file],
+          billedUsdCents: (item.billedUsdCents || 0) + (data.data.billedUsdCents || 0),
+        }) })
+      } else {
+        const { data } = await api.post('/aitoia/marketing/quote', { walletId: wallet, format, referenceCount: references.length }, options)
+        if (!Number.isFinite(data.data?.maxBilledUsdCents)) throw new Error('Não foi possível calcular o valor da imagem.')
+        if (sameChat()) imageQuote.value = { chatId: chat.id, messageId: message.id, walletId: wallet, maxBilledUsdCents: data.data.maxBilledUsdCents }
+      }
+    } catch (cause) {
+      if (!stillActive()) return
+      if (statusOf(cause) === 401) { forgetSession(); return }
+      if (sameChat()) error.value = errorMessage(cause, cause.response ? 'Não foi possível gerar a imagem.' : cause.message)
+    } finally {
+      if (request.value?.id === id) {
+        request.value = null
+        if (sameChat()) scrollToEnd()
+        if (confirmed) refreshStatus({ silent: true })
+      }
+    }
+  }
+
+  function confirmImage() {
+    const quote = imageQuote.value
+    if (!quote || quote.chatId !== activeId.value) return
+    return processImage(active.value?.messages.find(item => item.id === quote.messageId), quote)
   }
 
   async function loadHistory(offset = 0) {
@@ -481,6 +562,6 @@ export function useAitoIA({ chatHistory = true } = {}) {
     speed, speeds, webSearch, modelLoading, settingsError, walletError, error, contextShortened,
     draft, attachments, chats, activeId, active, request, pending, history, historyLoading, historyTotal,
     historyOffset, historyLimit, walletLoading, checkoutBusy, paymentBusy, paymentNotice, chatList, storageError,
-    loadingConversation, hasInput, syncSession, refreshStatus, refreshModels, selectChat, renameChat, removeChat,
+    loadingConversation, hasInput, imageQuote, quoteImage: processImage, confirmImage, syncSession, refreshStatus, refreshModels, selectChat, renameChat, removeChat,
     exportChats, addFiles, send, stop, selectWallet, loadHistory, checkout, checkPayment }
 }

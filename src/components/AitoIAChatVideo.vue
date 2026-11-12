@@ -5,7 +5,7 @@ import AitoIAResponse from 'components/AitoIAResponse.vue'
 import { usd } from 'src/composables/useAitoIA'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
-import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClip, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
+import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 
 const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
@@ -28,6 +28,8 @@ let reference
 let imageReferences
 const models = computed(() => base.value || imageBases.value.length ? (catalog.value?.referenceModels || [])
   .filter(item => (base.value || !item.requiresVideo) && (item.maxImageReferences ?? 0) >= imageBases.value.length) : catalog.value?.videoModels || [])
+const maxImages = computed(() => Math.max(0, ...(catalog.value?.referenceModels || [])
+  .filter(item => base.value || !item.requiresVideo).map(item => item.maxImageReferences || 0)))
 const presets = computed(() => models.value.find(item => item.id === modelId.value)?.options || [])
 const busy = computed(() => Boolean(action.value))
 watch(busy, value => emit('busy', value), { flush: 'sync' })
@@ -83,7 +85,7 @@ function pickImages(files) {
   if (!files.length || busy.value) return
   try {
     const selected = [...imageBases.value, ...files]
-    if (selected.length > 2) throw new Error('Escolha até duas imagens de referência.')
+    if (selected.length > maxImages.value) throw new Error(`Escolha até ${maxImages.value} imagens de referência.`)
     selected.forEach(checkImageReference)
     imageBases.value = selected
     imageReferences = null
@@ -146,20 +148,39 @@ function estimate() {
   })
 }
 
+function waitForPoll(delay, signal) {
+  signal.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { signal.removeEventListener('abort', cancel); resolve() }, delay)
+    function cancel() { clearTimeout(timer); reject(signal.reason) }
+    signal.addEventListener('abort', cancel, { once: true })
+  })
+}
+
 async function poll(signal) {
   const headers = auth()
   const started = Date.now()
+  let delay = 0
   while (job.value && Date.now() - started < 12 * 60000) {
-    const { data } = await api.get(`/aitoia/video/generations/${encodeURIComponent(job.value.id)}`, { headers, signal })
+    if (delay) await waitForPoll(delay, signal)
+    let result
+    try {
+      const { data } = await api.get(`/aitoia/video/generations/${encodeURIComponent(job.value.id)}`, { headers, signal })
+      result = data.data
+    } catch (cause) {
+      signal.throwIfAborted()
+      const http = cause.response?.status
+      if ([404, 410].includes(http)) job.value = null
+      if (!http || http === 429 || cause.response?.data?.code === 'AITO_MEDIA_RETRY') {
+        delay = Math.min(Math.max(delay * 2, 4000), 20000)
+        continue
+      }
+      throw cause
+    }
     signal.throwIfAborted()
-    const result = data.data
     if (result.status === 'completed') { clip.value = { ...result, url: safeVideoUrl(result.url) }; job.value = null; return }
     if (!['queued', 'in_progress'].includes(result.status)) { job.value = null; throw new Error(result.message || 'O provedor encerrou esta geração.') }
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { signal.removeEventListener('abort', cancel); resolve() }, 4000)
-      function cancel() { clearTimeout(timer); reject(signal.reason) }
-      signal.addEventListener('abort', cancel, { once: true })
-    })
+    delay = 4000
   }
   if (job.value) throw new Error('O clipe continua em produção. Use Verificar geração para acompanhar.')
 }
@@ -168,8 +189,14 @@ function generate() {
   if (!quote.value) return
   const { body, quoteToken } = quote.value
   run('Gerando clipe…', async signal => {
-    const { data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
-      { headers: auth({ 'X-Aito-Request-Id': crypto.randomUUID() }), signal })
+    let data
+    try {
+      ({ data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
+        { headers: auth({ 'X-Aito-Request-Id': crypto.randomUUID() }), signal }))
+    } catch (cause) {
+      if (['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
+      throw cause
+    }
     signal.throwIfAborted()
     quote.value = null
     job.value = data.data
@@ -193,7 +220,7 @@ function analyze() {
 
 function download() {
   run('Preparando arquivo…', async signal => {
-    const file = await readGeneratedClip(clip.value.url, signal)
+    const file = await readGeneratedClipForJob(clip.value, signal, (url, options) => api.get(url, { ...options, headers: auth() }))
     signal.throwIfAborted()
     downloadAitoIAFile(file, file.name)
   }, false)
@@ -208,7 +235,7 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
     <div class="chat-video__actions">
       <label v-if="!base" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-paperclip" /> Vídeo-base MP4<input type="file" accept="video/mp4,.mp4" :disabled="busy" @change="pick($event.target.files[0]); $event.target.value = ''" /></label>
       <template v-else><span>{{ base.name }}</span><button type="button" :disabled="busy" @click="clearBase">Remover</button><button type="button" :disabled="busy || !currentModel" @click="analyze">Analisar quadros com OpenAI</button></template>
-      <label v-if="imageBases.length < 2" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-image-plus-outline" /> Imagens de referência<input type="file" accept="image/jpeg,image/png,image/webp" multiple :disabled="busy" @change="pickImages(Array.from($event.target.files)); $event.target.value = ''" /></label>
+      <label v-if="imageBases.length < maxImages" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-image-plus-outline" /> Imagens de referência ({{ imageBases.length }}/{{ maxImages }})<input type="file" accept="image/jpeg,image/png,image/webp" multiple :disabled="busy" @change="pickImages(Array.from($event.target.files)); $event.target.value = ''" /></label>
       <template v-if="imageBases.length"><span>{{ imageBases.map(file => file.name).join(', ') }}</span><button type="button" :disabled="busy" @click="imageBases = []; imageReferences = null">Limpar imagens</button></template>
     </div>
     <div v-if="models.length" class="chat-video__choices">

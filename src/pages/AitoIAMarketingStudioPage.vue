@@ -3,7 +3,9 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallo
 import { useMeta } from 'quasar'
 import { api } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
+import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
 import { aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
+import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { accessMarketingKit, exportMarketingImage, marketingFormats, prepareMarketingReference, readMarketingImage } from 'src/services/aitoiaMarketingLocal'
@@ -34,7 +36,9 @@ const blockedExit = ref(false)
 const error = ref('')
 const kitError = ref('')
 const quote = ref(null)
-const output = shallowRef(null)
+const images = shallowRef([])
+const imageId = ref('')
+const projectTitle = ref('')
 const authOpen = ref(false)
 const authMode = ref('login')
 const walletOpen = ref(false)
@@ -52,19 +56,16 @@ const maxComponents = computed(() => catalog.value?.maxComponents || 6)
 const activeKit = computed(() => kit.value.filter(item => selectedKit.value.includes(item.id)))
 const referenceCount = computed(() => references.value.length + activeKit.value.filter(item => item.blob).length)
 const locked = computed(() => busy.value || uploading.value || !!quote.value)
+const output = computed(() => images.value.find(image => image.id === imageId.value) || null)
 
 useMeta({ title: 'AitoIA | Estúdio de Marketing' })
 useAitoWorkGuard(busy, () => { blockedExit.value = true })
 watch(busy, active => { if (!active) blockedExit.value = false })
 
-function resetOutput() {
-  if (output.value) URL.revokeObjectURL(output.value.url)
-  output.value = null
-}
-
 function localAsset(item) { return { ...item, url: item.blob ? URL.createObjectURL(item.blob) : '' } }
 function disposeAsset(item) { if (item?.url) URL.revokeObjectURL(item.url) }
-function resetKit() { kit.value.forEach(disposeAsset); kit.value = []; selectedKit.value = [] }
+function clearProjectMedia() { [...images.value, ...references.value].forEach(disposeAsset) }
+function resetKit() { kit.value.forEach(disposeAsset); kit.value = [] }
 function token() { return localStorage.getItem('aito_user_token') || '' }
 const config = (access, signal, headers = {}) => ({ signal, headers: { Authorization: `Bearer ${access}`, ...headers } })
 
@@ -77,10 +78,6 @@ watch(accountId, async (id, previous) => {
     operation?.abort()
     quote.value = null
     componentDialog.value = false
-    references.value.forEach(disposeAsset)
-    references.value = []
-    prompt.value = ''
-    resetOutput()
   }
   if (!id) return
   try {
@@ -90,6 +87,33 @@ watch(accountId, async (id, previous) => {
     if (epoch === kitEpoch) kitError.value = 'Não foi possível abrir os componentes salvos neste navegador.'
   } finally { if (epoch === kitEpoch) kitLoading.value = false }
 })
+
+const stripUrl = ({ url: _url, ...asset }) => asset
+const project = useAitoStudioProjects({
+  studio: 'marketing', accountId, busy: locked, defaultName: 'Projeto de marketing',
+  watch: [projectTitle, formatId, prompt, references, selectedKit, images, imageId],
+  snapshot: () => ({ title: projectTitle.value, formatId: formatId.value, prompt: prompt.value,
+    references: references.value.map(stripUrl), selectedKit: [...selectedKit.value], images: images.value.map(stripUrl), imageId: imageId.value }),
+  restore(saved) {
+    clearProjectMedia()
+    projectTitle.value = saved?.title || ''
+    formatId.value = saved?.formatId || 'feed'
+    prompt.value = saved?.prompt || ''
+    references.value = (saved?.references || []).map(localAsset)
+    selectedKit.value = saved?.selectedKit || []
+    images.value = (saved?.images || []).map(localAsset)
+    imageId.value = saved?.imageId || images.value[0]?.id || ''
+    error.value = ''
+  },
+})
+const { projects, activeId: projectId, loading: projectLoading, storageError, createProject, openProject, deleteProject, saveProject } = project
+
+function removeImage(image) {
+  disposeAsset(image)
+  images.value = images.value.filter(item => item.id !== image.id)
+  if (imageId.value === image.id) imageId.value = images.value[0]?.id || ''
+  void saveProject()
+}
 
 async function loadCatalog() {
   catalogLoading.value = true
@@ -108,7 +132,7 @@ async function addReferences(files) {
   error.value = ''
   const epoch = kitEpoch
   try {
-    const room = maxReferences.value - referenceCount.value
+    const room = Math.max(0, maxReferences.value - referenceCount.value)
     if (files.length > room) error.value = 'O limite é de seis referências, incluindo as imagens da marca selecionadas.'
     for (const file of files.slice(0, room)) {
       try {
@@ -193,7 +217,7 @@ async function removeComponent(item) {
 
 async function quoteGeneration() {
   if (!signedIn.value) { showAuth(); return }
-  if (locked.value || !prompt.value.trim() || !catalog.value?.available || !accountId.value) return
+  if (locked.value || projectLoading.value || !prompt.value.trim() || !catalog.value?.available || !accountId.value) return
   busy.value = true
   error.value = ''
   const access = token()
@@ -213,7 +237,7 @@ async function generate() {
   if (!confirmed || busy.value) return
   const access = token()
   const imageFormat = format.value
-  const images = [...references.value, ...activeKit.value.filter(item => item.blob)]
+  const selectedReferences = [...references.value, ...activeKit.value.filter(item => item.blob)]
   const components = activeKit.value.map(item => item.text).filter(Boolean)
   const controller = new AbortController()
   operation = controller
@@ -221,15 +245,19 @@ async function generate() {
   busy.value = true
   error.value = ''
   try {
-    const encoded = await Promise.all(images.map(item => readMarketingImage(item.blob)))
+    const encoded = await Promise.all(selectedReferences.map(item => readMarketingImage(item.blob)))
     const { data } = await api.post('/aitoia/marketing/generations', {
       walletId: confirmed.walletId, format: confirmed.format, maxBilledUsdCents: confirmed.maxBilledUsdCents,
       prompt: prompt.value.trim(), references: encoded, components,
     }, config(access, controller.signal, { 'X-Aito-Request-Id': crypto.randomUUID() }))
     const blob = await exportMarketingImage(data.data.image, imageFormat)
     if (access !== token() || controller.signal.aborted) return
-    resetOutput()
-    output.value = { blob, url: URL.createObjectURL(blob), format: imageFormat, billed: data.data.billedUsdCents }
+    const id = crypto.randomUUID()
+    const label = prompt.value.trim().replace(/\s+/g, ' ').slice(0, 60)
+    if (!projectTitle.value || projectTitle.value === 'Projeto de marketing') projectTitle.value = label
+    images.value = [localAsset({ id, blob, label, format: { ...imageFormat }, billed: data.data.billedUsdCents }), ...images.value]
+    imageId.value = id
+    await saveProject()
   } catch (cause) {
     if (!controller.signal.aborted) error.value = cause.response?.data?.message || 'Não foi possível concluir a imagem. Confira seu saldo antes de tentar novamente.'
   } finally {
@@ -243,9 +271,8 @@ onMounted(loadCatalog)
 onBeforeUnmount(() => {
   kitEpoch++
   operation?.abort()
-  resetOutput()
+  clearProjectMedia()
   resetKit()
-  references.value.forEach(disposeAsset)
 })
 </script>
 
@@ -264,6 +291,11 @@ onBeforeUnmount(() => {
       <div class="marketing__intro">
         <h1>Estúdio de Marketing</h1>
         <p>Crie imagens no formato de cada canal e reutilize os componentes da sua marca.</p>
+      </div>
+      <div class="marketing__panel marketing__projects">
+        <AitoStudioProjectPicker :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError"
+          :disabled="!accountId || locked" @create="createProject" @open="openProject" @remove="deleteProject" />
+        <q-input v-if="projectId" v-model="projectTitle" dark outlined dense label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
       </div>
       <p v-if="blockedExit" class="marketing__notice" role="status">Aguarde a conclusão antes de sair do estúdio.</p>
       <p v-if="catalogError" class="marketing__notice" role="status">Não foi possível carregar os formatos. <button type="button" @click="loadCatalog">Tentar novamente</button></p>
@@ -307,7 +339,7 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </section>
-          <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || catalogLoading || (signedIn && (!catalog?.available || !prompt.trim()))" />
+          <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || projectLoading || catalogLoading || (signedIn && (!catalog?.available || !prompt.trim()))" />
         </q-form>
 
         <section class="marketing__panel marketing__preview" aria-labelledby="marketing-preview" :aria-busy="busy">
@@ -315,7 +347,15 @@ onBeforeUnmount(() => {
           <div v-if="output" class="marketing__result"><img :src="output.url" :alt="`Imagem gerada em formato ${output.format.label}`" /></div>
           <div v-else class="marketing__canvas"><div :style="{ aspectRatio: format.width / format.height }"><q-spinner v-if="busy" size="34px" /><q-icon v-else name="mdi-image-outline" size="36px" /><span>{{ busy ? 'Preparando sua imagem' : format.label }}</span></div></div>
           <button v-if="output" type="button" class="marketing__secondary" @click="downloadAitoIAFile(output.blob, `aitoia-${output.format.id}.png`)"><q-icon name="mdi-download" /> Baixar PNG</button>
-          <small>A imagem gerada fica nesta aba. Baixe o PNG para guardar o resultado.</small>
+          <section v-if="images.length" aria-label="Imagens do projeto">
+            <div class="marketing__section-title"><h2>Imagens do projeto</h2><span>{{ images.length }}</span></div>
+            <ul class="marketing__references marketing__gallery">
+              <li v-for="image in images" :key="image.id">
+                <button type="button" :aria-pressed="imageId === image.id" :title="image.label" :disabled="locked" @click="imageId = image.id"><img :src="image.url" :alt="image.label" /></button>
+                <button type="button" :disabled="locked" :aria-label="`Excluir imagem ${image.label}`" @click="removeImage(image)"><q-icon name="mdi-delete-outline" /></button>
+              </li>
+            </ul>
+          </section>
         </section>
       </div>
     </main>
@@ -362,6 +402,8 @@ onBeforeUnmount(() => {
 .marketing p, .marketing small, .marketing__section-title span { color: var(--aito-ai-muted); }
 .marketing__grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: 14px; }
 .marketing__panel, .marketing__dialog { padding: clamp(14px, 2.3vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 14px; background: var(--aito-ai-surface); }
+.marketing__projects { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.marketing__projects .q-field { width: min(260px, 100%); }
 .marketing__form, .marketing__preview { display: grid; gap: 14px; }
 .marketing fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 .marketing h2, .marketing legend, .marketing__dialog h2 { margin: 0; color: var(--aito-ai-text); font-size: 1rem; font-weight: 730; line-height: 1.4; }
@@ -382,7 +424,8 @@ onBeforeUnmount(() => {
 .marketing__references img, .marketing__kit img { width: 29px; height: 29px; border-radius: 4px; object-fit: cover; }
 .marketing__references span, .marketing__kit span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; }
 .marketing__references button, .marketing__kit button { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px; border: 0; border-radius: 4px; color: var(--aito-ai-text); background: transparent; cursor: pointer; }
-.marketing__kit button[aria-pressed=true] { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
+.marketing__gallery img { width: 49px; height: 49px; }
+.marketing__gallery button[aria-pressed=true], .marketing__kit button[aria-pressed=true] { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .marketing__primary { min-height: 42px; color: var(--aito-ai-ink); background: var(--aito-ai-gradient); font-weight: 750; }
 .marketing__canvas, .marketing__result { display: grid; place-items: center; min-height: 250px; padding: 12px; border-radius: 8px; background: var(--aito-ai-bg); }
 .marketing__canvas > div { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; width: auto; height: min(300px, 53vw); max-width: 100%; padding: 12px; border: 1px dashed var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); text-align: center; }

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, watch } from 'vue'
 
-const props = defineProps({ attachment: { type: Object, required: true }, removable: Boolean })
+const props = defineProps({ attachment: { type: Object, required: true }, removable: Boolean, preview: Boolean })
 defineEmits(['remove'])
 let url = ''
 const image = computed(() => /^image\/(png|jpeg|webp|gif)$/.test(props.attachment.type))
@@ -18,11 +18,11 @@ onBeforeUnmount(() => { if (url) URL.revokeObjectURL(url) })
 </script>
 
 <template>
-  <div class="aito-attachment">
+  <div class="aito-attachment" :class="{ 'aito-attachment--preview': image && preview }">
     <a class="aito-attachment__link" :href="href" :download="attachment.name" :aria-label="'Baixar ' + attachment.name">
       <img v-if="image" :src="href" alt="" loading="lazy" />
       <q-icon v-else :name="type" size="21px" />
-      <span><strong>{{ attachment.name }}</strong><small>{{ size }}</small></span>
+      <span><strong>{{ attachment.name }}</strong><small>{{ preview ? 'Baixar · ' : '' }}{{ size }}</small></span>
     </a>
     <button v-if="removable" type="button" class="aito-attachment__remove" :aria-label="'Remover ' + attachment.name" @click="$emit('remove')"><q-icon name="mdi-close" size="17px" /></button>
   </div>
@@ -37,4 +37,7 @@ onBeforeUnmount(() => { if (url) URL.revokeObjectURL(url) })
 .aito-attachment__link small { color: var(--aito-ai-muted); font-weight: 400; }
 .aito-attachment__remove { display: grid; min-width: 28px; height: 28px; place-items: center; margin-left: .1rem; border: 0; border-radius: 7px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
 .aito-attachment__remove:hover, .aito-attachment__link:hover { color: var(--aito-ai-text); background: #ffffff0a; }
+.aito-attachment--preview { width: min(430px, 100%); max-width: 100%; }
+.aito-attachment--preview .aito-attachment__link { display: grid; width: 100%; }
+.aito-attachment--preview .aito-attachment__link img { width: 100%; height: auto; max-height: 440px; object-fit: contain; }
 </style>

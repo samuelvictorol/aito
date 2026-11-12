@@ -64,6 +64,23 @@ export async function readGeneratedClip(url, signal) {
   return new File(parts, `clipe-aitoia.${extension}`, { type })
 }
 
+export async function readGeneratedClipForJob(clip, signal, authorizedFetch) {
+  if (clip.file) return clip.file
+  try { return await readGeneratedClip(clip.remoteUrl || clip.url, signal) }
+  catch (error) {
+    signal.throwIfAborted()
+    if (!clip.id || !authorizedFetch) throw error
+  }
+  const { data } = await authorizedFetch(`/aitoia/video/generations/${encodeURIComponent(clip.id)}/file`, {
+    responseType: 'blob', signal,
+  })
+  if (!(data instanceof Blob) || !data.type.startsWith('video/') || !data.size || data.size > MAX_CLIP_BYTES) {
+    throw new Error('O provedor não disponibilizou um arquivo de vídeo válido.')
+  }
+  const extension = data.type === 'video/webm' ? 'webm' : data.type === 'video/quicktime' ? 'mov' : 'mp4'
+  return new File([data], `clipe-aitoia.${extension}`, { type: data.type })
+}
+
 function mediaEvent(media, name, signal, start) {
   return new Promise((resolve, reject) => {
     signal.throwIfAborted()

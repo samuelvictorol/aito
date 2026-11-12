@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkImageReference, putImageReference, putVideoReference } from '../src/services/aitoiaVideoRemote.js'
+import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from '../src/services/aitoiaVideoRemote.js'
 
 test('accepts supported image types and resolves a blank browser MIME from the filename', () => {
   assert.equal(checkImageReference(new File(['image'], 'cena.JPG')), 'image/jpeg')
@@ -30,4 +30,25 @@ test('uses the signed headers on a credential-free direct PUT and rejects an uns
   assert.equal(init.redirect, 'error')
   assert.equal(init.signal, signal)
   assert.deepEqual(Object.fromEntries(init.headers), { 'content-type': 'image/jpeg', 'x-amz-tagging': 'retention=temporary' })
+})
+
+test('downloads through the authenticated job only when a remote clip is unreadable', async t => {
+  const signal = new AbortController().signal
+  const remote = t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    assert.equal(init.credentials, 'omit')
+    assert.equal(init.headers, undefined)
+    throw new TypeError('Unavailable from the browser')
+  })
+  const authorizedFetch = t.mock.fn(async (url, options) => {
+    assert.equal(url, '/aitoia/video/generations/job%2Fid/file')
+    assert.deepEqual(options, { responseType: 'blob', signal })
+    return { data: new Blob(['clip fixture'], { type: 'video/mp4' }) }
+  })
+  const job = { id: 'job/id', remoteUrl: 'https://video.example.test/clip.mp4' }
+  const file = await readGeneratedClipForJob(job, signal, authorizedFetch)
+  assert.equal(file.name, 'clipe-aitoia.mp4')
+  assert.equal(await file.text(), 'clip fixture')
+  assert.equal(await readGeneratedClipForJob({ ...job, file }, signal, authorizedFetch), file)
+  assert.equal(remote.mock.callCount(), 1)
+  assert.equal(authorizedFetch.mock.callCount(), 1)
 })

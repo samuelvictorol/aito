@@ -52,7 +52,7 @@ export async function requestMessages(messages) {
   let shortened = messages.length > 100
   const selected = []
   for (const message of messages.slice(-100).reverse()) {
-    const text = String(message.text || '')
+    const text = [message.text, message.artifactContext].filter(Boolean).join('\n\n')
     const content = []
     if (text && text.length <= remainingCharacters) {
       const safeText = text.slice(0, MAX_PROMPT_LENGTH)
@@ -63,7 +63,7 @@ export async function requestMessages(messages) {
       shortened = true
       break
     }
-    for (const attachment of message.attachments || []) {
+    for (const attachment of message.role === 'user' ? message.attachments || [] : []) {
       const blob = attachment.blob
       if (!(blob instanceof Blob) || blob.size > remainingBytes || remainingParts <= 0 || blob.size > remainingCharacters && fileKind(attachment) === 'text') {
         shortened = true

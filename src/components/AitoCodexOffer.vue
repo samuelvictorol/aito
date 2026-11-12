@@ -1,36 +1,45 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
-import { aitoTokens, brl, usd } from 'src/composables/useAitoIA'
+import { usd } from 'src/composables/useAitoIA'
+import AuthDialog from 'components/AuthDialog.vue'
 
 const route = useRoute()
+const router = useRouter()
 const open = ref(false)
+const authOpen = ref(false)
 const offers = ref([])
-const offerError = ref(false)
+const profilePath = '/app?tab=profile'
 const promotedRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-marketing-studio'])
+const promoted = computed(() => promotedRoutes.has(route.name) && !(route.name === 'user-app' && route.query.tab === 'profile'))
 let timer
 let offersRequest
 
 async function show() {
-  if (open.value || document.visibilityState !== 'visible') return
+  if (open.value || authOpen.value || document.visibilityState !== 'visible' ||
+      document.activeElement?.matches('input, textarea, select, [contenteditable]') || document.querySelector('.q-dialog__inner')) return
   open.value = true
   if (offers.value.length || offersRequest) return
-  offerError.value = false
   const controller = new AbortController()
   offersRequest = controller
   try {
     const { data } = await api.get('/aitoia/packages', { signal: controller.signal })
     offers.value = data.data?.plans || []
-  } catch {
-    if (!controller.signal.aborted) offerError.value = true
-  } finally { offersRequest = null }
+  } catch { /* The guide and download remain available. */ }
+  finally { offersRequest = null }
 }
 
-watch(() => route.name, name => {
+function openProfile() {
+  open.value = false
+  if (localStorage.getItem('aito_user_token')) router.push(profilePath)
+  else authOpen.value = true
+}
+
+watch([() => route.name, promoted], ([, visible]) => {
   window.clearInterval(timer)
   open.value = false
-  if (!promotedRoutes.has(name)) return
+  if (!visible) return
   show()
   timer = window.setInterval(show, 5 * 60 * 1000)
 }, { immediate: true })
@@ -45,27 +54,24 @@ onBeforeUnmount(() => {
   <q-dialog v-model="open">
     <q-card dark class="codex-offer">
       <header class="codex-offer__header">
-        <img src="/aitotokens.svg" alt="" width="44" height="44" />
+        <img src="/aitotokens.svg" alt="AitoTokens" width="44" height="44" />
         <q-btn v-close-popup flat round icon="mdi-close" aria-label="Fechar oferta" />
       </header>
-      <h2>Use o Codex com AitoTokens</h2>
-      <p>Trabalhe nos seus repositórios com o Codex oficial e pague pelo uso do modelo. Use o plugin da AitoSoftwares para consultar saldo, recarregar e, quando habilitado, gerar vídeos Higgsfield com a mesma AitoKey.</p>
-      <div class="codex-offer__model"><q-icon name="mdi-brain" /> GPT‑6.1 Sol <small>Modelo disponível na integração</small></div>
-      <ul v-if="offers.length" class="codex-offer__plans" aria-label="Pacotes AitoTokens">
-        <li v-for="offer in offers" :key="offer.usdCents">
-          <strong>{{ usd(offer.usdCents) }}</strong>
-          <span>{{ brl(offer.brlCents) }}</span>
-          <small>≈ {{ aitoTokens(offer.approximateTokens) }} AitoTokens</small>
-        </li>
-      </ul>
-      <p v-else-if="offerError" role="status">Consulte os pacotes na <router-link to="/aitotokens">página de AitoTokens</router-link>.</p>
+      <h2>Codex com AitoTokens</h2>
+      <p>Use o GPT‑6.1 Sol no Codex com o saldo da sua conta AitoSoftwares.</p>
       <div class="codex-offer__actions">
-        <a class="codex-offer__primary" href="/downloads/aitoia-codex.zip" download><q-icon name="mdi-download" /> Baixar plugin (.zip)</a>
-        <a href="https://openai.com/codex/" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-console-line" /> Baixar Codex</a>
+        <a class="codex-offer__primary" href="/downloads/aitoia-codex.zip" download><q-icon name="mdi-download" /> Baixar plugin e guia</a>
+        <a href="https://openai.com/codex/" target="_blank" rel="noopener noreferrer"><img src="/codex-app-icon.png" alt="" width="20" height="20" /> Baixar Codex</a>
       </div>
-      <small class="codex-offer__note">O ZIP inclui o guia de instalação. Para usar o modelo, você precisa de uma AitoKey de projeto com o piloto liberado.</small>
+      <div class="codex-offer__footer">
+        <q-btn flat no-caps icon="mdi-key-outline" label="Obter minha AitoKey" @click="openProfile" />
+        <router-link v-if="offers.length" v-close-popup to="/aitotokens" class="codex-offer__packs">
+          Recargas {{ offers.map(offer => usd(offer.usdCents)).join(' · ') }}
+        </router-link>
+      </div>
     </q-card>
   </q-dialog>
+  <AuthDialog v-model="authOpen" :return-path="profilePath" :show-project-login="false" @authenticated="router.push(profilePath)" />
 </template>
 
 <style scoped>
@@ -74,14 +80,10 @@ onBeforeUnmount(() => {
 .codex-offer h2 { margin: 9px 0 7px; font-size: clamp(1.35rem, 5vw, 1.95rem); font-weight: 760; line-height: 1.15; }
 .codex-offer p { margin: 0 0 14px; color: #bdd3cb; }
 .codex-offer a { color: #f7d890; }
-.codex-offer__model { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; margin: 10px 0 12px; color: #ffdf96; font-weight: 700; }
-.codex-offer__model small { color: #bdd3cb; font-weight: 450; }
-.codex-offer__plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 14px; padding: 0; list-style: none; }
-.codex-offer__plans li { display: grid; gap: 3px; padding: 8px 6px; border: 1px solid #5a5540; border-radius: 8px; background: #c3a05a16; }
-.codex-offer__plans small { color: #bdd3cb; font-size: .7rem; }
 .codex-offer__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .codex-offer__actions a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 7px 10px; border: 1px solid #cdaa6666; border-radius: 9px; text-decoration: none; font: inherit; font-weight: 700; }
 .codex-offer .codex-offer__primary { color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); }
-.codex-offer__note { display: block; margin-top: 10px; color: #bdd3cb; }
-@media (max-width: 460px) { .codex-offer__plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.codex-offer__footer { display: flex; flex-wrap: wrap; align-items: center; column-gap: 9px; margin-top: 9px; color: #f7d890; }
+.codex-offer__footer .q-btn { padding-inline: 0; }
+.codex-offer .codex-offer__packs { font-size: .75rem; color: #bdd3cb; text-underline-offset: 3px; }
 </style>
