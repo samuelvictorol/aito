@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import { aitoTokens, brl, usd } from 'src/composables/useAitoIA'
@@ -8,8 +8,7 @@ const route = useRoute()
 const open = ref(false)
 const offers = ref([])
 const offerError = ref(false)
-const home = computed(() => route.name === 'landing-3d')
-const promotedRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-video-studio', 'aito-ia-marketing-studio'])
+const promotedRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-marketing-studio'])
 let timer
 let offersRequest
 
@@ -43,10 +42,6 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <button v-if="home" class="codex-offer__trigger" type="button" @click="show">
-    <q-icon name="mdi-console-line" size="19px" />
-    Codex com AitoTokens
-  </button>
   <q-dialog v-model="open">
     <q-card dark class="codex-offer">
       <header class="codex-offer__header">
@@ -85,9 +80,8 @@ onBeforeUnmount(() => {
 .codex-offer__plans li { display: grid; gap: 3px; padding: 8px 6px; border: 1px solid #5a5540; border-radius: 8px; background: #c3a05a16; }
 .codex-offer__plans small { color: #bdd3cb; font-size: .7rem; }
 .codex-offer__actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.codex-offer__actions a, .codex-offer__trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 7px 10px; border: 1px solid #cdaa6666; border-radius: 9px; text-decoration: none; font: inherit; font-weight: 700; }
-.codex-offer .codex-offer__primary, .codex-offer__trigger { color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); }
+.codex-offer__actions a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 7px 10px; border: 1px solid #cdaa6666; border-radius: 9px; text-decoration: none; font: inherit; font-weight: 700; }
+.codex-offer .codex-offer__primary { color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); }
 .codex-offer__note { display: block; margin-top: 10px; color: #bdd3cb; }
-.codex-offer__trigger { position: fixed; left: max(16px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); z-index: 100; box-shadow: 0 5px 20px #0007; cursor: pointer; }
-@media (max-width: 460px) { .codex-offer__plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .codex-offer__trigger { bottom: max(62px, calc(env(safe-area-inset-bottom) + 55px)); } }
+@media (max-width: 460px) { .codex-offer__plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

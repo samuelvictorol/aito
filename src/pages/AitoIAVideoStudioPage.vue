@@ -105,9 +105,13 @@ const videoResolutions = computed(() => [...new Set(modelOptions.value.filter(it
 const videoDurations = computed(() => modelOptions.value.filter(item =>
   item.format === offer.value?.format && optionResolution(item) === optionResolution(offer.value)))
 const maxNarration = computed(() => options.value?.voice?.maxCharacters || 4096)
-const voicePrice = computed(() => narrationText.value.trim().length * (options.value?.voice?.priceUsdCentsPerCharacter || 0))
+function speechPrice(text) {
+  const rate = options.value?.voice?.priceUsdCentsPerCharacter || 0
+  return Math.ceil(Array.from(text.trim()).length * rate * 10000 - 1e-8) / 10000
+}
+const voicePrice = computed(() => speechPrice(narrationText.value))
 const sample = 'Olá. Esta é uma amostra da minha voz em português.'
-const samplePrice = computed(() => sample.length * (options.value?.voice?.priceUsdCentsPerCharacter || 0))
+const samplePrice = computed(() => speechPrice(sample))
 function projectMediaBytes(entries = scenes.value) {
   const files = new Set(entries.flatMap(scene => scene.media ? [scene.media.file] : []))
   return [...files].reduce((sum, file) => sum + file.size, narration.value?.file.size || 0)
@@ -165,6 +169,7 @@ async function report(cause) {
   }
   const body = cause.response?.data
   const response = body instanceof Blob ? await body.text().then(text => JSON.parse(text)).catch(() => ({})) : body
+  if (cause.response?.status === 409 && response?.code === 'AITO_MEDIA_PRICE_CHANGED') await loadOptions()
   error.value = response?.message || (cause.response ? 'Não foi possível concluir a solicitação.' : cause.message) || 'Ocorreu um erro. Tente novamente.'
 }
 async function run(kind, action) {
@@ -414,7 +419,8 @@ async function makeVoice() {
   })
 }
 async function requestSpeech(text, signal) {
-  const { data } = await api.post('/aitoia/video/voice', { text, voice: voice.value, walletId: walletId.value },
+  const { data } = await api.post('/aitoia/video/voice', { text, voice: voice.value, walletId: walletId.value,
+    maxBilledUsdCents: speechPrice(text) },
     { headers: authorization({ 'X-Aito-Request-Id': crypto.randomUUID() }), responseType: 'blob', signal })
   signal.throwIfAborted()
   return new File([data], 'locucao-aitoia.mp3', { type: 'audio/mpeg' })
@@ -566,7 +572,8 @@ async function makeVideo() {
     try {
       const body = { model: generationMode.value === 'text' ? videoModel.value : referenceModel.value?.id, option: videoOption.value,
         prompt: prompt.value.trim(), walletId: walletId.value }
-      if (generationMode.value !== 'text') {
+      if (generationMode.value === 'text') body.maxBilledUsdCents = offer.value.priceUsdCents
+      else {
         const { quoteToken, referenceToken, imageReferenceTokens } = videoQuote.value
         Object.assign(body, { quoteToken, ...(referenceToken && { referenceToken }), ...(imageReferenceTokens && { imageReferenceTokens }) })
       }

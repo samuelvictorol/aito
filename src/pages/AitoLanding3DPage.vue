@@ -182,17 +182,25 @@
       </section>
     </div>
 
-    <router-link class="landing-3d__whatsapp-fixed" :to="landing3dSections[0].secondaryCta.to">
-      <q-icon name="mdi-whatsapp" aria-hidden="true"/><span>{{ landing3dSections[0].secondaryCta.label }}</span><q-icon name="mdi-arrow-top-right" aria-hidden="true"/>
-    </router-link>
-    <router-link v-if="introTextVisible" class="landing-3d__aitoia-fixed" :to="{ name: 'aito-ia', query: { auth: 'register' } }">
-      <img src="/chatgpt-mark.svg" alt="" width="23" height="23" />
-      <span>AitoIA <small>GPT 6.1</small></span>
-      <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
-    </router-link>
-    <p class="landing-3d__counter" aria-live="polite">
-      <span>{{ String(activeSection + 1).padStart(2, '0') }}</span><i></i><span>{{ String(landing3dSections.length).padStart(2, '0') }}</span>
-    </p>
+    <div class="landing-3d__floating-links">
+      <p class="landing-3d__counter" aria-live="polite">
+        <span>{{ String(activeSection + 1).padStart(2, '0') }}</span><i></i><span>{{ String(landing3dSections.length).padStart(2, '0') }}</span>
+      </p>
+      <div v-if="introTextVisible" class="landing-3d__studio-links">
+        <router-link class="landing-3d__aitoia-fixed" :to="{ name: 'aito-ia', query: { auth: 'register' } }">
+          <img src="/chatgpt-mark.svg" alt="" width="23" height="23" />
+          <span>AitoIA <small>GPT 6.1</small></span>
+          <q-icon name="mdi-arrow-top-right" aria-hidden="true" />
+        </router-link>
+        <router-link class="landing-3d__video-fixed" :to="{ name: 'aito-ia-video-studio' }">
+          <q-icon name="mdi-movie-open-outline" size="18px" aria-hidden="true" />
+          AitoIA VideoStudio
+        </router-link>
+      </div>
+      <router-link class="landing-3d__whatsapp-fixed" :to="landing3dSections[0].secondaryCta.to">
+        <q-icon name="mdi-whatsapp" aria-hidden="true"/><span>{{ landing3dSections[0].secondaryCta.label }}</span><q-icon name="mdi-arrow-top-right" aria-hidden="true"/>
+      </router-link>
+    </div>
 
     <button class="landing-3d__ai-float" type="button" aria-label="Abrir assistente do site" @click="iaChat = true">
       <img src="/ia.gif" alt="" />
@@ -481,18 +489,28 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.landing-3d__whatsapp-fixed { position: fixed; z-index: 9; left: clamp(1rem,5vw,5rem); bottom: 1.3rem; display: flex; align-items: center; gap: .7rem; max-width: calc(100vw - 9rem); padding: 1rem 1.2rem; border: 1px solid #a5ffe6; border-radius: 16px; color: #03241e; background: linear-gradient(120deg,#a5f9cf,#3cdec4); box-shadow: 0 8px 35px #23d5a94d,0 0 0 5px #51d9b415; font: 800 .78rem/1.5 'Montserrat',sans-serif; text-decoration: none; transition: box-shadow 200ms,transform 200ms; }
+.landing-3d__floating-links { position: fixed; z-index: 9; left: clamp(1rem,5vw,5rem); bottom: 1.3rem; display: flex; flex-direction: column; align-items: flex-start; gap: .6rem; pointer-events: none; }
+.landing-3d__floating-links a { pointer-events: auto; }
+.landing-3d__studio-links { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+.landing-3d__whatsapp-fixed { display: flex; align-items: center; gap: .7rem; max-width: calc(100vw - 9rem); padding: 1rem 1.2rem; border: 1px solid #a5ffe6; border-radius: 16px; color: #03241e; background: linear-gradient(120deg,#a5f9cf,#3cdec4); box-shadow: 0 8px 35px #23d5a94d,0 0 0 5px #51d9b415; font: 800 .78rem/1.5 'Montserrat',sans-serif; text-decoration: none; transition: box-shadow 200ms,transform 200ms; }
 .landing-3d__whatsapp-fixed .q-icon { font-size: 24px; flex-shrink: 0; }
 .landing-3d__whatsapp-fixed:hover { transform: translateY(-3px); box-shadow: 0 10px 45px #23d5a980; }
 .landing-3d__whatsapp-fixed:focus-visible { outline: 3px solid white; outline-offset: 4px; }
 .landing-3d--intro-loading .landing-3d__whatsapp-fixed,.landing-3d--intro-object-only .landing-3d__whatsapp-fixed { opacity: 0; pointer-events: none; }
-@media(max-width:767px) { .landing-3d__whatsapp-fixed { left: 1rem; right: 1rem; max-width: none; bottom: .8rem; padding: .8rem 1rem; gap: .6rem; font-size: .68rem; border-radius: 13px; } .landing-3d__whatsapp-fixed span { flex: 1; } .landing-3d__counter { bottom: 5.3rem!important; left: 1rem; right: auto!important; } }
-.landing-3d__aitoia-fixed { position: fixed; z-index: 9; left: clamp(1rem,5vw,5rem); bottom: 5.75rem; display: inline-flex; align-items: center; gap: .65rem; padding: .63rem .84rem; border: 1px solid #ffe6a3; border-radius: 13px; color: #241702; background: linear-gradient(115deg,#ffe5a2,#edbe62 55%,#dca14b); box-shadow: 0 8px 34px #dca14b55; font: 800 .83rem/1.3 'Montserrat', sans-serif; text-decoration: none; transition: box-shadow 180ms, transform 180ms; }
+.landing-3d__aitoia-fixed { display: inline-flex; align-items: center; gap: .65rem; padding: .63rem .84rem; border: 1px solid #ffe6a3; border-radius: 13px; color: #241702; background: linear-gradient(115deg,#ffe5a2,#edbe62 55%,#dca14b); box-shadow: 0 8px 34px #dca14b55; font: 800 .83rem/1.3 'Montserrat', sans-serif; text-decoration: none; transition: box-shadow 180ms, transform 180ms; }
 .landing-3d__aitoia-fixed img { flex: none; }
 .landing-3d__aitoia-fixed small { font-size: .69rem; font-weight: 700; }
 .landing-3d__aitoia-fixed:hover { transform: translateY(-2px); box-shadow: 0 12px 40px #dca14b80; }
 .landing-3d__aitoia-fixed:focus-visible { outline: 3px solid #fff7e2; outline-offset: 4px; }
-@media (max-width:767px) { .landing-3d__aitoia-fixed { left: 1rem; bottom: 4.6rem; } .landing-3d:has(.landing-3d__aitoia-fixed) .landing-3d__counter { bottom: 8rem!important; } }
+.landing-3d__video-fixed { display: inline-flex; align-items: center; gap: .4rem; min-height: 42px; padding: .35rem .65rem; border: 1px solid #426868; border-radius: 11px; color: #d8efec; background: #132b2e; font: 700 .72rem/1.3 'Montserrat', sans-serif; text-decoration: none; }
+.landing-3d__video-fixed:hover { background: #1c3b3e; }
+.landing-3d__video-fixed:focus-visible { outline: 2px solid #8fffee; outline-offset: 3px; }
+@media (max-width:767px) {
+  .landing-3d__floating-links { left: 1rem; right: 1rem; bottom: calc(.8rem + env(safe-area-inset-bottom)); }
+  .landing-3d__studio-links { max-width: calc(100% - 4.5rem); }
+  .landing-3d__whatsapp-fixed { width: 100%; max-width: none; padding: .8rem 1rem; gap: .6rem; font-size: .68rem; border-radius: 13px; }
+  .landing-3d__whatsapp-fixed span { flex: 1; }
+}
 .landing-3d {
   --aito-teal: #13bc9d;
   --aito-teal-dark: #12ad89;
@@ -833,10 +851,10 @@ onBeforeUnmount(() => {
   .landing-3d__form-actions { flex-direction: column; }
   .landing-3d__form-submit, .landing-3d__referral-button { width: 100%; justify-content: center; }
   .landing-3d__scroll-cue { bottom: 1.25rem; left: 0.9rem; }
-  .landing-3d__counter { right: 0.9rem; bottom: 1.25rem; }
-  .landing-3d__ai-float { right: 0.75rem; bottom: 4.4rem; width: 3.75rem; height: 3.75rem; }
+  .landing-3d__counter { position: static; }
+  .landing-3d__ai-float { right: 0.75rem; bottom: calc(4.65rem + env(safe-area-inset-bottom)); width: 3.75rem; height: 3.75rem; }
   .landing-3d__ai-float img { width: 2.75rem; height: 2.75rem; }
-  .landing-3d__surprise-float { right: 1.15rem; bottom: 8.75rem; width: 2.8rem; height: 2.8rem; }
+  .landing-3d__surprise-float { right: 1.15rem; bottom: calc(9rem + env(safe-area-inset-bottom)); width: 2.8rem; height: 2.8rem; }
   .landing-3d__instagram-link { width: 2.35rem; height: 2.35rem; font-size: 1.18rem; }
 }
 

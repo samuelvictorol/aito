@@ -1,6 +1,23 @@
 <template>
   <q-layout view="hHh Lpr fFf" class="admin-app"><CosmicScene backdrop/>
-    <q-header class="business-header"><q-toolbar><q-btn flat round dense icon="mdi-menu" aria-label="Abrir menu" @click="drawerOpen=!drawerOpen"/><q-toolbar-title>{{ sectionTitle }}</q-toolbar-title><q-btn flat no-caps icon="mdi-forum-outline" label="Comunicação" to="/admin/comunicacao" class="header-communication"/><q-btn-dropdown flat no-caps icon="mdi-web" label="Site" class="header-landings" aria-label="Abrir páginas do site"><q-list class="admin-landing-menu"><q-item v-close-popup clickable to="/"><q-item-section avatar><q-icon name="mdi-home-outline"/></q-item-section><q-item-section>Site AitoSoftwares</q-item-section></q-item><q-item v-close-popup clickable to="/whatsapp-solucoes"><q-item-section avatar><q-icon name="mdi-microsoft-windows"/></q-item-section><q-item-section>Aplicativo Desktop</q-item-section></q-item><q-item v-close-popup clickable to="/whatsapp-solucoes-whitelabel"><q-item-section avatar><q-icon name="mdi-code-braces"/></q-item-section><q-item-section>Código-fonte Whitelabel</q-item-section></q-item></q-list></q-btn-dropdown><AdminPushBell/><span class="business-admin-name">{{ firstName }}</span><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></q-toolbar></q-header>
+    <q-header class="business-header">
+      <q-toolbar>
+        <q-btn flat round dense icon="mdi-menu" aria-label="Abrir menu" @click="drawerOpen = !drawerOpen" />
+        <q-toolbar-title>{{ sectionTitle }}</q-toolbar-title>
+        <q-btn flat no-caps icon="mdi-forum-outline" label="Comunicação" to="/admin/comunicacao" class="header-communication" />
+        <q-btn-dropdown flat no-caps icon="mdi-web" label="Site" class="header-landings" aria-label="Abrir páginas do site">
+          <q-list class="admin-landing-menu">
+            <q-item v-for="link in siteLinks" :key="link.route" v-close-popup clickable :to="{ name: link.route }">
+              <q-item-section avatar><q-icon :name="link.icon" /></q-item-section>
+              <q-item-section>{{ link.label }}</q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
+        <AdminPushBell />
+        <span class="business-admin-name">{{ firstName }}</span>
+        <q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn>
+      </q-toolbar>
+    </q-header>
     <q-drawer v-model="drawerOpen" show-if-above bordered :width="265" class="business-drawer"><div class="business-brand"><img src="/aito-logo-restored.png" alt="AitoSoftwares"/><strong>AitoSoftwares</strong></div><q-list class="business-nav"><q-item clickable to="/admin/comunicacao"><q-item-section avatar><q-icon name="mdi-forum-outline"/></q-item-section><q-item-section>Comunicação</q-item-section></q-item><q-item clickable :active="tab==='projects'" @click="openDetail('projects')"><q-item-section avatar><q-icon name="mdi-folder-star-outline"/></q-item-section><q-item-section>Projetos</q-item-section></q-item><q-item clickable :active="tab==='overview'" @click="openDetail('overview')"><q-item-section avatar><q-icon name="mdi-finance"/></q-item-section><q-item-section>Dashboard</q-item-section></q-item><q-expansion-item v-model="detailExpanded" icon="mdi-view-grid-outline" label="Detalhar" class="business-detail" @before-show="tab='detail'"><q-item v-for="item in sortedDetailOptions" :key="item.name" clickable :active="tab===item.name" @click="openDetail(item.name)"><q-item-section avatar><q-icon :name="item.icon" size="20px"/></q-item-section><q-item-section>{{item.label}}</q-item-section></q-item></q-expansion-item></q-list><div class="business-drawer-footer">Administração · AitoSoftwares</div></q-drawer>
     <q-page-container>
       <q-page class="admin-app__page">
@@ -103,12 +120,26 @@ import SiteAssistantHistoryManager from 'components/SiteAssistantHistoryManager.
 
 const AdminEmailTemplates = defineAsyncComponent(() => import('components/AdminEmailTemplates.vue'))
 const AdminAitoTokensPanel = defineAsyncComponent(() => import('components/AdminAitoTokensPanel.vue'))
+const siteLinks = [
+  { route: 'landing-3d', label: 'Site AitoSoftwares', icon: 'mdi-home-outline' },
+  { route: 'whatsapp-solutions-product', label: 'Aplicativo Desktop', icon: 'mdi-microsoft-windows' },
+  { route: 'whatsapp-solutions-source', label: 'Código-fonte Whitelabel', icon: 'mdi-code-braces' },
+  { route: 'communication-demo', label: 'Demonstração de Comunicação', icon: 'mdi-play-box-outline' },
+  { route: 'aito-tokens-product', label: 'AitoTokens', icon: 'mdi-circle-multiple-outline' },
+  { route: 'aito-ia', label: 'Chat AitoIA', icon: 'mdi-chat-processing-outline' },
+  { route: 'aito-ia-video-studio', label: 'AitoIA VideoStudio', icon: 'mdi-movie-open-outline' },
+  { route: 'aito-ia-marketing-studio', label: 'Estúdio de Marketing', icon: 'mdi-image-edit-outline' },
+  { route: 'aitolearn-catalog', label: 'AitoLearn', icon: 'mdi-school-outline' },
+  { route: 'notification-generator', label: 'Gerador de notificações', icon: 'mdi-bell-plus-outline' },
+  { route: 'user-app', label: 'Área do cliente', icon: 'mdi-account-circle-outline' },
+]
 
 export default {
   name: 'AdminPanelPage',
   components: { AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   data () {
     return {
+      siteLinks,
       drawerOpen:false,detailExpanded:false,licenseGrantOpen:false,licenseCustomer:null, tab: 'overview', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
       detailOptions: [{ name: 'email-templates', label: 'Modelos de e-mail', description: 'Prévia de e-mails do sistema e histórico de envios.', icon: 'mdi-email-multiple-outline' }, {name:'desktop-expirations',label:'Desktop · vencimentos',description:'Licenças próximas de vencer ou expiradas.',icon:'mdi-calendar-clock'},{name:'notification-generator',label:'Gerar notificações',description:'Abrir o gerador de notificações.',icon:'mdi-bell-plus-outline'},{ name: 'courses', label: 'Cursos', description: 'Trilhas, aulas, materiais e marketplace.', icon: 'mdi-school-outline' }, { name: 'leads', label: 'Leads', description: 'Captacao e acompanhamento de oportunidades.', icon: 'mdi-account-multiple-outline' }, { name: 'users', label: 'Usuarios', description: 'Acessos, perfis e contas AitoLearn.', icon: 'mdi-account-outline' }, { name: 'customers', label: 'Clientes', description: 'Cadastros e acessos de clientes.', icon: 'mdi-briefcase-outline' }, { name: 'costs', label: 'Custos', description: 'Lancamentos financeiros e anexos.', icon: 'mdi-cash-multiple' }, { name: 'tickets', label: 'Chamados e saques', description: 'Suporte e solicitações de saque.', icon: 'mdi-lifebuoy' }, { name: 'contracts', label: 'Contratos', description: 'Documentos e acordos vinculados.', icon: 'mdi-file-document-outline' }, { name: 'credentials', label: 'Credenciais', description: 'Chaves e acessos compartilhados.', icon: 'mdi-key-chain-variant' }, { name: 'invoices', label: 'Notas fiscais', description: 'Documentos fiscais e valores emitidos.', icon: 'mdi-receipt-text-outline' }, { name: 'purchases', label: 'Compras de cursos', description: 'Pagamentos e interesse por curso.', icon: 'mdi-cart-outline' }, { name: 'certificates', label: 'Certificados', description: 'Certificados gerados e verificacao.', icon: 'mdi-certificate-outline' }, { name: 'course-comments', label: 'Comentarios', description: 'Moderacao das conversas nas aulas.', icon: 'mdi-comment-text-multiple-outline' }, { name: 'affiliates', label: 'Afiliados', description: 'Parceiros, perfis e acessos.', icon: 'mdi-account-star-outline' }, { name: 'coupons', label: 'Cupons', description: 'Descontos e vínculos monitorados.', icon: 'mdi-ticket-percent-outline' }, { name: 'affiliate-purchases', label: 'Vendas afiliadas', description: 'Licenças do kit, cupons e comissões.', icon: 'mdi-chart-line' }, { name: 'notifications', label: 'Notificações', description: 'Envios manuais pelo sininho.', icon: 'mdi-bell-outline' }],
       leadStatuses: [{ label: 'Novo', value: 'new' }, { label: 'Contatado', value: 'contacted' }, { label: 'Qualificado', value: 'qualified' }, { label: 'Fechado', value: 'closed' }],

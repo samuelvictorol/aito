@@ -65,12 +65,17 @@ const steps = [
   { icon: 'mdi-wallet-outline', title: 'Recarregue em reais', text: 'Escolha um pacote em dólares e confira o valor convertido antes de abrir o checkout. O saldo é liberado após a confirmação do pagamento.' },
   { icon: 'mdi-chart-timeline-variant', title: 'Acompanhe o uso', text: 'O consumo é debitado do saldo conforme a quantidade de tokens e o modelo usado. Quando o saldo termina, a IA pausa até a próxima recarga.' },
 ]
-const questions = [
+const factorLabel = computed(() => Number.isFinite(offers.value?.multiplier)
+  ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(offers.value.multiplier)
+  : '')
+const questions = computed(() => [
   { title: 'Qual é a diferença entre AitoTokens e uma chave OpenAI?', text: 'AitoTokens são créditos de uso. A AitoKey identifica o projeto na plataforma. A AitoSoftwares opera a integração com a OpenAI e mede o consumo por projeto.' },
-  { title: 'Como o uso é cobrado?', text: 'O débito em AitoTokens equivale a duas vezes o custo da OpenAI para a mesma solicitação. Uma metade cobre o provedor e a outra é a taxa de uso da AitoSoftwares.' },
+  { title: 'Como o uso é cobrado?', text: factorLabel.value
+    ? `O débito em AitoTokens corresponde a ${factorLabel.value}× o custo do provedor. Para vídeo, confira a cotação da geração antes de confirmar.`
+    : 'O débito considera o custo do provedor e a taxa de uso da AitoSoftwares. Para vídeo, confira a cotação da geração antes de confirmar.' },
   { title: 'Quantos tokens recebo em uma recarga?', text: 'A recarga adiciona um valor em dólares ao saldo. A quantidade estimada de tokens depende do modelo e da proporção entre entrada e saída, por isso varia com o uso.' },
   { title: 'O saldo é perdido se eu trocar a AitoKey?', text: 'O saldo fica vinculado ao projeto. A AitoSoftwares pode substituir a chave, preservando os créditos e o histórico de uso.' },
-]
+])
 
 useMeta({
   title,

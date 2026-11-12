@@ -23,9 +23,13 @@ const modelsLoading = ref(false)
 const modelsError = ref('')
 const modelCatalog = ref([])
 const modelQuery = ref('')
-const editing = reactive({ exchangeRate: false, config: false, grant: false })
+const editing = reactive({ exchangeRate: false, config: false, billing: false, grant: false })
 const exchange = reactive({ rate: null, autoRefresh: true })
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
+const multiplier = ref(null)
+const billingLoaded = ref(false)
+const billingLoading = ref(false)
+const billingError = ref('')
 const historyWallet = ref(null)
 const grantWallet = ref(null)
 const grantAmount = ref(null)
@@ -34,10 +38,19 @@ const mfaOpen = ref(false)
 let pendingGrant = null
 let currentLoad
 let modelLoad
+let billingLoad
 
 const numbers = new Intl.NumberFormat('pt-BR')
 const effortNames = { none: 'Direto', minimal: 'Mínimo', low: 'Baixo', medium: 'Médio', high: 'Alto', xhigh: 'Muito alto', max: 'Ultra' }
 const speedNames = { standard: 'Padrão', priority: 'Rápido' }
+function parseMultiplier(value) {
+  const raw = String(value ?? '').trim()
+  return /^\d+(?:[.,]\d{1,2})?$/.test(raw) ? Number(raw.replace(',', '.')) : NaN
+}
+function validMultiplier(value) {
+  const factor = parseMultiplier(value)
+  return factor >= 1 && factor <= 100
+}
 const selectedModel = computed(() => modelCatalog.value.find(item => item.id === config.model))
 const modelOptions = computed(() => modelCatalog.value
   .filter(item => `${item.label || ''} ${item.id}`.toLowerCase().includes(modelQuery.value))
@@ -119,6 +132,41 @@ async function saveConfig() {
   }
 }
 
+async function loadBilling() {
+  if (editing.billing) return
+  billingLoad?.abort()
+  const request = new AbortController()
+  billingLoad = request
+  billingLoading.value = true
+  billingError.value = ''
+  try {
+    const { data } = await api.get(`${root}/billing`, { ...financeHeaders(true), signal: request.signal })
+    if (!request.signal.aborted) {
+      multiplier.value = data.data.multiplier
+      billingLoaded.value = true
+    }
+  } catch (error) {
+    if (!request.signal.aborted) billingError.value = error.response?.data?.message || 'Não foi possível consultar o multiplicador.'
+  } finally {
+    if (billingLoad === request) billingLoading.value = false
+  }
+}
+
+async function saveMultiplier() {
+  if (!billingLoaded.value || billingLoading.value || editing.billing || !validMultiplier(multiplier.value)) return
+  editing.billing = true
+  billingError.value = ''
+  try {
+    const { data } = await api.put(`${root}/billing`, { multiplier: parseMultiplier(multiplier.value) }, financeHeaders(true))
+    multiplier.value = data.data.multiplier
+    $q.notify({ type: 'positive', message: 'Multiplicador de cobrança atualizado.' })
+  } catch (error) {
+    notify(error, 'Não foi possível salvar o multiplicador.')
+  } finally {
+    editing.billing = false
+  }
+}
+
 function selectModel(model) {
   const selected = modelCatalog.value.find(item => item.id === model && item.usable)
   if (!selected) return
@@ -149,7 +197,7 @@ async function loadModels(refresh = false) {
 }
 
 function refreshLicenseSettings() {
-  return Promise.all([load({ refreshSettings: true }), loadModels(true)])
+  return Promise.all([load({ refreshSettings: true }), loadModels(true), loadBilling()])
 }
 
 function openGrant(wallet) {
@@ -198,10 +246,11 @@ function changeTab(value) {
   if (value !== 'licenses') return
   if (!loaded.value) load()
   if (!modelCatalog.value.length && !modelsLoading.value) loadModels()
+  if (!billingLoading.value) loadBilling()
 }
 
 onMounted(() => changeTab(tab.value))
-onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort() })
+onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.abort() })
 </script>
 
 <template>
@@ -252,8 +301,18 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort() })
         </q-select>
         <q-select v-model="config.effort" dark outlined emit-value map-options :options="efforts" :disable="!selectedModel?.usable || efforts.length < 2" label="Nível de esforço" />
         <q-select v-model="config.speed" dark outlined emit-value map-options :options="speeds" :disable="!selectedModel?.usable || speeds.length < 2" label="Processamento" />
-        <p v-if="config.speed === 'priority'">O processamento prioritário usa o dobro de créditos pelo mesmo volume de tokens.</p>
+        <p v-if="config.speed === 'priority'">O multiplicador AitoTokens incide sobre a tarifa do processamento rápido.</p>
         <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar configuração" :loading="editing.config" :disable="!selectedModel?.usable || modelsLoading" />
+      </q-form>
+      <q-form class="token-admin__box" @submit.prevent="saveMultiplier">
+        <h3>Cobrança AitoTokens</h3>
+        <q-input v-model="multiplier" dark outlined label="Multiplicador sobre o custo" suffix="×" type="number" inputmode="decimal"
+          min="1" max="100" step="0.01" required :loading="billingLoading" :disable="!billingLoaded || billingLoading || editing.billing"
+          :rules="[value => validMultiplier(value) || 'Informe um número de 1 a 100, com até duas casas decimais.']" hide-bottom-space />
+        <p>Aplica-se às próximas chamadas de OpenAI e Higgsfield. A taxa de cada chamada fica registrada.</p>
+        <p v-if="validMultiplier(multiplier)">US$ 1,00 de custo equivale a <strong>{{ purchaseMoney(100 * parseMultiplier(multiplier), 'USD') }}</strong> em AitoTokens.</p>
+        <p v-if="billingError" role="alert" class="token-admin__warning">{{ billingError }}</p>
+        <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar multiplicador" :loading="editing.billing" :disable="!billingLoaded || billingLoading" />
       </q-form>
     </div>
     <AdminAitoProviderKeys :checkout-state="config.checkoutState" @updated="refreshLicenseSettings" @reauthenticated="emit('reauthenticated', $event)" />
