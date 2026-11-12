@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseMoney } from 'src/services/purchase-history'
 import AitoTokenHistory from './AitoTokenHistory.vue'
+import AdminAitoProviderKeys from './AdminAitoProviderKeys.vue'
 import AdminAitoTokenProjects from './AdminAitoTokenProjects.vue'
 import AdminAitoTokenUsage from './AdminAitoTokenUsage.vue'
 import LoginMfaDialog from './LoginMfaDialog.vue'
@@ -18,6 +19,10 @@ const pagination = ref({ page: 1, rowsPerPage: 100, rowsNumber: 0 })
 const loading = ref(false)
 const loaded = ref(false)
 const loadError = ref('')
+const modelsLoading = ref(false)
+const modelsError = ref('')
+const modelCatalog = ref([])
+const modelQuery = ref('')
 const editing = reactive({ exchangeRate: false, config: false, grant: false })
 const exchange = reactive({ rate: null, autoRefresh: true })
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
@@ -28,18 +33,17 @@ const grantChallenge = ref(null)
 const mfaOpen = ref(false)
 let pendingGrant = null
 let currentLoad
+let modelLoad
 
 const numbers = new Intl.NumberFormat('pt-BR')
-const models = ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna']
-const efforts = [
-  { label: 'Baixo', value: 'low' },
-  { label: 'Médio', value: 'medium' },
-  { label: 'Alto', value: 'high' },
-]
-const standardSpeed = { label: 'Padrão', value: 'standard' }
-const prioritySpeed = { label: 'Prioritário', value: 'priority' }
-const hasPriority = computed(() => config.model === 'gpt-6.1-sol' || config.model === 'gpt-6.1-terra')
-const speeds = computed(() => hasPriority.value ? [standardSpeed, prioritySpeed] : [standardSpeed])
+const effortNames = { none: 'Direto', minimal: 'Mínimo', low: 'Baixo', medium: 'Médio', high: 'Alto', xhigh: 'Muito alto', max: 'Ultra' }
+const speedNames = { standard: 'Padrão', priority: 'Rápido' }
+const selectedModel = computed(() => modelCatalog.value.find(item => item.id === config.model))
+const modelOptions = computed(() => modelCatalog.value
+  .filter(item => `${item.label || ''} ${item.id}`.toLowerCase().includes(modelQuery.value))
+  .map(item => ({ value: item.id, label: item.label || item.id, disable: !item.usable, reason: item.reason })))
+const efforts = computed(() => (selectedModel.value?.efforts || [config.effort]).map(value => ({ value, label: effortNames[value] || value })))
+const speeds = computed(() => (selectedModel.value?.speeds || [config.speed]).map(value => ({ value, label: speedNames[value] || value })))
 const columns = [
   { name: 'ownerName', label: 'Cliente', field: 'ownerName', align: 'left' },
   { name: 'ownerEmail', label: 'E-mail', field: 'ownerEmail', align: 'left' },
@@ -102,6 +106,7 @@ async function saveExchangeRate() {
 
 async function saveConfig() {
   const { model, effort, speed } = config
+  if (!selectedModel.value?.usable || editing.config) return
   editing.config = true
   try {
     const { data } = await api.put(`${root}/config`, { model, effort, speed }, financeHeaders(true))
@@ -115,11 +120,36 @@ async function saveConfig() {
 }
 
 function selectModel(model) {
+  const selected = modelCatalog.value.find(item => item.id === model && item.usable)
+  if (!selected) return
   config.model = model
-  if (!hasPriority.value) {
-    config.effort = 'medium'
-    config.speed = 'standard'
+  if (!selected.efforts?.includes(config.effort)) config.effort = selected.efforts?.includes('medium') ? 'medium' : selected.efforts?.[0] || 'medium'
+  if (!selected.speeds?.includes(config.speed)) config.speed = selected.speeds?.[0] || 'standard'
+}
+
+function filterModels(value, update) {
+  update(() => { modelQuery.value = value.trim().toLowerCase() })
+}
+
+async function loadModels(refresh = false) {
+  modelLoad?.abort()
+  const request = new AbortController()
+  modelLoad = request
+  modelsLoading.value = true
+  modelsError.value = ''
+  try {
+    const { data } = await api.get(`${root}/models`, { ...financeHeaders(true),
+      ...(refresh && { params: { refresh: 1 } }), signal: request.signal })
+    if (!request.signal.aborted) modelCatalog.value = data.data?.models || []
+  } catch (error) {
+    if (!request.signal.aborted) modelsError.value = error.response?.data?.message || 'Não foi possível consultar os modelos OpenAI.'
+  } finally {
+    if (modelLoad === request) modelsLoading.value = false
   }
+}
+
+function refreshLicenseSettings() {
+  return Promise.all([load({ refreshSettings: true }), loadModels(true)])
 }
 
 function openGrant(wallet) {
@@ -165,11 +195,13 @@ async function applyGrant(session) {
 }
 
 function changeTab(value) {
-  if (value === 'licenses' && !loaded.value) load()
+  if (value !== 'licenses') return
+  if (!loaded.value) load()
+  if (!modelCatalog.value.length && !modelsLoading.value) loadModels()
 }
 
 onMounted(() => changeTab(tab.value))
-onBeforeUnmount(() => currentLoad?.abort())
+onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort() })
 </script>
 
 <template>
@@ -177,7 +209,7 @@ onBeforeUnmount(() => currentLoad?.abort())
     <header class="token-admin__head">
       <img src="/aitotokens.svg" alt="" width="56" height="56" />
       <div><h2 id="token-admin-title">AitoTokens</h2><p>Consumo, chaves de projetos e recargas.</p></div>
-      <q-btn v-if="tab === 'licenses'" flat round icon="mdi-refresh" aria-label="Atualizar AitoTokens" :loading="loading" @click="load({ refreshSettings: true })" />
+      <q-btn v-if="tab === 'licenses'" flat round icon="mdi-refresh" aria-label="Atualizar AitoTokens" :loading="loading" @click="refreshLicenseSettings" />
     </header>
     <q-tabs v-model="tab" dense align="left" no-caps active-color="teal-3" indicator-color="teal-3" class="token-admin__tabs" @update:model-value="changeTab">
       <q-tab name="usage" label="Uso e custos" />
@@ -197,18 +229,34 @@ onBeforeUnmount(() => currentLoad?.abort())
         <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar cotação" :loading="editing.exchangeRate" />
       </q-form>
       <q-form class="token-admin__box" @submit.prevent="saveConfig">
-        <h3>Configurar Aito IA</h3>
+        <div class="token-admin__model-heading">
+          <h3>Configurar Aito IA</h3>
+          <q-btn flat dense no-caps color="teal-3" icon="mdi-refresh" label="Atualizar modelos" :loading="modelsLoading" @click="loadModels(true)" />
+        </div>
         <div class="token-admin__status">
           <q-badge v-if="typeof config.configured === 'boolean'" outline :color="config.configured ? 'green-4' : 'orange-4'" :label="config.configured ? 'Provedor de IA configurado' : 'Chave da IA pendente'" />
           <q-badge v-if="typeof config.checkoutConfigured === 'boolean'" outline :color="config.checkoutConfigured ? 'green-4' : 'orange-4'" :label="config.checkoutConfigured ? 'Checkout InfinitePay configurado' : 'Checkout InfinitePay pendente'" />
         </div>
-        <q-select :model-value="config.model" dark outlined :options="models" label="Modelo" @update:model-value="selectModel" />
-        <q-select v-model="config.effort" dark outlined emit-value map-options :options="efforts" :disable="config.model === 'gpt-6-luna'" label="Nível de esforço" />
-        <q-select v-model="config.speed" dark outlined emit-value map-options :options="speeds" :disable="!hasPriority" label="Processamento" />
+        <p v-if="modelsError" role="alert" class="token-admin__warning">{{ modelsError }}</p>
+        <q-select :model-value="config.model" :display-value="selectedModel?.label || config.model" dark outlined emit-value map-options use-input
+          input-debounce="0" :options="modelOptions" :loading="modelsLoading" label="Modelo" @filter="filterModels" @update:model-value="selectModel">
+          <template #option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section>
+                <q-item-label>{{ scope.opt.label }}</q-item-label>
+                <q-item-label v-if="scope.opt.disable" caption>{{ scope.opt.reason || 'Modelo sem suporte à cobrança AitoTokens' }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+          <template #no-option><q-item><q-item-section>Nenhum modelo encontrado.</q-item-section></q-item></template>
+        </q-select>
+        <q-select v-model="config.effort" dark outlined emit-value map-options :options="efforts" :disable="!selectedModel?.usable || efforts.length < 2" label="Nível de esforço" />
+        <q-select v-model="config.speed" dark outlined emit-value map-options :options="speeds" :disable="!selectedModel?.usable || speeds.length < 2" label="Processamento" />
         <p v-if="config.speed === 'priority'">O processamento prioritário usa o dobro de créditos pelo mesmo volume de tokens.</p>
-        <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar configuração" :loading="editing.config" />
+        <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar configuração" :loading="editing.config" :disable="!selectedModel?.usable || modelsLoading" />
       </q-form>
     </div>
+    <AdminAitoProviderKeys :checkout-state="config.checkoutState" @updated="refreshLicenseSettings" @reauthenticated="emit('reauthenticated', $event)" />
     <q-table
       v-if="loaded" v-model:pagination="pagination" flat bordered dark wrap-cells row-key="licenseId" :rows="wallets" :columns="columns"
       :rows-per-page-options="[pagination.rowsPerPage]" no-data-label="Nenhuma licença encontrada."
@@ -265,6 +313,8 @@ onBeforeUnmount(() => currentLoad?.abort())
 .token-admin__box .q-btn { justify-self: start; }
 .token-admin__status { display: flex; flex-wrap: wrap; gap: .45rem; }
 .token-admin__status:empty { display: none; }
+.token-admin__model-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .4rem; }
+.token-admin p.token-admin__warning { color: #ffd190; }
 .token-admin h3, .token-admin__dialog h3 { margin: 0; font-size: 1.2rem; font-weight: 700; line-height: 1.4; }
 .token-admin__table { background: #0c2022; border-color: #345857; }
 .token-admin__dialog { width: min(94vw, 480px); border: 1px solid #345857; background: #0c2022; }

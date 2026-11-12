@@ -1,20 +1,23 @@
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMeta } from 'quasar'
 import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
-import { useAitoIA, usd } from 'src/composables/useAitoIA'
+import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
+import { aitoTokens, useAitoIA, usd } from 'src/composables/useAitoIA'
+import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
+const AitoIAChatVideo = defineAsyncComponent(() => import('components/AitoIAChatVideo.vue'))
 useMeta({ title: 'AitoIA | Chat com AitoTokens', meta: { description: { name: 'description', content: 'Converse com os modelos OpenAI usando AitoTokens. Compare modelos e mantenha suas conversas no seu navegador.' } } })
 const route = useRoute()
 const state = useAitoIA()
 const { signedIn, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
-  effectivePrice, modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
+  modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
   activeId, active, request, chatList, storageError, loadingConversation, hasInput, walletLoading } = state
 const composer = ref(null)
 const fileInput = ref(null)
@@ -28,6 +31,11 @@ const renamed = ref('')
 const dragDepth = ref(0)
 const copiedId = ref('')
 const stopped = ref(false)
+const videoOpen = ref(false)
+const videoBusy = ref(false)
+const videoFile = shallowRef(null)
+const busy = computed(() => Boolean(request.value || videoBusy.value))
+useAitoWorkGuard(busy, () => { error.value = 'Aguarde a operação em andamento para sair desta tela.' })
 const effortLabels = { none: 'Direta', minimal: 'Mínima', low: 'Baixa', medium: 'Equilibrada', high: 'Alta', xhigh: 'Muito alta', max: 'Ultra' }
 const effortIndex = computed({ get: () => Math.max(0, efforts.value.indexOf(effort.value)), set: value => { effort.value = efforts.value[Number(value)] || effort.value } })
 const promptIdeas = [
@@ -70,6 +78,15 @@ function onKey(event) {
 function addFiles(files) {
   if (!files.length) return
   if (!signedIn.value) { showAuth(); return }
+  if (busy.value) return
+  const video = files.find(file => file.type === 'video/mp4' || /\.mp4$/i.test(file.name))
+  if (video) {
+    videoFile.value = video
+    videoOpen.value = true
+    const others = files.filter(file => file !== video)
+    if (others.length) state.addFiles(others)
+    return
+  }
   state.addFiles(files)
 }
 function pickFiles(event) {
@@ -110,7 +127,7 @@ onMounted(() => {
     <button v-if="sidebarOpen" type="button" class="aito-studio__scrim" aria-label="Fechar conversas" @click="sidebarOpen = false" />
     <aside class="aito-studio__sidebar" aria-label="Conversas">
       <div class="aito-studio__brand-row">
-        <router-link to="/" class="aito-studio__brand" aria-label="Site AitoSoftwares"><img src="/aito-logo-restored.png" width="42" height="42" alt="" /><span>Aito<span>IA</span></span></router-link>
+        <router-link to="/" class="aito-studio__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="42" height="42" alt="" /><span>Aito<span>IA</span></span></router-link>
         <button type="button" class="aito-studio__icon aito-studio__sidebar-close" aria-label="Fechar conversas" @click="sidebarOpen = false"><q-icon name="mdi-close" size="21px" /></button>
       </div>
       <button type="button" class="aito-studio__new" @click="newChat"><q-icon name="mdi-plus" size="20px" /> Nova conversa</button>
@@ -150,9 +167,9 @@ onMounted(() => {
           <button type="button" class="aito-studio__icon aito-studio__mobile-toggle" aria-label="Abrir conversas" :aria-expanded="sidebarOpen" @click="sidebarOpen = true"><q-icon name="mdi-menu" size="23px" /></button>
           <button type="button" class="aito-studio__top-model-button" aria-label="Configurar modelo" @click="showSettings"><q-icon name="mdi-auto-fix" size="18px" /><span>{{ currentModel?.label || (modelLoading ? 'Carregando modelos…' : 'Modelos OpenAI') }}</span><q-icon name="mdi-chevron-down" size="18px" /></button>
         </div>
+        <AitoIAModeSwitch :busy="busy" @chat-video="videoOpen = true" />
         <div class="aito-studio__header-actions">
-          <router-link class="aito-studio__video-link" :to="{ name: 'aito-ia-video-studio' }" aria-label="Estúdio de vídeo" title="Estúdio de vídeo"><q-icon name="mdi-movie-open-play-outline" size="19px" /><span>Estúdio de vídeo</span></router-link>
-          <button v-if="signedIn" type="button" class="aito-studio__balance" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? usd(status.balanceUsdCents) : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="17px" /></button>
+        <button v-if="signedIn" type="button" class="aito-studio__balance" :disabled="busy" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="17px" /></button>
           <button v-else type="button" class="aito-studio__signup" @click="showAuth()">Criar conta <q-icon name="mdi-arrow-top-right" size="17px" /></button>
         </div>
       </header>
@@ -163,7 +180,7 @@ onMounted(() => {
         <div class="aito-studio__message-list">
           <p class="aito-studio__conversation-title">{{ active.title }}</p>
           <article v-for="message in active.messages" :key="message.id" class="aito-studio__message" :class="'aito-studio__message--' + message.role">
-            <div v-if="message.role === 'assistant'" class="aito-studio__speaker"><img src="/aito-logo-restored.png" alt="" width="27" height="27" /><strong>AitoIA</strong><small>{{ message.model }}<template v-if="Number.isFinite(message.billedUsdCents)"> · {{ usd(message.billedUsdCents) }}</template></small></div>
+            <div v-if="message.role === 'assistant'" class="aito-studio__speaker"><img src="/ia.gif" alt="" width="27" height="27" /><strong>AitoIA</strong><small>{{ message.model }}<template v-if="Number.isFinite(message.billedUsdCents)"> · {{ usd(message.billedUsdCents) }}</template></small></div>
             <div v-if="message.attachments?.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in message.attachments" :key="file.id" :attachment="file" /></div>
             <p v-if="message.role === 'user' && message.text" class="aito-studio__user-text">{{ message.text }}</p>
             <AitoIAResponse v-else-if="message.text" :text="message.text" />
@@ -174,7 +191,7 @@ onMounted(() => {
       </div>
 
       <section v-else class="aito-studio__welcome" aria-labelledby="aito-ia-title">
-        <div class="aito-studio__orb"><img src="/aito-logo-restored.png" alt="" width="88" height="88" /></div>
+        <div class="aito-studio__orb"><img src="/ia.gif" alt="" width="88" height="88" /></div>
         <h1 id="aito-ia-title">No que vamos trabalhar?</h1>
         <p>Converse, escreva código e analise arquivos com AitoIA.</p>
         <div class="aito-studio__ideas">
@@ -191,8 +208,9 @@ onMounted(() => {
         </div>
         <div v-else-if="contextShortened" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>Parte do histórico ficou fora desta solicitação para respeitar o limite de contexto.</span></div>
         <div v-else-if="stopped" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>A espera foi interrompida. A solicitação já enviada ainda pode consumir créditos.</span><button type="button" aria-label="Fechar aviso" @click="stopped = false"><q-icon name="mdi-close" size="17px" /></button></div>
-        <div v-if="signedIn && status?.configured === false" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>O serviço de IA está temporariamente indisponível.</span><button type="button" @click="state.refreshStatus(); state.refreshModels(true)">Atualizar</button></div>
-        <form class="aito-studio__composer" @submit.prevent="requestSend">
+        <div v-if="signedIn && status?.configured === false && !videoOpen" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>O chat aguarda a configuração da OpenAI.</span><button type="button" @click="state.refreshStatus(); state.refreshModels(true)">Atualizar</button></div>
+        <AitoIAChatVideo v-if="videoOpen" :state="state" :initial-prompt="draft" :initial-video="videoFile" @busy="videoBusy = $event" @close="videoOpen = false; videoFile = null; focusComposer()" @login="showAuth('login')" @wallet="showWallet" />
+        <form v-else class="aito-studio__composer" @submit.prevent="requestSend">
           <div v-if="attachments.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in attachments" :key="file.id" :attachment="file" removable @remove="attachments = attachments.filter(item => item.id !== file.id)" /></div>
           <textarea ref="composer" v-model="draft" rows="2" :maxlength="MAX_PROMPT_LENGTH" aria-label="Mensagem" placeholder="Escreva uma mensagem ou solte um arquivo…" @keydown="onKey" @paste="pasteFiles" />
           <div class="aito-studio__tools">
@@ -222,7 +240,6 @@ onMounted(() => {
           </div>
           <div v-if="efforts.length" class="aito-studio__reasoning"><div><label for="aito-studio-effort">Potência</label><strong>{{ effortLabels[effort] || effort }}</strong></div><input id="aito-studio-effort" v-model.number="effortIndex" :aria-valuetext="effortLabels[effort] || effort" type="range" min="0" :max="Math.max(1, efforts.length - 1)" :disabled="efforts.length === 1" /></div>
           <label v-if="speeds.length">Velocidade<select v-model="speed"><option v-for="option in speeds" :key="option" :value="option">{{ option === 'priority' ? 'Rápida' : 'Padrão' }}</option></select></label>
-          <p v-if="effectivePrice" class="aito-studio__rates">{{ usd(effectivePrice.input * 100) }} de entrada e {{ usd(effectivePrice.output * 100) }} de saída por milhão de tokens.</p>
           <p v-if="settingsError" role="alert" class="aito-studio__setting-error">{{ settingsError }}</p>
         </div>
       </q-card>
@@ -268,8 +285,6 @@ onMounted(() => {
 .aito-studio__main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--aito-ai-glow), var(--aito-ai-bg); }
 .aito-studio__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 63px; padding: 10px 23px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
 .aito-studio__header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
-.aito-studio__video-link { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-accent); background: var(--aito-ai-panel); font-size: .8rem; font-weight: 650; text-decoration: none; }
-.aito-studio__video-link:hover { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-raised); }
 .aito-studio__top-model { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .aito-studio__top-model-button { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 0; border-radius: 7px; color: var(--aito-ai-text); background: transparent; cursor: pointer; font-size: .84rem !important; font-weight: 650 !important; }
 .aito-studio__top-model-button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -333,8 +348,7 @@ onMounted(() => {
 .aito-studio__reasoning div { display: flex; align-items: center; gap: 6px; }
 .aito-studio__reasoning strong { color: var(--aito-ai-purple); font-size: .82rem; }
 .aito-studio__reasoning input { width: 100%; height: 19px; margin: 6px 0 0; accent-color: var(--aito-ai-purple); cursor: pointer; }
-.aito-studio__rates, .aito-studio__setting-error { margin: 0; color: var(--aito-ai-muted); font-size: .78rem; line-height: 1.45; }
-.aito-studio__setting-error { color: var(--aito-ai-error); }
+.aito-studio__setting-error { margin: 0; color: var(--aito-ai-error); font-size: .78rem; line-height: 1.45; }
 .aito-studio__mobile-toggle, .aito-studio__sidebar-close, .aito-studio__scrim { display: none; }
 @media (max-width: 740px) {
   .aito-studio { grid-template-columns: minmax(0, 1fr); }
@@ -342,10 +356,9 @@ onMounted(() => {
   .aito-studio__sidebar { z-index: 7; position: fixed; top: 0; bottom: 0; left: 0; width: min(84vw, 280px); transform: translateX(-100%); visibility: hidden; }
   .aito-studio--sidebar .aito-studio__sidebar { transform: translateX(0); visibility: visible; }
   .aito-studio__scrim { z-index: 6; position: fixed; inset: 0; display: block; border: 0; background: var(--aito-ai-overlay); }
-  .aito-studio__header { padding: 8px 11px 8px 7px; min-height: 53px; }
+  .aito-studio__header { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 6px 11px 7px 7px; min-height: 53px; }
   .aito-studio__header-actions { gap: 5px; }
-  .aito-studio__video-link { min-width: 39px; }
-  .aito-studio__video-link span { display: none; }
+  .aito-studio__header :deep(.aito-mode) { grid-row: 2; grid-column: 1 / -1; justify-self: center; }
   .aito-studio__bottom, .aito-studio__message-list { padding-right: 11px; padding-left: 11px; }
   .aito-studio__welcome { padding: 12px 8px; }
   .aito-studio__orb { width: 62px; height: 62px; border-radius: 18px; margin-bottom: 14px; }

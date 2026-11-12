@@ -1,12 +1,64 @@
 <script setup>
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMeta } from 'quasar'
+import { useRoute } from 'vue-router'
+import { api } from 'boot/axios'
+import AuthDialog from 'components/AuthDialog.vue'
+import AitoIAWallet from 'components/AitoIAWallet.vue'
+import { aitoTokens, brl, useAitoIA } from 'src/composables/useAitoIA'
+import 'src/css/aitoia-theme.css'
 
 const title = 'AitoTokens | Créditos de IA para produtos e projetos'
 const description = 'Controle o consumo de IA com AitoTokens. Recarregue em reais, acompanhe o uso e conecte seu projeto com uma AitoKey.'
 const url = 'https://aitosoftwares.com/aitotokens'
 const contact = 'https://wa.me/5561982637685?text=Ol%C3%A1%21%20Quero%20conectar%20meu%20projeto%20ao%20AitoTokens.'
 
-const packs = [5, 15, 50, 100]
+const route = useRoute()
+const wallet = useAitoIA({ chatHistory: false })
+const offers = ref(null)
+const offerError = ref(false)
+const authOpen = ref(false)
+const walletOpen = ref(false)
+const requestedPackage = ref(null)
+const packAmounts = [500, 1500, 5000, 10000]
+const packs = computed(() => offers.value?.plans || packAmounts.map(usdCents => ({ usdCents })))
+const returnPath = computed(() => `/aitotokens${requestedPackage.value ? `?pacote=${requestedPackage.value}` : ''}`)
+
+async function loadOffers() {
+  offerError.value = false
+  try { offers.value = (await api.get('/aitoia/packages')).data.data }
+  catch { offerError.value = true }
+}
+
+function openWallet() {
+  walletOpen.value = true
+  wallet.refreshStatus()
+  wallet.loadHistory()
+}
+
+function buy(pack) {
+  requestedPackage.value = pack.usdCents
+  if (wallet.signedIn.value) openWallet()
+  else authOpen.value = true
+}
+
+async function authenticated() {
+  await wallet.syncSession()
+  if (wallet.signedIn.value) openWallet()
+}
+
+onMounted(() => {
+  loadOffers()
+  const selected = Number(route.query.pacote)
+  if (!packAmounts.includes(selected)) return
+  requestedPackage.value = selected
+  let opened = false
+  watch(wallet.accountId, id => {
+    if (!id || opened) return
+    opened = true
+    openWallet()
+  }, { immediate: true })
+})
 const steps = [
   { icon: 'mdi-key-outline', title: 'Conecte seu projeto', text: 'A AitoSoftwares vincula uma AitoKey ao projeto. Sua aplicação usa essa chave no servidor para enviar solicitações de IA.' },
   { icon: 'mdi-wallet-outline', title: 'Recarregue em reais', text: 'Escolha um pacote em dólares e confira o valor convertido antes de abrir o checkout. O saldo é liberado após a confirmação do pagamento.' },
@@ -47,10 +99,12 @@ useMeta({
       <div class="tokens-landing__intro">
         <p class="tokens-landing__tag">Créditos de IA</p>
         <h1 id="aitotokens-title">Aito<span>Tokens</span></h1>
-        <p class="tokens-landing__lead">Use IA nos seus projetos com saldo pré-pago.</p>
-        <p>Conecte sua aplicação com uma AitoKey, recarregue em reais e acompanhe quanto cada projeto consome.</p>
+        <p class="tokens-landing__lead">Converse, crie vídeos e conecte seus projetos com saldo pré-pago.</p>
+        <p>Recarregue em reais e use seu saldo no chat AitoIA ou no Estúdio de vídeo.</p>
         <div class="tokens-landing__actions">
           <a class="tokens-landing__button" href="#pacotes">Ver pacotes <q-icon name="mdi-arrow-down" /></a>
+          <router-link class="tokens-landing__link" to="/aitoia">Abrir AitoIA <q-icon name="mdi-message-text-outline" /></router-link>
+          <router-link class="tokens-landing__link" to="/aitoia-video-studio">Estúdio de vídeo <q-icon name="mdi-movie-open-play-outline" /></router-link>
           <a class="tokens-landing__link" :href="contact" target="_blank" rel="noopener noreferrer">Conectar meu projeto <q-icon name="mdi-arrow-top-right" /></a>
         </div>
       </div>
@@ -74,10 +128,17 @@ useMeta({
     <section id="pacotes" class="tokens-landing__section tokens-landing__packs" aria-labelledby="tokens-pack-title">
       <div>
         <h2 id="tokens-pack-title">Pacotes de recarga</h2>
-        <p>Recarregue pelo aplicativo conectado. O checkout mostra o valor em reais pela cotação aplicada no momento da compra.</p>
+        <p>Escolha um pacote e entre na sua conta para pagar pela InfinitePay. A estimativa de tokens varia com o modelo e o tipo de uso.</p>
+        <p v-if="offerError" role="status">Não foi possível consultar a cotação. <button class="tokens-landing__retry" type="button" @click="loadOffers">Tentar novamente</button></p>
+        <p v-else-if="offers?.checkoutConfigured === false" role="status">O checkout de recargas está temporariamente indisponível.</p>
       </div>
       <ul class="tokens-landing__pack-grid" aria-label="Valores dos pacotes em dólares">
-        <li v-for="pack in packs" :key="pack"><span>US$</span> <strong>{{ pack }}</strong><small>em créditos</small></li>
+        <li v-for="pack in packs" :key="pack.usdCents">
+          <span>US$</span> <strong>{{ pack.usdCents / 100 }}</strong>
+          <small v-if="Number.isFinite(pack.brlCents)">{{ brl(pack.brlCents) }} pela cotação atual</small>
+          <small v-if="Number.isFinite(pack.approximateTokens)">≈ {{ aitoTokens(pack.approximateTokens) }} AitoTokens</small>
+          <button type="button" class="tokens-landing__buy" @click="buy(pack)">Recarregar <q-icon name="mdi-arrow-top-right" /></button>
+        </li>
       </ul>
     </section>
 
@@ -95,6 +156,8 @@ useMeta({
       <router-link to="/politica-privacidade">Privacidade</router-link>
       <router-link to="/termos-servico">Termos de serviço</router-link>
     </footer>
+    <AuthDialog v-if="authOpen" v-model="authOpen" initial-mode="login" :return-path="returnPath" :show-project-login="false" @authenticated="authenticated" />
+    <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="wallet" :initial-package="requestedPackage" />
   </main>
 </template>
 
@@ -136,6 +199,8 @@ useMeta({
 .tokens-landing__pack-grid li { color: var(--gold); background: linear-gradient(145deg, #2b2916, #10261c); border-color: #6c5a34; }
 .tokens-landing__pack-grid strong { font-size: clamp(1.4rem, 5vw, 2.8rem); line-height: 1.05; }
 .tokens-landing__pack-grid small { display: block; margin-top: .3rem; color: var(--muted); font-size: .85rem; }
+.tokens-landing__buy { display: flex; align-items: center; justify-content: space-between; gap: .3rem; width: 100%; margin-top: .8rem; padding: .55rem .6rem; border: 0; border-radius: .45rem; color: #281901; background: var(--gold); font: inherit; font-size: .83rem; font-weight: 750; cursor: pointer; }
+.tokens-landing__retry { color: var(--mint); background: transparent; border: 0; font: inherit; text-decoration: underline; cursor: pointer; }
 .tokens-landing__faq { display: grid; grid-template-columns: 1fr 2fr; gap: 1.2rem; }
 .tokens-landing details { padding: .85rem 0; border-bottom: 1px solid #365448; }
 .tokens-landing summary { cursor: pointer; font-weight: 680; line-height: 1.45; }

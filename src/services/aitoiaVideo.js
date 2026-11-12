@@ -14,6 +14,14 @@ export function sceneSeconds(value) {
   return Math.min(15, Math.max(1, Math.round(Number(value) || 1)))
 }
 
+export function splitStudioClip(value) {
+  if (!Number.isFinite(value) || value <= 0) return []
+  const duration = Math.min(maxStudioScenes * 15, Math.ceil(value))
+  return Array.from({ length: Math.ceil(duration / 15) }, (_, index) => ({
+    offset: index * 15, duration: Math.min(15, duration - index * 15),
+  }))
+}
+
 export function studioTimeline(scenes) {
   let duration = 0
   const segments = scenes.map(scene => {
@@ -28,6 +36,12 @@ export function studioFrame(timeline, seconds) {
   const at = Math.min(timeline.duration, Math.max(0, seconds))
   const segment = timeline.segments.find(entry => at < entry.end) || timeline.segments.at(-1)
   return segment ? { scene: segment.scene, time: at - segment.start } : null
+}
+
+export function studioSubtitles(timeline) {
+  const stamp = seconds => new Date(seconds * 1000).toISOString().slice(11, 23).replace('.', ',')
+  return timeline.segments.filter(({ scene }) => scene.caption.trim()).map(({ start, end, scene }, index) =>
+    `${index + 1}\r\n${stamp(start)} --> ${stamp(end)}\r\n${scene.caption.trim()}\r\n`).join('\r\n')
 }
 
 function waitForMedia(element, event, signal) {
@@ -173,21 +187,31 @@ export function drawStudioFrame(canvas, scene) {
   headings.forEach((line, index) => ctx.fillText(line, padding, headingBottom - (headings.length - index - 1) * headingSize * 1.13, textWidth))
 }
 
-const mimeTypes = ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']
+const exportTypes = [
+  { extension: 'mp4', label: 'MP4', candidates: ['video/mp4'] },
+  { extension: 'webm', label: 'WebM', candidates: ['video/webm;codecs=vp8,opus', 'video/webm'] },
+]
 
-export function studioVideoMime() {
-  if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement === 'undefined' || !HTMLCanvasElement.prototype.captureStream) return ''
-  return mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || ''
+export function studioVideoExports() {
+  if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement === 'undefined' || !HTMLCanvasElement.prototype.captureStream) return []
+  return exportTypes.flatMap(({ extension, label, candidates }) => {
+    const mime = candidates.find(type => MediaRecorder.isTypeSupported(type))
+    return mime ? [{ extension, label, mime }] : []
+  })
 }
 
-export async function recordStudioVideo(canvas, duration, { narration, render, signal }) {
-  const mimeType = studioVideoMime()
-  if (!mimeType) throw new Error('Seu navegador não oferece exportação de vídeo pelo canvas.')
+export function studioVideoMime() {
+  return studioVideoExports()[0]?.mime || ''
+}
+
+export async function recordStudioVideo(canvas, duration, { narration, audioOffset = 0, mimeType = studioVideoMime(), render, signal }) {
+  if (!studioVideoExports().some(option => option.mime === mimeType)) throw new Error('Seu navegador não oferece esse formato de exportação.')
   const stream = canvas.captureStream(30)
   const audio = narration && new AudioContext()
   let recorder
   let raf
   let source
+  let audioDuration = 0
   try {
     if (audio) {
       const resume = audio.resume()
@@ -198,6 +222,7 @@ export async function recordStudioVideo(canvas, duration, { narration, render, s
       const destination = audio.createMediaStreamDestination()
       source = audio.createBufferSource()
       source.buffer = buffer
+      audioDuration = buffer.duration
       source.connect(destination)
       stream.addTrack(destination.stream.getAudioTracks()[0])
     }
@@ -224,7 +249,7 @@ export async function recordStudioVideo(canvas, duration, { narration, render, s
       render(0)
       const start = performance.now()
       recorder.start(400)
-      source?.start()
+      if (source && audioOffset < audioDuration) source.start(0, audioOffset)
       raf = requestAnimationFrame(frame)
     })
   } finally {

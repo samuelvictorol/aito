@@ -13,6 +13,16 @@ const usDollar = moneyFormat('USD', 4)
 const real = moneyFormat('BRL')
 export const usd = cents => usDollar.format((Number(cents) || 0) / 100)
 export const brl = cents => real.format((Number(cents) || 0) / 100)
+const tokenCount = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 })
+export const aitoTokens = value => tokenCount.format(Math.max(0, Number(value) || 0))
+const walletPreference = account => `aitoia:wallet:${account}`
+function preferredWallet(status) {
+  const wallets = status?.wallets || []
+  let saved
+  try { saved = localStorage.getItem(walletPreference(status.accountId)) } catch { /* Storage may be blocked. */ }
+  if (wallets.some(wallet => wallet.id === saved)) return saved
+  return status?.balanceUsdCents > 0 ? 'web' : wallets.find(wallet => wallet.productType === 'desktop' && wallet.balanceUsdCents > 0)?.id || 'web'
+}
 const paidOrders = new Set(['paid', 'approved', 'applied'])
 const statusOf = error => error.response?.status
 const errorMessage = (error, fallback) => error.response?.data?.message || fallback
@@ -57,6 +67,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   let storeAccount = ''
   let expirationTimer
   let mounted = false
+  let walletResolved = false
 
   const signedIn = computed(() => Boolean(token.value))
   const active = computed(() => chats.value.find(chat => chat.id === activeId.value) || null)
@@ -65,7 +76,6 @@ export function useAitoIA({ chatHistory = true } = {}) {
   const speeds = computed(() => currentModel.value?.speeds || [])
   const loadingConversation = computed(() => request.value?.chatId === activeId.value)
   const hasInput = computed(() => Boolean(draft.value.trim() || attachments.value.length))
-  const effectivePrice = computed(() => speed.value === 'priority' ? currentModel.value?.priority : currentModel.value?.standard)
 
   function config(extra = {}) {
     return { headers: { Authorization: 'Bearer ' + token.value, ...extra } }
@@ -118,6 +128,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     accountId.value = ''
     status.value = null
     walletId.value = 'web'
+    walletResolved = false
     models.value = []
     model.value = ''
     history.value = []
@@ -157,13 +168,21 @@ export function useAitoIA({ chatHistory = true } = {}) {
     try {
       const { data } = await api.get('/aitoia/status', { ...config(), params: { walletId: walletId.value } })
       if (sessionEpoch !== epoch || statusEpoch !== order) return
+      if (!walletResolved && data.data?.accountId) {
+        walletResolved = true
+        const preferred = preferredWallet(data.data)
+        if (preferred !== walletId.value) {
+          walletId.value = preferred
+          return refreshStatus({ silent })
+        }
+      }
       status.value = data.data
       if (chatHistory) await openStore(data.data?.accountId, epoch)
       else accountId.value = data.data?.accountId || ''
     } catch (cause) {
       if (sessionEpoch !== epoch || statusEpoch !== order) return
       if (statusOf(cause) === 401) { forgetSession(); return }
-      if (statusOf(cause) === 403 && walletId.value !== 'web') {
+      if ([403, 404].includes(statusOf(cause)) && walletId.value !== 'web') {
         walletId.value = 'web'
         return refreshStatus({ silent })
       }
@@ -383,10 +402,15 @@ export function useAitoIA({ chatHistory = true } = {}) {
   async function selectWallet(id) {
     if (id === walletId.value) return
     walletId.value = id
+    walletResolved = true
+    if (accountId.value) {
+      try { localStorage.setItem(walletPreference(accountId.value), id) } catch { /* Use this tab's selection. */ }
+    }
     pending.value = null
     paymentNotice.value = ''
     history.value = []
-    await Promise.allSettled([refreshStatus(), loadHistory()])
+    await refreshStatus()
+    await loadHistory()
   }
 
   async function checkout(plan) {
@@ -454,7 +478,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   })
 
   return { accountId, signedIn, sessionLoading, status, walletId, models, model, currentModel, effort, efforts,
-    speed, speeds, webSearch, effectivePrice, modelLoading, settingsError, walletError, error, contextShortened,
+    speed, speeds, webSearch, modelLoading, settingsError, walletError, error, contextShortened,
     draft, attachments, chats, activeId, active, request, pending, history, historyLoading, historyTotal,
     historyOffset, historyLimit, walletLoading, checkoutBusy, paymentBusy, paymentNotice, chatList, storageError,
     loadingConversation, hasInput, syncSession, refreshStatus, refreshModels, selectChat, renameChat, removeChat,
