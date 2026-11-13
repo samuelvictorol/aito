@@ -10,12 +10,12 @@ const frameUrl = computed(() => '/comunicacao/app/' + (demo.value ? 'prototype' 
 async function receive(event) {
   if (event.origin !== location.origin || event.source !== frame.value?.contentWindow) return
   if (event.data?.type === 'aito.communication.branding') {
+    if (demo.value) return
     const brand = event.data.branding || {}
     let icon = '/comunicacao/app/icons/aito-v2-180.png'
     try { const url = new URL(brand.logoUrl, location.origin); if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) icon = url.href } catch {}
     document.querySelector('link[rel="apple-touch-icon"]')?.setAttribute('href', icon)
     document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', String(brand.appName || 'AitoSoftwares').slice(0, 80))
-    document.querySelector('link[rel="manifest"]')?.setAttribute('href', demo.value ? '/comunicacao/app/prototype.webmanifest' : '/comunicacao/api/settings/app.webmanifest')
     return
   }
   if(event.data?.type==='aito.communication.screen-ready'){loading.value=false;finishScreen();return}

@@ -7,6 +7,7 @@ const props = defineProps({
   loading: Boolean,
   disabled: Boolean,
   storageError: { type: String, default: '' },
+  cloudState: { type: String, default: 'local' },
 })
 const emit = defineEmits(['create', 'open', 'remove'])
 const deleting = ref(false)
@@ -28,10 +29,12 @@ const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: '
       <button v-if="activeProject" type="button" aria-label="Excluir projeto" :disabled="disabled || loading" @click="deleting = true"><q-icon name="mdi-delete-outline" size="20px" /></button>
     </div>
     <small v-if="storageError" class="aito-projects__error" role="status">{{ storageError }}</small>
-    <small v-else-if="activeProject">Salvo neste navegador até {{ date.format(activeProject.expiresAt) }}.</small>
+    <small v-else-if="activeProject" role="status">
+      {{ cloudState === 'saved' ? 'Projeto salvo' : cloudState === 'saving' ? 'Sincronizando' : 'Cópia local' }} · expira em {{ date.format(activeProject.expiresAt) }}
+    </small>
     <q-dialog v-model="deleting">
       <q-card class="aito-ai-theme aito-projects__dialog">
-        <q-card-section><h2>Excluir projeto?</h2><p>{{ activeProject?.title }} e as mídias salvas neste projeto serão removidos deste navegador.</p></q-card-section>
+        <q-card-section><h2>Excluir projeto?</h2><p>A montagem e as referências de {{ activeProject?.title }} serão removidas. Cenas reutilizadas em outros projetos continuam lá até a data de expiração.</p></q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps label="Cancelar" />
           <q-btn v-close-popup unelevated no-caps color="red-9" label="Excluir" :disable="disabled || loading || !activeId" @click="emit('remove', activeId)" />

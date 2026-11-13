@@ -61,6 +61,44 @@ export async function prepareMarketingReference(file, maxBytes) {
   } finally { bitmap.close() }
 }
 
+export async function loadMarketingReferenceUrl(value, maxBytes, signal) {
+  let url
+  try { url = new URL(value) } catch { throw new Error('Informe um link HTTPS completo para a imagem.') }
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+    !host.includes('.') || /^(?:\[|\d+\.\d+\.\d+\.\d+$)/.test(host) || /\.(?:localhost|local|internal)$/.test(host)) {
+    throw new Error('Use uma imagem de um endereço HTTPS público.')
+  }
+  let response
+  try {
+    response = await fetch(url, { mode: 'cors', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+      signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]) })
+  } catch {
+    throw new Error('A imagem não está acessível neste navegador. Confira o endereço ou use o upload.')
+  }
+  if (!response.ok || !response.body) throw new Error('A imagem não está disponível neste endereço.')
+  const type = response.headers.get('Content-Type')?.split(';')[0].trim()
+  const limit = 12 * 1024 * 1024
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(type) || Number(response.headers.get('Content-Length')) > limit) {
+    await response.body.cancel().catch(() => {})
+    throw new Error('Use um link direto para uma imagem JPG, PNG ou WebP de até 12 MB.')
+  }
+  const reader = response.body.getReader()
+  const chunks = []
+  let size = 0
+  try {
+    for (;;) {
+      const { value: chunk, done } = await reader.read()
+      if (done) break
+      size += chunk.byteLength
+      if (size > limit) throw new Error('A imagem excede 12 MB.')
+      chunks.push(chunk)
+    }
+  } finally { await reader.cancel().catch(() => {}) }
+  if (!size) throw new Error('O endereço retornou uma imagem vazia.')
+  return prepareMarketingReference(new Blob(chunks, { type }), maxBytes)
+}
+
 export async function exportMarketingImage(image, { width, height }) {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(image.mimeType) || typeof image.data !== 'string') {
     throw new Error('A geração não retornou uma imagem válida.')

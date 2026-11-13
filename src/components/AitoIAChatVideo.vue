@@ -1,19 +1,24 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { usd } from 'src/composables/useAitoIA'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
+import { saveVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 
-const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object })
+const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
 const { accountId, signedIn, walletId, status, currentModel, effort, speed } = props.state
 const catalog = shallowRef(null)
 const base = shallowRef(props.initialVideo || null)
-const imageBases = shallowRef([])
+const imageBases = shallowRef((props.initialImages || []).filter(file => {
+  try { return Boolean(checkImageReference(file)) } catch { return false }
+}))
+const router = useRouter()
 const prompt = ref((props.initialPrompt || '').slice(0, 2000))
 const modelId = ref('')
 const presetId = ref('')
@@ -227,6 +232,19 @@ function download() {
     downloadAitoIAFile(file, file.name)
   }, false)
 }
+async function saveToProject() {
+  const owner = accountId.value
+  let saved = false
+  await run('Preparando clipe…', async signal => {
+    const result = clip.value
+    const file = await readGeneratedClipForJob(result, signal, (url, options) => api.get(url, { ...options, headers: auth() }))
+    signal.throwIfAborted()
+    const generated = { id: crypto.randomUUID(), name: file.name, mime: file.type, blob: file, expiresAt: result.expiresAt }
+    await saveVideoDraft(owner, { prompt: prompt.value, attachments: [], purpose: 'save-clip', generated })
+    saved = !signal.aborted && accountId.value === owner
+  }, false)
+  if (saved) await router.push({ name: 'aito-ia-video-studio', query: { draft: 'chat' } })
+}
 onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy', false) })
 </script>
 
@@ -249,13 +267,13 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <button v-else-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
       <button v-else-if="quote" type="button" :disabled="busy" @click="generate">Gerar por até {{ usd(quote.billedUsdCents) }}</button>
       <button v-else-if="models.length" type="button" :disabled="busy || !prompt.trim() || !presetId" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
-      <template v-else-if="catalog"><span>A geração de clipes aguarda a configuração da Higgsfield.</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
+      <template v-else-if="catalog"><span>{{ (catalog.videoModels?.length || catalog.referenceModels?.length) ? 'Nenhum modelo disponível aceita esta combinação de referências.' : 'A geração de clipes aguarda a configuração da Higgsfield.' }}</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
       <span v-if="action" role="status"><q-spinner size="16px" /> {{ action }}</span>
     </div>
     <AitoVideoProgress v-if="job && busy" :stage="job.status || 'queued'" />
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
-    <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" /><div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a><router-link :to="{ name: 'aito-ia-video-studio', query: { tab: 'ai' } }">Abrir no Estúdio</router-link></div></div>
+    <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" /><div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><button type="button" :disabled="busy" @click="saveToProject">Salvar em projeto</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a></div></div>
   </section>
 </template>
 

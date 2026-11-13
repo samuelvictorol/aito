@@ -16,6 +16,7 @@ const error = ref('')
 const pagination = ref({ page: 1, rowsPerPage: 50, rowsNumber: 0 })
 const action = ref(null)
 const credit = ref('')
+const reclaimAll = ref(false)
 const busy = ref(false)
 const challenge = ref(null)
 const mfaOpen = ref(false)
@@ -30,12 +31,13 @@ const columns = [
   { name: 'updatedAt', label: 'Alterada em', field: row => purchaseDate(row.updatedAt), align: 'left' },
   { name: 'actions', label: 'Ações', field: 'projectId' },
 ]
-const titles = { issue: 'Emitir AitoKey', rotate: 'Substituir AitoKey', revoke: 'Revogar AitoKey', grant: 'Adicionar créditos' }
+const titles = { issue: 'Emitir AitoKey', rotate: 'Substituir AitoKey', revoke: 'Revogar AitoKey', grant: 'Adicionar créditos', reclaim: 'Devolver saldo' }
 const explanations = {
   issue: 'A carteira ficará vinculada ao projeto. Você pode adicionar créditos ao emitir a chave.',
   rotate: 'A chave anterior perde o acesso assim que a nova for emitida. O saldo e o histórico do projeto permanecem.',
   revoke: 'A chave deixa de autorizar chamadas. O saldo e o histórico permanecem no projeto.',
   grant: 'Informe o valor a creditar na carteira do projeto.',
+  reclaim: 'Escolha quanto do saldo disponível volta para a plataforma.',
 }
 const statusOf = row => row.active ? (projectActive(row) ? 'Ativa' : 'Projeto inativo') : row.issued ? 'Revogada' : 'Sem chave'
 const projectActive = row => !['paused', 'completed', 'archived'].includes(row.projectStatus)
@@ -66,11 +68,25 @@ async function load(page = pagination.value.page) {
 
 function selectAction(operation, project) {
   credit.value = operation === 'issue' ? '0' : ''
+  reclaimAll.value = false
   action.value = { operation, project }
 }
 
 async function confirm() {
   if (!action.value || busy.value) return
+  if (action.value.operation === 'reclaim') {
+    const value = String(credit.value).trim()
+    const cents = /^\d+(?:[.,]\d{1,6})?$/.test(value) ? Math.round(Number(value.replace(',', '.')) * 1000000) / 10000 : 0
+    if (!reclaimAll.value && (!(cents > 0) || cents > action.value.project.balanceUsdCents)) {
+      $q.notify({ type: 'negative', message: 'Informe um valor dentro do saldo disponível.' })
+      return
+    }
+    const amount = reclaimAll.value ? { all: true } : { usdCents: cents }
+    const signature = JSON.stringify(amount)
+    if (action.value.reclaimSignature !== signature) action.value = {
+      ...action.value, reclaimSignature: signature, reclaimBody: { ...amount, requestId: crypto.randomUUID() },
+    }
+  }
   if (action.value.operation === 'grant' || action.value.operation === 'issue') {
     const usdCents = Math.round(Number(credit.value) * 100)
     if (!Number.isSafeInteger(usdCents) || usdCents < (action.value.operation === 'grant' ? 1 : 0) || usdCents > 100000) return
@@ -93,18 +109,20 @@ async function confirm() {
 async function apply(session) {
   if (!session?.token || !action.value || busy.value) return
   emit('reauthenticated', session)
-  const { operation, project, usdCents, requestId } = action.value
+  const { operation, project, usdCents, requestId, reclaimBody } = action.value
   const headers = { headers: { Authorization: 'Bearer ' + session.token } }
   busy.value = true
   try {
     if (operation === 'grant') {
       await api.post(root + '/grants', { projectId: project.projectId, usdCents, requestId }, headers)
+    } else if (operation === 'reclaim') {
+      await api.post(root + '/reclaims', { projectId: project.projectId, ...reclaimBody }, headers)
     } else {
       const body = operation === 'issue' ? { initialUsdCents: usdCents } : {}
       const { data } = await api.post(root + '/project-keys/' + encodeURIComponent(project.projectId) + '/' + operation, body, headers)
       if (data.data?.key) revealed.value = { key: data.data.key, title: project.title }
     }
-    if (!revealed.value) $q.notify({ type: 'positive', message: operation === 'grant' ? 'Créditos adicionados.' : 'AitoKey revogada.' })
+    if (!revealed.value) $q.notify({ type: 'positive', message: { grant: 'Créditos adicionados.', reclaim: 'Saldo devolvido à plataforma.' }[operation] || 'AitoKey revogada.' })
     action.value = null
     await load()
   } catch (cause) {
@@ -162,6 +180,7 @@ onBeforeUnmount(() => {
             />
             <q-btn v-if="props.row.active" flat dense round icon="mdi-key-remove" color="orange-4" aria-label="Revogar chave" @click="selectAction('revoke', props.row)"><q-tooltip>Revogar chave</q-tooltip></q-btn>
             <q-btn v-if="props.row.active && projectActive(props.row)" flat dense round icon="mdi-wallet-plus-outline" color="teal-3" aria-label="Adicionar créditos" @click="selectAction('grant', props.row)"><q-tooltip>Adicionar créditos</q-tooltip></q-btn>
+            <q-btn v-if="props.row.balanceUsdCents > 0" flat dense round icon="mdi-wallet-minus-outline" color="amber-4" aria-label="Devolver saldo" @click="selectAction('reclaim', props.row)"><q-tooltip>Devolver saldo</q-tooltip></q-btn>
             <q-btn v-if="props.row.issued" flat dense round icon="mdi-history" color="teal-3" aria-label="Histórico de recargas" @click="historyProject = props.row"><q-tooltip>Histórico de recargas</q-tooltip></q-btn>
           </div>
         </q-td>
@@ -174,6 +193,10 @@ onBeforeUnmount(() => {
             <h3>{{ titles[action?.operation] }}</h3>
             <p><strong>{{ action?.project?.title }}</strong></p>
             <p>{{ explanations[action?.operation] }}</p>
+            <template v-if="action?.operation === 'reclaim'">
+              <q-toggle v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="busy || mfaOpen" />
+              <q-input v-if="!reclaimAll" v-model="credit" dark outlined label="Saldo a devolver" prefix="US$" inputmode="decimal" :disable="busy || mfaOpen" />
+            </template>
             <q-input v-if="['grant', 'issue'].includes(action?.operation)" v-model="credit" dark outlined
               :label="action.operation === 'issue' ? 'Crédito inicial' : 'Créditos em dólares'" prefix="US$"
               type="number" :min="action.operation === 'issue' ? '0' : '0.01'" max="1000" step="0.01" required :disable="busy || mfaOpen"

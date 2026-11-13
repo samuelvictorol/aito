@@ -317,11 +317,25 @@ function setNotificationReadLocally(id, read = true) {
   }
 }
 
+function onAdminNotificationRemoved({ id } = {}) {
+  if (id) {
+    adminNotifications.value = adminNotifications.value.filter(item => item.id !== id)
+    notificationHistoryItems.value = notificationHistoryItems.value.filter(item => item.id !== id)
+    if (notificationDetails.value?.id === id) notificationDetails.value = { ...notificationDetails.value, read: true }
+  }
+  void loadAdminNotifications()
+  if (notificationHistoryDialog.value) void loadNotificationHistory()
+}
+
 async function markNotificationRead(notification) {
   if (!notification?.id || notification.read || markingNotificationReads.has(notification.id)) return
   markingNotificationReads.add(notification.id)
   try {
-    await http.post(`/admin-notifications/${notification.id}/read`)
+    const result = unwrap(await http.post(`/admin-notifications/${notification.id}/read`))
+    if (result?.removed) {
+      onAdminNotificationRemoved({ id: notification.id })
+      return
+    }
     setNotificationReadLocally(notification.id)
     unreadAdminNotifications.value = Math.max(0, unreadAdminNotifications.value - 1)
     if (
@@ -349,7 +363,11 @@ async function openAdminNotification(notification) {
 
 async function markAllAdminNotificationsRead() {
   try {
-    await http.post('/admin-notifications/read-all')
+    const result = unwrap(await http.post('/admin-notifications/read-all'))
+    if (result?.removed) {
+      onAdminNotificationRemoved()
+      return
+    }
     adminNotifications.value = adminNotifications.value.map((item) => ({ ...item, read: true }))
     notificationHistoryItems.value = notificationHistoryFilters.value.read === 'unread'
       ? []
@@ -420,6 +438,7 @@ onMounted(() => {
   loadAdminNotifications()
   const socket = connectSocket()
   socket.on('admin_notification:created', onAdminNotification)
+  socket.on('admin_notification:removed', onAdminNotificationRemoved)
   socket.on('chat_alert:updated', applyChatAlert)
   socket.on('connect', onSocketReady)
   socket.on('system:ready', onSocketReady)
@@ -437,6 +456,7 @@ onBeforeUnmount(() => {
   notificationHistoryRequest += 1
   const socket = getSocket()
   socket.off('admin_notification:created', onAdminNotification)
+  socket.off('admin_notification:removed', onAdminNotificationRemoved)
   socket.off('chat_alert:updated', applyChatAlert)
   socket.off('connect', onSocketReady)
   socket.off('system:ready', onSocketReady)

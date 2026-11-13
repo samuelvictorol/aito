@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseStudioScript, splitStudioClip, studioFrame, studioSubtitles, studioTimeline } from '../src/services/aitoiaVideo.js'
+import { cutStudioScene, parseStudioScript, splitStudioClip, studioFrame, studioRenderSize, studioSubtitles, studioTimeline, videoFormats } from '../src/services/aitoiaVideo.js'
 
 test('studio timeline switches at boundaries and ends on the final frame', () => {
   const first = { id: 'first', duration: 3 }
@@ -21,8 +21,21 @@ test('studio imports only bounded, typed model-generated scenes and narration', 
 
 test('studio splits long video clips into contiguous scene offsets', () => {
   assert.deepEqual(splitStudioClip(30), [{ offset: 0, duration: 15 }, { offset: 15, duration: 15 }])
-  assert.deepEqual(splitStudioClip(16.1), [{ offset: 0, duration: 15 }, { offset: 15, duration: 2 }])
+  const precise = splitStudioClip(16.1)
+  assert.equal(precise[1].offset, 15)
+  assert.ok(Math.abs(precise[1].duration - 1.1) < 1e-9)
   assert.deepEqual(splitStudioClip(Infinity), [])
+})
+
+test('master timeline preserves non-destructive cuts at fractional seconds and outputs the selected dimensions', () => {
+  const original = { id: 'clip', duration: 8, offset: 0, media: { element: { duration: 8 } } }
+  const edited = cutStudioScene(original, 1.5, 6.75)
+  assert.equal(original.offset, 0)
+  assert.equal(edited.offset, 1.5)
+  assert.equal(studioTimeline([edited]).duration, 5.25)
+  assert.equal(cutStudioScene(edited, 0, 99).duration, 8)
+  assert.deepEqual(studioRenderSize(videoFormats[0], 'high'), { width: 1920, height: 1080 })
+  assert.deepEqual(studioRenderSize(videoFormats[1], 'medium'), { width: 720, height: 1280 })
 })
 
 test('studio exports timed SRT cues from the assembled sequence', () => {

@@ -9,6 +9,26 @@ const maxVideoSize = 60 * 1024 * 1024
 const maxAudioSize = 20 * 1024 * 1024
 export const maxStudioMedia = 120 * 1024 * 1024
 export const maxStudioScenes = 8
+const minCut = .1
+
+export function cutStudioScene(scene, start, end) {
+  const limit = scene.media?.element.duration
+  if (!Number.isFinite(limit) || limit <= 0) return scene
+  const offset = Math.max(0, Math.min(limit - minCut, Number(start) || 0))
+  const out = Math.min(limit, Math.max(offset + minCut, Number(end) || offset))
+  return { ...scene, offset, duration: out - offset, cut: true }
+}
+
+export function cutDuration(scene) {
+  return scene.cut ? Math.max(.01, Number(scene.duration) || minCut) : sceneSeconds(scene.duration)
+}
+
+export function studioRenderSize(format, quality) {
+  const max = Math.max(format.width, format.height)
+  const longSide = quality === 'high' ? 1920 : 1280
+  const factor = format.id === 'square' ? Math.min(1, longSide / max) * (quality === 'high' ? 1.2 : .8) : longSide / max
+  return { width: 2 * Math.round(format.width * factor / 2), height: 2 * Math.round(format.height * factor / 2) }
+}
 
 export function sceneSeconds(value) {
   return Math.min(15, Math.max(1, Math.round(Number(value) || 1)))
@@ -16,7 +36,7 @@ export function sceneSeconds(value) {
 
 export function splitStudioClip(value) {
   if (!Number.isFinite(value) || value <= 0) return []
-  const duration = Math.min(maxStudioScenes * 15, Math.ceil(value))
+  const duration = Math.min(maxStudioScenes * 15, value)
   return Array.from({ length: Math.ceil(duration / 15) }, (_, index) => ({
     offset: index * 15, duration: Math.min(15, duration - index * 15),
   }))
@@ -26,7 +46,7 @@ export function studioTimeline(scenes) {
   let duration = 0
   const segments = scenes.map(scene => {
     const start = duration
-    duration += sceneSeconds(scene.duration)
+    duration += cutDuration(scene)
     return { start, end: duration, scene }
   })
   return { duration, segments }
@@ -83,6 +103,13 @@ export async function openStudioMedia(file, existingBytes, signal) {
     element.src = media.url
     await ready
     if (isVideo && (!Number.isFinite(element.duration) || !element.videoWidth)) throw new Error('Escolha um vídeo com duração e imagem válidas.')
+    if (isVideo) {
+      const thumb = document.createElement('canvas')
+      thumb.width = 160
+      thumb.height = 90
+      const ctx = thumb.getContext('2d')
+      if (ctx && drawMedia(ctx, media, thumb.width, thumb.height)) media.poster = thumb.toDataURL('image/jpeg', .65)
+    }
     return media
   } catch (error) {
     closeStudioMedia(media)
@@ -149,7 +176,8 @@ export function drawStudioFrame(canvas, scene) {
 
   ctx.fillStyle = '#06161c'
   ctx.fillRect(0, 0, width, height)
-  if (!drawMedia(ctx, scene.media, width, height)) {
+  const hasMedia = drawMedia(ctx, scene.media, width, height)
+  if (!hasMedia) {
     const light = ctx.createRadialGradient(width * .79, height * .18, 0, width * .79, height * .18, Math.max(width, height) * .85)
     light.addColorStop(0, '#286b67')
     light.addColorStop(.46, '#0b3136')
@@ -165,6 +193,7 @@ export function drawStudioFrame(canvas, scene) {
     }
   }
 
+  if (hasMedia && !scene.heading?.trim() && !scene.caption?.trim()) return
   const shade = ctx.createLinearGradient(0, height * .22, 0, height)
   shade.addColorStop(0, 'rgba(2, 10, 15, .02)')
   shade.addColorStop(.55, 'rgba(2, 10, 15, .54)')
@@ -204,30 +233,37 @@ export function studioVideoMime() {
   return studioVideoExports()[0]?.mime || ''
 }
 
-export async function recordStudioVideo(canvas, duration, { narration, audioOffset = 0, mimeType = studioVideoMime(), render, signal }) {
+export async function recordStudioVideo(canvas, duration, { narration, clipAudio = [], audioOffset = 0, mimeType = studioVideoMime(), render, signal }) {
   if (!studioVideoExports().some(option => option.mime === mimeType)) throw new Error('Seu navegador não oferece esse formato de exportação.')
   const stream = canvas.captureStream(30)
-  const audio = narration && new AudioContext()
+  const audio = (narration || clipAudio.length) && new AudioContext()
   let recorder
   let raf
-  let source
-  let audioDuration = 0
+  const scheduled = []
   try {
     if (audio) {
       const resume = audio.resume()
-      const buffer = await audio.decodeAudioData(await narration.arrayBuffer()).catch(() => {
-        throw new Error('O navegador não conseguiu decodificar a locução. Tente um arquivo MP3 ou WAV.')
-      })
-      await resume
       const destination = audio.createMediaStreamDestination()
-      source = audio.createBufferSource()
-      source.buffer = buffer
-      audioDuration = buffer.duration
-      source.connect(destination)
+      const buffers = new Map()
+      async function decode(file) {
+        if (!buffers.has(file)) buffers.set(file, file.arrayBuffer().then(bytes => audio.decodeAudioData(bytes)))
+        return buffers.get(file)
+      }
+      const tracks = [...clipAudio, ...(narration ? [{ file: narration, position: 0, offset: audioOffset, duration, narration: true }] : [])]
+      await Promise.all(tracks.map(async track => {
+        const buffer = await decode(track.file).catch(() => null)
+        if (!buffer && track.narration) throw new Error('O navegador não conseguiu decodificar a locução. Tente um arquivo MP3 ou WAV.')
+        if (!buffer || track.offset >= buffer.duration) return
+        const source = audio.createBufferSource()
+        source.buffer = buffer
+        source.connect(destination)
+        scheduled.push({ source, ...track, duration: Math.min(track.duration, buffer.duration - track.offset) })
+      }))
+      await resume
       stream.addTrack(destination.stream.getAudioTracks()[0])
     }
     signal.throwIfAborted()
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 })
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: canvas.width * canvas.height > 1300000 ? 8_000_000 : 4_000_000 })
     return await new Promise((resolve, reject) => {
       const chunks = []
       const abort = () => reject(signal.reason)
@@ -249,7 +285,8 @@ export async function recordStudioVideo(canvas, duration, { narration, audioOffs
       render(0)
       const start = performance.now()
       recorder.start(400)
-      if (source && audioOffset < audioDuration) source.start(0, audioOffset)
+      const audioStart = audio?.currentTime || 0
+      for (const { source, position, offset, duration: length } of scheduled) source.start(audioStart + position, offset, length)
       raf = requestAnimationFrame(frame)
     })
   } finally {

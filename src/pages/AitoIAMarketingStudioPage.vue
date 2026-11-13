@@ -8,7 +8,7 @@ import { aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
-import { accessMarketingKit, exportMarketingImage, marketingFormats, prepareMarketingReference, readMarketingImage } from 'src/services/aitoiaMarketingLocal'
+import { accessMarketingKit, exportMarketingImage, loadMarketingReferenceUrl, marketingFormats, prepareMarketingReference, readMarketingImage } from 'src/services/aitoiaMarketingLocal'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -29,6 +29,11 @@ const componentDialog = ref(false)
 const componentLabel = ref('')
 const componentText = ref('')
 const componentFile = shallowRef(null)
+const componentUrl = ref('')
+const componentOrigin = ref('upload')
+const componentPreview = shallowRef(null)
+const componentPreviewBusy = ref(false)
+const componentImageError = ref('')
 const kitBusy = ref(false)
 const uploading = ref(false)
 const busy = ref(false)
@@ -43,6 +48,7 @@ const authOpen = ref(false)
 const authMode = ref('login')
 const walletOpen = ref(false)
 let operation
+let previewRequest
 let kitEpoch = 0
 
 const formats = computed(() => {
@@ -64,6 +70,34 @@ watch(busy, active => { if (!active) blockedExit.value = false })
 
 function localAsset(item) { return { ...item, url: item.blob ? URL.createObjectURL(item.blob) : '' } }
 function disposeAsset(item) { if (item?.url) URL.revokeObjectURL(item.url) }
+function resetComponentPreview() {
+  previewRequest?.abort()
+  previewRequest = null
+  componentPreviewBusy.value = false
+  componentImageError.value = ''
+  disposeAsset(componentPreview.value)
+  componentPreview.value = null
+}
+watch([componentFile, componentOrigin, componentUrl], resetComponentPreview, { flush: 'sync' })
+watch(componentDialog, open => { if (!open) resetComponentPreview() })
+onBeforeUnmount(resetComponentPreview)
+
+async function previewComponent() {
+  resetComponentPreview()
+  const owner = accountId.value
+  const controller = new AbortController()
+  previewRequest = controller
+  componentPreviewBusy.value = true
+  try {
+    const blob = componentOrigin.value === 'url'
+      ? await loadMarketingReferenceUrl(componentUrl.value.trim(), maxReferenceBytes.value, controller.signal)
+      : await prepareMarketingReference(componentFile.value, maxReferenceBytes.value)
+    if (controller.signal.aborted || owner !== accountId.value) return
+    componentPreview.value = localAsset({ blob })
+  } catch (cause) {
+    if (!controller.signal.aborted) componentImageError.value = cause.message || 'Não foi possível abrir a imagem.'
+  } finally { if (previewRequest === controller) componentPreviewBusy.value = false }
+}
 function clearProjectMedia() { [...images.value, ...references.value].forEach(disposeAsset) }
 function resetKit() { kit.value.forEach(disposeAsset); kit.value = [] }
 function token() { return localStorage.getItem('aito_user_token') || '' }
@@ -106,7 +140,7 @@ const project = useAitoStudioProjects({
     error.value = ''
   },
 })
-const { projects, activeId: projectId, loading: projectLoading, storageError, createProject, openProject, deleteProject, saveProject } = project
+const { projects, activeId: projectId, loading: projectLoading, storageError, cloudState, createProject, openProject, deleteProject, saveProject } = project
 
 function removeImage(image) {
   disposeAsset(image)
@@ -191,16 +225,20 @@ function openComponent() {
   componentLabel.value = ''
   componentText.value = ''
   componentFile.value = null
+  componentOrigin.value = 'upload'
+  componentUrl.value = ''
   componentDialog.value = true
 }
 
 async function addComponent() {
-  if (!componentLabel.value.trim() || (!componentText.value.trim() && !componentFile.value) || kit.value.length >= maxComponents.value) return
+  const hasSource = componentOrigin.value === 'url' ? componentUrl.value.trim() : componentFile.value
+  if (!componentLabel.value.trim() || (hasSource && !componentPreview.value) ||
+    (!componentText.value.trim() && !componentPreview.value) || kit.value.length >= maxComponents.value) return
   kitBusy.value = true
   kitError.value = ''
   const id = accountId.value
   try {
-    const blob = componentFile.value ? await prepareMarketingReference(componentFile.value, maxReferenceBytes.value) : null
+    const blob = componentPreview.value?.blob || null
     if (id !== accountId.value) return
     const item = localAsset({ id: crypto.randomUUID(), label: componentLabel.value.trim(), text: componentText.value.trim(), blob })
     if (await saveKit([...kit.value, item])) componentDialog.value = false
@@ -292,11 +330,13 @@ onBeforeUnmount(() => {
         <h1>Estúdio de Marketing</h1>
         <p>Crie imagens no formato de cada canal e reutilize os componentes da sua marca.</p>
       </div>
-      <div class="marketing__panel marketing__projects">
-        <AitoStudioProjectPicker :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError"
+      <div class="marketing__workspace">
+      <aside class="marketing__panel marketing__projects" aria-label="Projetos do Estúdio de Marketing">
+        <AitoStudioProjectPicker :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
           :disabled="!accountId || locked" @create="createProject" @open="openProject" @remove="deleteProject" />
         <q-input v-if="projectId" v-model="projectTitle" dark outlined dense label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
-      </div>
+      </aside>
+      <div class="marketing__output">
       <p v-if="blockedExit" class="marketing__notice" role="status">Aguarde a conclusão antes de sair do estúdio.</p>
       <p v-if="catalogError" class="marketing__notice" role="status">Não foi possível carregar os formatos. <button type="button" @click="loadCatalog">Tentar novamente</button></p>
       <p v-else-if="catalog && !catalog.available" class="marketing__notice" role="status">A geração de imagens está temporariamente indisponível.</p>
@@ -358,6 +398,8 @@ onBeforeUnmount(() => {
           </section>
         </section>
       </div>
+      </div>
+      </div>
     </main>
 
     <q-dialog :model-value="!!quote" @update:model-value="value => { if (!value) quote = null }">
@@ -376,9 +418,14 @@ onBeforeUnmount(() => {
         <q-form class="marketing__form" @submit.prevent="addComponent">
           <q-input v-model="componentLabel" dark outlined label="Nome" placeholder="Ex. logo principal" maxlength="60" :disable="kitBusy" />
           <q-input v-model="componentText" dark outlined type="textarea" autogrow label="Texto reutilizável" :maxlength="catalog?.maxComponentCharacters || 500" :disable="kitBusy" />
-          <q-file v-model="componentFile" dark outlined clearable label="Imagem da marca" accept="image/jpeg,image/png,image/webp" :disable="kitBusy" />
+          <q-btn-toggle v-model="componentOrigin" no-caps unelevated spread color="grey-9" toggle-color="teal-8" :options="[{ label: 'Upload', value: 'upload' }, { label: 'Link da imagem', value: 'url' }]" />
+          <q-file v-if="componentOrigin === 'upload'" v-model="componentFile" dark outlined clearable label="Imagem da marca" accept="image/jpeg,image/png,image/webp" :disable="kitBusy" />
+          <q-input v-else v-model.trim="componentUrl" dark outlined clearable label="Endereço HTTPS da imagem" :disable="kitBusy" />
+          <q-btn v-if="componentOrigin === 'url' ? componentUrl : componentFile" flat no-caps icon="mdi-image-search-outline" label="Conferir imagem" :loading="componentPreviewBusy" :disable="kitBusy" @click="previewComponent" />
+          <img v-if="componentPreview" :src="componentPreview.url" class="marketing__component-preview" alt="Prévia do componente" />
+          <p v-if="componentImageError" role="alert">{{ componentImageError }}</p>
           <p v-if="kitError" role="alert">{{ kitError }}</p>
-          <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Voltar" :disable="kitBusy" /><q-btn unelevated no-caps class="marketing__primary" type="submit" label="Salvar no navegador" :loading="kitBusy" :disable="!componentLabel.trim() || (!componentText.trim() && !componentFile)" /></div>
+          <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Voltar" :disable="kitBusy" /><q-btn unelevated no-caps class="marketing__primary" type="submit" label="Salvar no navegador" :loading="kitBusy" :disable="!componentLabel.trim() || (!(componentText.trim() || componentPreview)) || Boolean((componentOrigin === 'url' ? componentUrl : componentFile) && !componentPreview)" /></div>
         </q-form>
       </q-card>
     </q-dialog>
@@ -396,7 +443,7 @@ onBeforeUnmount(() => {
 .marketing__account { justify-self: end; }
 .marketing__balance, .marketing__secondary { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 38px; padding: 5px 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-panel); font: inherit; font-size: .84rem; cursor: pointer; }
 .marketing__balance { color: var(--aito-ai-gold); border-color: var(--aito-ai-gold-line); background: var(--aito-ai-gold-soft); }
-.marketing__main { width: min(1150px, calc(100% - 32px)); margin-inline: auto; padding: clamp(25px, 4vw, 48px) 0; }
+.marketing__main { width: min(1400px, calc(100% - 32px)); margin-inline: auto; padding: clamp(25px, 4vw, 48px) 0; }
 .marketing__intro { margin-bottom: 20px; }
 .marketing__intro h1 { margin: 0 0 6px; font-size: clamp(1.9rem, 4.6vw, 3rem); font-weight: 780; line-height: 1.1; letter-spacing: -.045em; }
 .marketing p, .marketing small, .marketing__section-title span { color: var(--aito-ai-muted); }
@@ -404,6 +451,8 @@ onBeforeUnmount(() => {
 .marketing__panel, .marketing__dialog { padding: clamp(14px, 2.3vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 14px; background: var(--aito-ai-surface); }
 .marketing__projects { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
 .marketing__projects .q-field { width: min(260px, 100%); }
+.marketing__workspace { display: grid; grid-template-columns: minmax(195px, 235px) minmax(0, 1fr); align-items: start; gap: 14px; }
+.marketing__component-preview { width: 100%; max-height: 160px; object-fit: contain; border-radius: 8px; background: var(--aito-ai-bg); }
 .marketing__form, .marketing__preview { display: grid; gap: 14px; }
 .marketing fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 .marketing h2, .marketing legend, .marketing__dialog h2 { margin: 0; color: var(--aito-ai-text); font-size: 1rem; font-weight: 730; line-height: 1.4; }
@@ -434,6 +483,7 @@ onBeforeUnmount(() => {
 .marketing__notice--error { background: var(--aito-ai-error-soft); border-color: var(--aito-ai-error-line); }
 .marketing__notice button { color: var(--aito-ai-accent); background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .marketing__actions { display: flex; justify-content: end; gap: 8px; }
-@media (max-width: 760px) { .marketing__grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 940px) { .marketing__workspace { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .marketing__grid { grid-template-columns: minmax(0, 1fr); } .marketing__preview { grid-row: 1; } }
 @media (max-width: 670px) { .marketing__bar { grid-template-columns: 1fr auto; padding-inline: 10px; } .marketing__mode { grid-row: 2; grid-column: 1 / -1; justify-self: center; } }
 </style>

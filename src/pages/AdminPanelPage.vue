@@ -137,6 +137,9 @@ const siteLinks = [
 export default {
   name: 'AdminPanelPage',
   components: { AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  watch: {
+    '$route.query.tab' (tab) { if (['access-security', 'aito-tokens', 'projects'].includes(tab)) this.openDetail(tab) },
+  },
   data () {
     return {
       siteLinks,

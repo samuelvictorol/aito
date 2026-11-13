@@ -11,7 +11,7 @@ const assistant = ref(false), installDialog = ref(false), review = ref(false), s
 const enabling = ref(false), preparingImage = ref(false), scheduling = ref(false), enabled = ref(false), batch = ref(null), status = ref(''), remaining = ref(0), error = ref(''), screen = ref('ios')
 const image = computed(() => form.imageData || (/^https:\/\//.test(form.imageUrl) ? form.imageUrl : ''))
 const slots = [{ label: 'Espaço 1', value: 0 }, { label: 'Espaço 2', value: 1 }, { label: 'Espaço 3', value: 2 }]
-let subscription, promptEvent, countdown, polling, restoreBrand
+let subscription, promptEvent, countdown, polling
 const requestOptions = extra => ({ timeout: 15000, headers: { 'X-Notification-Lab': '1', ...extra } })
 const message = e => e.response?.data?.message || e.message || 'Não foi possível concluir. Tente novamente.'
 function notify(e) { error.value = message(e); $q.notify({ type: 'negative', message: error.value }) }
@@ -69,12 +69,9 @@ async function install() { if (promptEvent) { await promptEvent.prompt(); await 
 function rememberPrompt(event) { event.preventDefault(); promptEvent = event }
 function installed() { promptEvent = null; state.value = support() }
 onMounted(() => {
-  const manifest = document.querySelector('link[rel="manifest"]'), title = document.querySelector('meta[name="apple-mobile-web-app-title"]'), previous = { manifest: manifest?.getAttribute('href'), title: title?.content }
-  manifest?.setAttribute('href', '/notification-lab.webmanifest'); title?.setAttribute('content', 'Notification Lab')
-  restoreBrand = () => { if (previous.manifest) manifest?.setAttribute('href', previous.manifest); if (title) title.content = previous.title || 'AitoSoftwares' }
   window.addEventListener('beforeinstallprompt', rememberPrompt); window.addEventListener('appinstalled', installed); loadConfig()
 })
-onBeforeUnmount(() => { clearInterval(countdown); clearInterval(polling); restoreBrand?.(); window.removeEventListener('beforeinstallprompt', rememberPrompt); window.removeEventListener('appinstalled', installed) })
+onBeforeUnmount(() => { clearInterval(countdown); clearInterval(polling); window.removeEventListener('beforeinstallprompt', rememberPrompt); window.removeEventListener('appinstalled', installed) })
 </script>
 <template>
 <q-layout class="lab"><q-page-container><q-page class="lab-page">

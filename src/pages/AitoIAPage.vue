@@ -1,6 +1,6 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMeta, useQuasar } from 'quasar'
 import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
@@ -8,6 +8,8 @@ import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import { aitoTokens, useAitoIA, usd } from 'src/composables/useAitoIA'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
+import { requestsVideoGeneration, saveVideoDraft } from 'src/services/aitoiaVideoDraft'
+import { api } from 'boot/axios'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -15,6 +17,7 @@ const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.
 const AitoIAChatVideo = defineAsyncComponent(() => import('components/AitoIAChatVideo.vue'))
 useMeta({ title: 'AitoIA | Chat com AitoTokens', meta: { description: { name: 'description', content: 'Converse com os modelos OpenAI usando AitoTokens. Compare modelos e mantenha suas conversas no seu navegador.' } } })
 const route = useRoute()
+const router = useRouter()
 const $q = useQuasar()
 const state = useAitoIA()
 const { signedIn, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
@@ -35,6 +38,12 @@ const stopped = ref(false)
 const videoOpen = ref(false)
 const videoBusy = ref(false)
 const videoFile = shallowRef(null)
+const videoChoice = ref(false)
+const videoChoiceError = ref('')
+const videoImages = shallowRef([])
+const videoAvailability = ref(null)
+const draftSending = ref(false)
+const isVideoRequest = computed(() => requestsVideoGeneration(draft.value))
 const busy = computed(() => Boolean(request.value || videoBusy.value))
 useAitoWorkGuard(busy, () => $q.notify({ type: 'warning', message: 'Aguarde a operação em andamento para sair desta tela.' }))
 const effortLabels = { none: 'Direta', minimal: 'Mínima', low: 'Baixa', medium: 'Equilibrada', high: 'Alta', xhigh: 'Muito alta', max: 'Ultra' }
@@ -66,10 +75,43 @@ function showSettings() {
 }
 function requestSend() {
   if (!signedIn.value) { showAuth(); return }
+  if (busy.value) return
+  if (isVideoRequest.value) { chooseVideoMode(); return }
   if (status.value?.balanceUsdCents <= 0) { showWallet(); return }
   if (!status.value || !status.value.configured) return
   stopped.value = false
   state.send()
+}
+function openChatVideo() {
+  videoImages.value = attachments.value.filter(file => /^image\/(jpeg|png|webp)$/.test(file.type || file.blob?.type))
+    .map(file => new File([file.blob], file.name, { type: file.type || file.blob.type }))
+  videoChoice.value = false
+  videoOpen.value = true
+}
+async function chooseVideoMode() {
+  videoChoice.value = true
+  videoChoiceError.value = ''
+  videoAvailability.value = null
+  try {
+    const { data } = await api.get('/aitoia/video/options', { headers: { Authorization: `Bearer ${localStorage.getItem('aito_user_token') || ''}` } })
+    const value = data.data
+    const images = attachments.value.filter(file => /^image\/(jpeg|png|webp)$/.test(file.type || file.blob?.type)).length
+    const models = videoFile.value || images ? value?.referenceModels?.filter(item =>
+      (videoFile.value || !item.requiresVideo) && (item.maxImageReferences || 0) >= images) : value?.videoModels
+    videoAvailability.value = Boolean(models?.length)
+  } catch { videoAvailability.value = undefined }
+}
+async function openStudioWithDraft() {
+  if (draftSending.value) return
+  draftSending.value = true
+  try {
+    const files = attachments.value.map(file => ({ id: file.id, name: file.name, mime: file.type || file.blob.type, blob: file.blob }))
+    if (videoFile.value) files.push({ id: crypto.randomUUID(), name: videoFile.value.name, mime: 'video/mp4', blob: videoFile.value })
+    await saveVideoDraft(accountId.value, { prompt: draft.value.trim(), attachments: files })
+    videoChoice.value = false
+    await router.push({ name: 'aito-ia-video-studio', query: { tab: 'ai', draft: 'chat' } })
+  } catch { videoChoiceError.value = 'Não foi possível salvar o rascunho neste navegador.' }
+  finally { draftSending.value = false }
 }
 function stopWaiting() { stopped.value = true; state.stop() }
 function onKey(event) {
@@ -84,9 +126,9 @@ function addFiles(files) {
   const video = files.find(file => file.type === 'video/mp4' || /\.mp4$/i.test(file.name))
   if (video) {
     videoFile.value = video
-    videoOpen.value = true
     const others = files.filter(file => file !== video)
     if (others.length) state.addFiles(others)
+    openChatVideo()
     return
   }
   state.addFiles(files)
@@ -169,7 +211,7 @@ onMounted(() => {
           <button type="button" class="aito-studio__icon aito-studio__mobile-toggle" aria-label="Abrir conversas" :aria-expanded="sidebarOpen" @click="sidebarOpen = true"><q-icon name="mdi-menu" size="23px" /></button>
           <button type="button" class="aito-studio__top-model-button" aria-label="Configurar modelo" @click="showSettings"><q-icon name="mdi-auto-fix" size="18px" /><span>{{ currentModel?.label || (modelLoading ? 'Carregando modelos…' : 'Modelos OpenAI') }}</span><q-icon name="mdi-chevron-down" size="18px" /></button>
         </div>
-        <AitoIAModeSwitch :busy="busy" @chat-video="videoOpen = true" />
+        <AitoIAModeSwitch :busy="busy" @chat-video="openChatVideo" />
         <div class="aito-studio__header-actions">
         <button v-if="signedIn" type="button" class="aito-studio__balance" :disabled="busy" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="17px" /></button>
           <button v-else type="button" class="aito-studio__signup" @click="showAuth()">Criar conta <q-icon name="mdi-arrow-top-right" size="17px" /></button>
@@ -197,6 +239,7 @@ onMounted(() => {
         <div class="aito-studio__orb"><img src="/ia.gif" alt="" width="88" height="88" /></div>
         <h1 id="aito-ia-title">No que vamos trabalhar?</h1>
         <p>Converse, crie imagens e prepare arquivos para baixar.</p>
+        <p v-if="!signedIn && !sessionLoading"><button type="button" class="aito-studio__tool" @click="showAuth()"><q-icon name="mdi-gift-outline" /> Novas contas ganham US$ 1 em AitoTokens</button></p>
         <div class="aito-studio__ideas">
           <button v-for="idea in promptIdeas" :key="idea.title" type="button" @click="selectIdea(idea)"><q-icon :name="idea.icon" size="19px" /> {{ idea.title }}<q-icon name="mdi-arrow-top-right" size="13px" /></button>
         </div>
@@ -212,7 +255,7 @@ onMounted(() => {
         <div v-else-if="contextShortened" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>Parte do histórico ficou fora desta solicitação para respeitar o limite de contexto.</span></div>
         <div v-else-if="stopped" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>A espera foi interrompida. A solicitação já enviada ainda pode consumir créditos.</span><button type="button" aria-label="Fechar aviso" @click="stopped = false"><q-icon name="mdi-close" size="17px" /></button></div>
         <div v-if="signedIn && status?.configured === false && !videoOpen" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>O chat aguarda a configuração da OpenAI.</span><button type="button" @click="state.refreshStatus(); state.refreshModels(true)">Atualizar</button></div>
-        <AitoIAChatVideo v-if="videoOpen" :state="state" :initial-prompt="draft" :initial-video="videoFile" @busy="videoBusy = $event" @close="videoOpen = false; videoFile = null; focusComposer()" @login="showAuth('login')" @wallet="showWallet" />
+        <AitoIAChatVideo v-if="videoOpen" :state="state" :initial-prompt="draft" :initial-video="videoFile" :initial-images="videoImages" @busy="videoBusy = $event" @close="videoOpen = false; videoFile = null; focusComposer()" @login="showAuth('login')" @wallet="showWallet" />
         <form v-else class="aito-studio__composer" @submit.prevent="requestSend">
           <div v-if="attachments.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in attachments" :key="file.id" :attachment="file" removable @remove="attachments = attachments.filter(item => item.id !== file.id)" /></div>
           <textarea ref="composer" v-model="draft" rows="2" :maxlength="MAX_PROMPT_LENGTH" aria-label="Mensagem" placeholder="Escreva uma mensagem ou solte um arquivo…" @keydown="onKey" @paste="pasteFiles" />
@@ -223,7 +266,7 @@ onMounted(() => {
             <span class="aito-studio__spacer" />
             <button type="button" class="aito-studio__tool aito-studio__effort" aria-label="Configurar potência" @click="showSettings"><q-icon name="mdi-lightning-bolt-outline" size="17px" /><span>{{ effortLabels[effort] || 'Potência' }}</span></button>
             <button v-if="request" type="button" class="aito-studio__send" aria-label="Parar de aguardar resposta" title="A solicitação já enviada ainda pode consumir créditos." @click="stopWaiting"><q-icon name="mdi-stop" size="24px" /></button>
-            <button v-else type="submit" class="aito-studio__send" :aria-label="signedIn ? 'Enviar mensagem' : 'Entrar para conversar'" :disabled="signedIn && (!hasInput || sessionLoading || !accountId || !currentModel || !status?.configured)" title="Ctrl + Enter"><q-icon name="mdi-arrow-up" size="25px" /></button>
+            <button v-else type="submit" class="aito-studio__send" :aria-label="signedIn ? 'Enviar mensagem' : 'Entrar para conversar'" :disabled="signedIn && (!hasInput || sessionLoading || !accountId || (!isVideoRequest && (!currentModel || !status?.configured)))" title="Ctrl + Enter"><q-icon name="mdi-arrow-up" size="25px" /></button>
           </div>
         </form>
         <footer class="aito-studio__privacy"><q-icon name="mdi-shield-lock-outline" size="15px" /> Histórico local. Ao enviar, o conteúdo é processado pela OpenAI.</footer>
@@ -232,6 +275,21 @@ onMounted(() => {
 
     <AuthDialog v-if="authOpen" v-model="authOpen" :initial-mode="authMode" return-path="/aitoia" :show-project-login="false" @authenticated="state.syncSession({ keepDraft: true })" />
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="state" />
+
+    <q-dialog v-model="videoChoice" :persistent="draftSending">
+      <q-card dark class="aito-ai-theme aito-studio__dialog">
+        <div class="aito-studio__dialog-head"><q-icon name="mdi-movie-open-play-outline" size="24px" /><h2>Como quer criar seu vídeo?</h2></div>
+        <q-card-section class="q-gutter-sm">
+          <q-btn no-caps outline icon="mdi-message-video" label="Gerar no chat" :disable="videoAvailability !== true" @click="openChatVideo" />
+          <q-btn no-caps unelevated color="teal-8" icon="mdi-movie-edit-outline" label="Abrir Estúdio de Vídeo" :loading="draftSending" @click="openStudioWithDraft" />
+          <p v-if="videoAvailability === null" role="status">Consultando modelos de vídeo…</p>
+          <p v-else-if="videoAvailability === false" role="status">O chat não encontrou um modelo habilitado para estas referências.</p>
+          <p v-else-if="videoAvailability === undefined" role="status">Não foi possível consultar os modelos do chat. Você pode levar o pedido ao Estúdio.</p>
+          <p v-else>Revise a cotação antes de confirmar a geração.</p>
+          <p v-if="videoChoiceError" role="alert">{{ videoChoiceError }}</p>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
 
     <q-dialog :model-value="Boolean(imageQuote)" @update:model-value="value => { if (!value) imageQuote = null }">
       <q-card v-if="imageQuote" dark class="aito-ai-theme aito-studio__dialog">

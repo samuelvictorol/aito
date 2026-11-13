@@ -133,8 +133,9 @@ export async function sampleVideoFrames(file, signal) {
   }
 }
 
-export async function captureTransitionFrame(file, position, format, resolution, signal) {
-  checkVideoReference(file)
+export async function captureTransitionFrame(file, position, format, resolution, signal, at = null) {
+  if (at === null) checkVideoReference(file)
+  else if (!file?.type.startsWith('video/') || file.size > MAX_CLIP_BYTES) throw new Error('Escolha uma cena de vídeo válida.')
   const url = URL.createObjectURL(file)
   const video = document.createElement('video')
   video.muted = true
@@ -145,8 +146,8 @@ export async function captureTransitionFrame(file, position, format, resolution,
     if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
       throw new Error('Cada clipe precisa ter imagem e duração válidas.')
     }
-    const time = Math.max(0, video.duration - .04)
-    if (position === 'end' && time > 0) {
+    const time = Math.max(0, Math.min(video.duration - .04, at === null ? (position === 'end' ? video.duration - .04 : 0) : at))
+    if (time > 0) {
       await mediaEvent(video, 'seeked', signal, () => { video.currentTime = time })
     }
     const [widthRatio, heightRatio] = format.split(':').map(Number)

@@ -3,6 +3,7 @@ import { defineRouter } from '#q-app/wrappers'
 import { createRouter, createMemoryHistory, createWebHistory, createWebHashHistory } from 'vue-router'
 import routes from './routes'
 import {installScreenLoading} from '../services/screen-loading'
+import { applySiteManifest } from '../services/siteManifest'
 
 /*
  * If not building with SSR mode, you can
@@ -28,7 +29,11 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     history: createHistory(process.env.VUE_ROUTER_BASE)
   })
 
-  if (!process.env.SERVER) installLeadAttribution(Router)
+  if (!process.env.SERVER) {
+    installLeadAttribution(Router)
+    applySiteManifest({ path: window.location.pathname })
+    Router.afterEach((route, _from, failure) => { if (!failure) applySiteManifest(route) })
+  }
 
   Router.beforeEach((to) => {
     if (process.env.SERVER) return true

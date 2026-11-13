@@ -67,6 +67,8 @@ const updatedAt = ref(null)
 const summary = ref(null)
 const exchangeRate = ref(null)
 const funding = ref(null)
+const treasury = ref(null)
+const treasuryError = ref(false)
 const fundingDraft = reactive({ openai: undefined, higgsfield: undefined })
 const savingFunding = ref('')
 const groups = ref([])
@@ -84,6 +86,9 @@ const challenge = ref(null)
 const mfaOpen = ref(false)
 const selectedLog = ref(null)
 const grant = ref(null)
+const balanceAction = ref('grant')
+const reclaimAll = ref(false)
+const reclaiming = computed(() => balanceAction.value === 'reclaim')
 const grantTargets = ref([])
 const grantTarget = ref(null)
 const grantAmount = ref('')
@@ -176,8 +181,16 @@ function validGrantAmount(value) {
   const cents = usdCents(value)
   return Number.isSafeInteger(cents) && cents >= 1 && cents <= 100000
 }
+const reclaimCents = computed(() => {
+  const raw = String(grantAmount.value ?? '').trim()
+  if (!/^\d+(?:[.,]\d{1,6})?$/.test(raw)) return 0
+  return Math.round(Number(raw.replace(',', '.')) * 1000000) / 10000
+})
+const validBalanceAction = computed(() => reclaiming.value
+  ? grantTarget.value?.balanceUsdCents > 0 && (reclaimAll.value || (reclaimCents.value > 0 && reclaimCents.value <= grantTarget.value.balanceUsdCents))
+  : validGrantAmount(grantAmount.value))
 const grantLabels = { user: 'Carteira', license: 'Licença', project: 'Projeto' }
-const grantOptions = computed(() => grantTargets.value.map(target => ({
+const grantOptions = computed(() => grantTargets.value.filter(target => reclaiming.value ? target.balanceUsdCents > 0 : !target.reclaimOnly).map(target => ({
   ...target,
   value: `${target.kind}:${target.id}`,
   displayLabel: `${grantLabels[target.kind]} · ${target.label} · ${money(target.balanceUsdCents)}`,
@@ -273,6 +286,7 @@ async function load(page = 1, applyFilters = false, background = false) {
     error.value = ''
   }
   try {
+    refreshTreasury(request.signal)
     const { rowsPerPage } = pagination.value
     const { data } = await api.get('/aito-tokens/admin/usage', {
       ...financeHeaders(true), signal: request.signal, timeout: 12000,
@@ -302,6 +316,13 @@ async function load(page = 1, applyFilters = false, background = false) {
       loading.value = false
     }
   }
+}
+
+async function refreshTreasury(signal) {
+  try {
+    const { data } = await api.get('/aito-tokens/admin/treasury', { ...financeHeaders(true), timeout: 10000, signal })
+    if (!signal.aborted) { treasury.value = data.data; treasuryError.value = false }
+  } catch { if (!signal.aborted) treasuryError.value = true }
 }
 
 async function pollLive() {
@@ -366,11 +387,13 @@ async function saveProviderBalance(row) {
   }
 }
 
-async function openClientGrant() {
+async function openClientGrant(mode = 'grant') {
   const client = clients.value.find(item => item.value === filters.clientId)
   if (!client || filters.scope === 'embedded' || grantLoading.value) return
   const preferredId = filters.scope === 'project' ? filters.projectId : filters.scope === 'product' ? filters.licenseId : client.value
   grant.value = client
+  balanceAction.value = mode
+  reclaimAll.value = false
   grantTargets.value = []
   grantTarget.value = null
   grantAmount.value = ''
@@ -403,13 +426,13 @@ function closeClientGrant() {
 
 async function requestClientGrantMfa() {
   const target = grantTarget.value
-  if (!grant.value || !target || !validGrantAmount(grantAmount.value) || grantBusy.value || grantMfaOpen.value) return
-  const cents = usdCents(grantAmount.value)
+  if (!grant.value || !target || !validBalanceAction.value || grantBusy.value || grantMfaOpen.value) return
   const clientId = grant.value.value
   const destination = target.kind === 'user' ? { userId: target.id } : { clientId, [`${target.kind}Id`]: target.id }
-  const signature = `${clientId}:${target.kind}:${target.id}:${cents}`
+  const amount = reclaiming.value && reclaimAll.value ? { all: true } : { usdCents: reclaiming.value ? reclaimCents.value : usdCents(grantAmount.value) }
+  const signature = JSON.stringify([balanceAction.value, destination, amount])
   if (pendingGrant?.signature !== signature) {
-    pendingGrant = { signature, body: { ...destination, usdCents: cents, requestId: crypto.randomUUID() } }
+    pendingGrant = { signature, reclaim: reclaiming.value, body: { ...destination, ...amount, requestId: crypto.randomUUID() } }
   }
   grantBusy.value = true
   try {
@@ -428,12 +451,13 @@ async function applyClientGrant(session) {
   emit('reauthenticated', session)
   grantBusy.value = true
   try {
-    await api.post('/aito-tokens/admin/grants', pendingGrant.body, { headers: { Authorization: 'Bearer ' + session.token } })
+    const reclaim = pendingGrant.reclaim
+    await api.post('/aito-tokens/admin/' + (reclaim ? 'reclaims' : 'grants'), pendingGrant.body, { headers: { Authorization: 'Bearer ' + session.token } })
     closeClientGrant()
-    $q.notify({ type: 'positive', message: 'Saldo adicionado à carteira.' })
+    $q.notify({ type: 'positive', message: reclaim ? 'Saldo devolvido à plataforma.' : 'Saldo adicionado à carteira.' })
     await load(pagination.value.page)
   } catch (cause) {
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível adicionar o saldo.' })
+    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível movimentar o saldo.' })
   } finally {
     grantBusy.value = false
   }
@@ -510,6 +534,24 @@ onBeforeUnmount(() => {
         </small>
       </div>
     </header>
+    <section v-if="treasury" class="token-usage__treasury token-usage__metrics" aria-label="Saldo geral da plataforma">
+      <article class="token-usage__metric token-usage__treasury-main">
+        <img src="/aitotokens.svg" alt="" width="38" height="38" />
+        <h4>Saldo geral da plataforma</h4><strong>{{ money(treasury.balanceUsdCents) }}</strong>
+        <small>{{ money(treasury.balanceBrlCents, reais) }} · ≈ {{ numbers.format(treasury.approximateTokens || 0) }} AitoTokens<template v-if="treasury.estimateModel"> · {{ treasury.estimateModel }}</template></small>
+        <small>{{ money(treasury.customerBalanceUsdCents) }} em carteiras · {{ money(treasury.reservedUsdCents) }} reservados</small>
+        <small>{{ money(treasury.promoGrantedUsdCents) }} em boas-vindas · {{ money(treasury.reclaimedUsdCents) }} devolvidos</small>
+        <small v-if="treasury.unallocatedPaidUsdCents > 0" class="text-orange-3">{{ money(treasury.unallocatedPaidUsdCents) }} em recargas pagas sem carteira ativa</small>
+      </article>
+      <article v-for="row in treasury.providers" :key="row.provider" class="token-usage__metric">
+        <q-icon :name="providerIcons[row.provider]" size="23px" />
+        <h4>{{ providerName(row.provider) }} · saldo estimado</h4><strong>{{ money(row.estimatedBalanceUsdCents) }}</strong>
+        <small>{{ money(row.estimatedBalanceBrlCents, reais) }}</small>
+        <small v-if="Number.isFinite(row.approximateTokens)">≈ {{ numbers.format(row.approximateTokens) }} tokens OpenAI de saída</small>
+        <small>Até {{ money(row.coveredAitoUsdCents) }} em uso de AitoTokens</small>
+      </article>
+    </section>
+    <q-banner v-else-if="treasuryError" rounded class="bg-yellow-10 text-white" role="status">O saldo geral está indisponível. Atualize para tentar novamente.</q-banner>
     <q-form class="token-usage__filters" @submit.prevent="load(1, true)">
       <q-input v-model="filters.from" dark outlined dense stack-label label="De" type="date" required />
       <q-input v-model="filters.to" dark outlined dense stack-label label="Até" type="date" required />
@@ -526,7 +568,9 @@ onBeforeUnmount(() => {
       <q-input v-model.trim="filters.requestId" dark outlined dense clearable maxlength="160" label="ID da requisição ou do provedor" />
       <q-btn unelevated no-caps type="submit" color="teal-7" icon="mdi-filter-variant" label="Aplicar filtros" :loading="loading" />
       <q-btn outline no-caps type="button" color="teal-3" icon="mdi-wallet-plus-outline" label="Adicionar saldo"
-        :disable="!filters.clientId || filters.scope === 'embedded'" @click="openClientGrant" />
+        :disable="!filters.clientId || filters.scope === 'embedded'" @click="openClientGrant()" />
+      <q-btn outline no-caps type="button" color="amber-4" icon="mdi-wallet-minus-outline" label="Devolver saldo"
+        :disable="!filters.clientId || filters.scope === 'embedded'" @click="openClientGrant('reclaim')" />
     </q-form>
     <q-banner v-if="error" rounded class="bg-red-10 text-white" role="alert">{{ error }}</q-banner>
     <template v-if="summary">
@@ -644,20 +688,23 @@ onBeforeUnmount(() => {
       <q-card v-if="grant" dark class="token-usage__grant">
         <q-form @submit.prevent="requestClientGrantMfa">
           <q-card-section class="token-usage__grant-fields">
-            <h4>Adicionar saldo AitoTokens</h4>
+            <h4>{{ reclaiming ? 'Devolver saldo à plataforma' : 'Adicionar saldo AitoTokens' }}</h4>
             <p>{{ grant.label }}</p>
             <q-banner v-if="grantError" rounded class="bg-red-10 text-white" role="alert">{{ grantError }}</q-banner>
-            <q-select v-model="grantTarget" dark outlined :options="grantOptions" option-label="displayLabel" label="Carteira de destino"
+            <q-select v-model="grantTarget" dark outlined :options="grantOptions" option-label="displayLabel" :label="reclaiming ? 'Carteira de origem' : 'Carteira de destino'"
               :loading="grantLoading" :disable="grantLoading || grantBusy || grantMfaOpen" :rules="[value => !!value || 'Selecione a carteira.']">
               <template #no-option><q-item><q-item-section>Nenhuma carteira disponível para este cliente.</q-item-section></q-item></template>
             </q-select>
-            <q-input v-model="grantAmount" dark outlined label="Saldo a adicionar" prefix="US$" type="number" inputmode="decimal"
+            <q-toggle v-if="reclaiming" v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="grantBusy || grantMfaOpen" />
+            <q-input v-if="reclaiming && !reclaimAll" v-model="grantAmount" dark outlined label="Saldo a devolver" prefix="US$" inputmode="decimal"
+              :disable="grantBusy || grantMfaOpen" :rules="[() => validBalanceAction || 'Informe um valor dentro do saldo disponível.']" />
+            <q-input v-else-if="!reclaiming" v-model="grantAmount" dark outlined label="Saldo a adicionar" prefix="US$" type="number" inputmode="decimal"
               min="0.01" max="1000" step="0.01" required :disable="grantBusy || grantMfaOpen"
               :rules="[value => validGrantAmount(value) || 'Informe um valor entre US$ 0,01 e US$ 1.000.']" />
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" v-close-popup :disable="grantBusy || grantMfaOpen" />
-            <q-btn unelevated no-caps color="teal-7" type="submit" label="Confirmar saldo" :loading="grantBusy" :disable="!grantTarget || grantMfaOpen" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Confirmar" :loading="grantBusy" :disable="!validBalanceAction || grantMfaOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
@@ -721,6 +768,10 @@ onBeforeUnmount(() => {
 .token-usage__reconciliation, .token-usage__grant { width: min(31rem, 94vw); }
 .token-usage__grant { border: 1px solid #345857; background: #0c2022; }
 .token-usage__grant-fields { display: grid; gap: .55rem; }
+.token-usage__treasury { grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); margin: 0 0 1rem; }
+.token-usage__treasury .token-usage__metric { align-content: start; }
+.token-usage__treasury h4 { margin: 0; font-size: .9rem; line-height: 1.4; }
+.token-usage__treasury .token-usage__treasury-main { border-color: #b48d4c; background: radial-gradient(ellipse at top right, #49391a, #192727 75%); }
 .token-usage__details { width: min(48rem, 94vw); max-width: 94vw; border: 1px solid #345857; background: #0c2022; }
 .token-usage h3, .token-usage h4 { margin: 0; color: #edfff8; font-weight: 700; line-height: 1.3; }
 .token-usage__details h4 { margin-bottom: .45rem; }
