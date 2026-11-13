@@ -41,7 +41,12 @@ const videoCatalog = [
   { id: 'wan-3.0-prime', maker: 'Alibaba', name: 'Wan 3.0 Prime', summary: 'Geração rápida para cenas em movimento e estilos variados.', poster: '0% 100%' },
   { id: 'grok-imagine-2.0', maker: 'xAI', name: 'Grok Imagine 2.0', summary: 'Cria e edita imagens com atenção aos detalhes.', poster: '100% 100%', type: 'image', limitation: 'Geração de imagem' },
 ]
-const title = ref('Meu vídeo')
+const defaultProjectName = 'Projeto Sem Nome'
+const defaultProjectColor = '#13BC9D'
+const title = ref(defaultProjectName)
+const projectTitle = computed(() => title.value.trim() || defaultProjectName)
+const projectColor = ref(defaultProjectColor)
+const projectColorOpen = ref(false)
 const tab = ref(useRoute().query.tab === 'ai' ? 'ai' : 'scenes')
 const formatId = ref(videoFormats[0].id)
 const format = computed(() => videoFormats.find(item => item.id === formatId.value))
@@ -80,7 +85,15 @@ const inventoryClips = shallowRef([])
 const inventoryLoading = ref(false)
 const inventoryError = ref('')
 const projectComponents = shallowRef([])
-const componentTypes = ref(['Personagens', 'Cenas', 'Modelos de cena', 'Cenários', 'Roteiros'])
+const builtInComponentNames = {
+  Personagens: 'Personagem',
+  Cenas: 'Cena',
+  'Modelos de cena': 'Modelo de cena',
+  Cenários: 'Cenário',
+  Roteiros: 'Roteiro',
+}
+const builtInComponentTypes = Object.keys(builtInComponentNames)
+const componentTypes = ref([...builtInComponentTypes])
 const componentIcons = {
   Personagens: 'mdi-account-outline',
   Cenas: 'mdi-filmstrip',
@@ -89,8 +102,11 @@ const componentIcons = {
   Roteiros: 'mdi-script-text-outline',
 }
 const componentType = ref('Cenas')
+const componentName = computed(() => Object.hasOwn(builtInComponentNames, componentType.value)
+  ? builtInComponentNames[componentType.value] : componentType.value)
 const componentOpen = ref(false)
 const componentForm = shallowRef(null)
+const editingComponent = ref(false)
 const componentPosters = shallowRef(new Map())
 const componentTypeName = ref('')
 const confirmDeleteClip = ref(false)
@@ -210,8 +226,8 @@ watch(accountId, (next, previous) => {
 
 const { projects, records, activeId, loading: projectLoading, storageError, cloudState, createProject, openProject,
   resolveProject, deleteProject, saveProject } = useAitoStudioProjects({
-  studio: 'video', accountId, busy, defaultName: 'Meu vídeo', snapshot: snapshotProject, restore: restoreProject,
-  watch: [title, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, prompt, generationMode,
+  studio: 'video', accountId, busy, defaultName: defaultProjectName, snapshot: snapshotProject, restore: restoreProject,
+  watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, prompt, generationMode,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
     activeJob, projectComponents, componentTypes],
 })
@@ -301,6 +317,7 @@ function openComponents(type) {
   componentOpen.value = true
 }
 function editComponent(item) {
+  editingComponent.value = Boolean(item)
   componentForm.value = item ? { ...item } : { id: crypto.randomUUID(), type: componentType.value, title: '', prompt: '', file: null }
 }
 function updateComponentForm(values) { componentForm.value = { ...componentForm.value, ...values } }
@@ -331,7 +348,7 @@ function addComponentType() {
 }
 function changeCustomType(delta, rename) {
   const index = componentTypes.value.indexOf(componentType.value)
-  if (index < 5) return
+  if (index < builtInComponentTypes.length) return
   const next = [...componentTypes.value]
   if (rename) {
     const name = componentTypeName.value.trim()
@@ -341,7 +358,7 @@ function changeCustomType(delta, rename) {
     componentType.value = name
     componentTypeName.value = ''
   } else {
-    if (!next[index + delta] || index + delta < 5) return
+    if (!next[index + delta] || index + delta < builtInComponentTypes.length) return
     next.splice(index + delta, 0, next.splice(index, 1)[0])
   }
   componentTypes.value = next
@@ -1152,7 +1169,7 @@ async function archiveProject() {
       archived.set(file, name)
       return name
     }
-    const metadata = { format: 'aitoia-video', version: 3, title: title.value, aspectRatio: format.value.label,
+    const metadata = { format: 'aitoia-video', version: 3, title: projectTitle.value, projectColor: projectColor.value, aspectRatio: format.value.label,
       expiresAt: activeProject.value?.expiresAt,
       scenes: scenes.value.map(({ media, ...scene }, index) => ({
         ...scene, media: unavailableScene(scene) ? undefined : add(media?.file, `cena-${index + 1}`),
@@ -1191,12 +1208,14 @@ function resetProject() {
   generated.value = null
   clipLibrary.value = []
   projectComponents.value = []
-  componentTypes.value = ['Personagens', 'Cenas', 'Modelos de cena', 'Cenários', 'Roteiros']
+  componentTypes.value = [...builtInComponentTypes]
   activeJob.value = null
   scriptPrompt.value = ''
   prompt.value = ''
   narrationText.value = ''
-  title.value = 'Meu vídeo'
+  title.value = defaultProjectName
+  projectColor.value = defaultProjectColor
+  projectColorOpen.value = false
   formatId.value = videoFormats[0].id
   generationMode.value = 'text'
   const oldMedia = new Set([scenes.value, ...history.value].flatMap(list => list.map(scene => scene.media)))
@@ -1207,8 +1226,12 @@ function resetProject() {
   selectScene(scenes.value[0].id)
 }
 
+function setProjectColor(color) {
+  if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) projectColor.value = color.toUpperCase()
+}
+
 function snapshotProject() {
-  return { title: title.value, formatId: formatId.value, sceneId: sceneId.value,
+  return { title: projectTitle.value, projectColor: projectColor.value, formatId: formatId.value, sceneId: sceneId.value,
     scenes: scenes.value.map(({ media, ...scene }) => ({ ...scene, file: media?.file })),
     narrationText: narrationText.value, narration: narration.value?.file, recording: recording.value?.blob,
     prompt: prompt.value, scriptPrompt: scriptPrompt.value, generationMode: generationMode.value,
@@ -1221,6 +1244,8 @@ function snapshotProject() {
 
 async function restoreProject(project, signal) {
   resetProject()
+  title.value = project?.title || defaultProjectName
+  setProjectColor(project?.projectColor)
   if (!Array.isArray(project?.scenes)) return
   const localMedia = new Map()
   let opened = false
@@ -1232,7 +1257,6 @@ async function restoreProject(project, signal) {
     }
     signal.throwIfAborted()
     opened = true
-    title.value = project.title
     if (videoFormats.some(item => item.id === project.formatId)) formatId.value = project.formatId
     replaceScenes(project.scenes.map(({ file, ...scene }) => ({ ...scene, media: localMedia.get(file) || null,
       missingMedia: scene.missingMedia || Boolean(file && !localMedia.get(file)) })), { remember: false })
@@ -1371,7 +1395,16 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
     <q-page-container>
     <main class="video-studio__main" @paste="pasteStudioMedia">
       <div class="video-studio__intro">
-        <div><h1>Estúdio de vídeo</h1><p>Gere cenas, monte seu vídeo e exporte o resultado.</p></div>
+        <div class="video-studio__project-heading">
+          <div class="video-studio__project-name">
+            <q-btn flat round dense class="video-studio__color-button" aria-label="Escolher cor do projeto"
+              :disable="!mayEdit" :aria-expanded="projectColorOpen" @click="projectColorOpen = true">
+              <span class="video-studio__color-dot" :style="{ backgroundColor: projectColor }" aria-hidden="true" />
+            </q-btn>
+            <h1>{{ projectTitle }}</h1>
+          </div>
+          <p>Gere cenas, monte seu vídeo e exporte o resultado.</p>
+        </div>
         <div class="video-studio__zip">
           <span v-if="missingArchiveItems" class="video-studio__hint">{{ missingArchiveItems }} mídia(s) indisponível(is) ficarão fora do ZIP.</span>
           <button :class="nearingExpiry ? 'video-studio__primary' : 'video-studio__secondary'" type="button" :disabled="!mayEdit || Boolean(busy)" @click="archiveProject"><q-icon name="mdi-folder-zip-outline" size="20px" /> Baixar projeto ZIP</button>
@@ -1665,9 +1698,15 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
         </q-card-section>
       </q-card>
     </q-dialog>
+    <q-dialog v-model="projectColorOpen" aria-labelledby="video-project-color">
+      <q-card class="aito-ai-theme video-studio__dialog video-studio__color-dialog">
+        <q-card-section class="video-studio__scene-heading"><h2 id="video-project-color">Cor do projeto</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar seletor de cor" /></q-card-section>
+        <q-card-section><q-color dark flat bordered format-model="hex" class="full-width" :model-value="projectColor" @update:model-value="setProjectColor" /></q-card-section>
+      </q-card>
+    </q-dialog>
     <q-dialog v-model="componentOpen">
       <q-card class="aito-ai-theme video-studio__dialog">
-        <q-card-section class="video-studio__scene-heading"><h2>{{ componentType }}</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar componentes" /></q-card-section>
+        <q-card-section class="video-studio__scene-heading"><h2>{{ componentForm ? `${editingComponent ? 'Editar' : 'Adicionar'} ${componentName}` : componentType }}</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar componentes" /></q-card-section>
         <q-card-section class="video-studio__dialog-list">
           <template v-if="componentForm">
             <label>Nome<input :value="componentForm.title" maxlength="80" @input="updateComponentForm({ title: $event.target.value })" /></label>
@@ -1676,16 +1715,16 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
             <span v-if="componentForm.file" class="video-studio__hint">{{ componentForm.file.name }}</span>
             <div class="video-studio__actions">
               <button type="button" class="video-studio__secondary" @click="componentForm = null">Cancelar</button>
-              <button type="button" class="video-studio__primary" :disabled="!componentForm.title.trim()" @click="saveComponent">Salvar componente</button>
+              <button type="button" class="video-studio__primary" :disabled="!componentForm.title.trim()" @click="saveComponent">Salvar</button>
             </div>
           </template>
           <template v-else>
             <label>Buscar componente<input v-model="inventoryQuery" type="search" /></label>
             <div class="video-studio__actions">
-              <button type="button" class="video-studio__primary" @click="editComponent()"><q-icon name="mdi-plus" /> Novo componente</button>
+              <button type="button" class="video-studio__primary" @click="editComponent()"><q-icon name="mdi-plus" /> Adicionar {{ componentName }}</button>
               <button v-if="componentType === 'Cenas'" type="button" class="video-studio__secondary" @click="componentOpen = false; openInventory()">Ver clipes prontos</button>
             </div>
-            <div v-if="componentTypes.indexOf(componentType) >= 5" class="video-studio__actions">
+            <div v-if="!builtInComponentTypes.includes(componentType)" class="video-studio__actions">
               <label>Renomear tipo<input v-model.trim="componentTypeName" maxlength="32" /></label>
               <button type="button" class="video-studio__secondary" :disabled="!componentTypeName" @click="changeCustomType(0, true)">Renomear</button>
               <button type="button" class="video-studio__icon" aria-label="Mover tipo para cima" @click="changeCustomType(-1)"><q-icon name="mdi-chevron-up" /></button>
@@ -1750,7 +1789,12 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__icon:not(:disabled):hover, .video-studio__login:hover { color: var(--aito-ai-accent); background: var(--aito-ai-raised); }
 .video-studio__main { width: min(1660px, 100%); margin: 0 auto; padding: clamp(20px, 4vw, 48px) clamp(12px, 3vw, 36px) 45px; }
 .video-studio__intro { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 25px; }
-.video-studio__intro h1 { font-size: clamp(2rem, 4vw, 3.15rem); line-height: 1.05; font-weight: 780; letter-spacing: -.045em; }
+.video-studio__project-heading { min-width: 0; }
+.video-studio__project-name { display: flex; align-items: center; gap: 6px; }
+.video-studio__intro h1 { font-size: clamp(2rem, 4vw, 3.15rem); line-height: 1.05; font-weight: 780; letter-spacing: -.045em; overflow-wrap: anywhere; }
+.video-studio__color-button { flex: none; width: 44px; height: 44px; }
+.video-studio__color-dot { display: block; width: 24px; height: 24px; border: 2px solid var(--aito-ai-line); border-radius: 50%; }
+.video-studio__color-dialog { max-width: 350px; }
 .video-studio__intro p { margin-top: 10px; color: var(--aito-ai-muted); }
 .video-studio__zip { display: grid; gap: 5px; justify-items: end; }
 .video-studio__grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, .82fr); align-items: start; gap: 14px; scroll-margin-top: calc(var(--video-header-height) + 6px); }

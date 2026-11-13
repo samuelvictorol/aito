@@ -51,6 +51,12 @@ const quote = ref(null)
 const images = shallowRef([])
 const imageId = ref('')
 const projectTitle = ref('')
+const palette = ref([])
+const paletteDialog = ref(false)
+const paletteColor = ref('')
+const paletteIndex = ref(-1)
+const defaultPaletteColor = '#13BC9D'
+const isPaletteColor = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
 const authOpen = ref(false)
 const authMode = ref('login')
 const walletOpen = ref(false)
@@ -66,6 +72,7 @@ const format = computed(() => formats.value.find(item => item.id === formatId.va
 const maxReferences = computed(() => catalog.value?.maxReferences || 6)
 const maxReferenceBytes = computed(() => catalog.value?.maxReferenceBytes || 786432)
 const maxComponents = computed(() => catalog.value?.maxComponents || 6)
+const maxPaletteColors = computed(() => catalog.value?.maxPaletteColors || 10)
 const activeKit = computed(() => kit.value.filter(item => selectedKit.value.includes(item.id)))
 const referenceCount = computed(() => references.value.length + activeKit.value.filter(item => item.blob).length)
 const locked = computed(() => busy.value || uploading.value || !!quote.value)
@@ -132,9 +139,10 @@ watch(accountId, async (id, previous) => {
 const stripUrl = ({ url: _url, ...asset }) => asset
 const project = useAitoStudioProjects({
   studio: 'marketing', accountId, busy: locked, defaultName: 'Projeto de marketing',
-  watch: [projectTitle, formatId, prompt, references, selectedKit, images, imageId],
+  watch: [projectTitle, formatId, prompt, references, selectedKit, palette, images, imageId],
   snapshot: () => ({ title: projectTitle.value, formatId: formatId.value, prompt: prompt.value,
-    references: references.value.map(stripUrl), selectedKit: [...selectedKit.value], images: images.value.map(stripUrl), imageId: imageId.value }),
+    references: references.value.map(stripUrl), selectedKit: [...selectedKit.value], palette: [...palette.value],
+    images: images.value.map(stripUrl), imageId: imageId.value }),
   restore(saved) {
     clearProjectMedia()
     projectTitle.value = saved?.title || ''
@@ -142,12 +150,33 @@ const project = useAitoStudioProjects({
     prompt.value = saved?.prompt || ''
     references.value = (saved?.references || []).map(localAsset)
     selectedKit.value = saved?.selectedKit || []
+    paletteDialog.value = false
+    palette.value = Array.isArray(saved?.palette) ? saved.palette.filter(isPaletteColor).slice(0, maxPaletteColors.value) : []
     images.value = (saved?.images || []).map(localAsset)
     imageId.value = saved?.imageId || images.value[0]?.id || ''
     error.value = ''
   },
 })
 const { projects, activeId: projectId, loading: projectLoading, storageError, cloudState, createProject, openProject, deleteProject, saveProject } = project
+
+const paletteLocked = computed(() => locked.value || projectLoading.value)
+function editPaletteColor(index = -1) {
+  paletteIndex.value = index
+  paletteColor.value = palette.value[index] || defaultPaletteColor
+  paletteDialog.value = true
+}
+
+function savePaletteColor() {
+  if (paletteLocked.value || !isPaletteColor(paletteColor.value)) return
+  const color = paletteColor.value.toUpperCase()
+  if (paletteIndex.value >= 0) {
+    palette.value = palette.value.map((current, index) => index === paletteIndex.value ? color : current)
+  } else {
+    if (palette.value.length >= maxPaletteColors.value) return
+    palette.value = [...palette.value, color]
+  }
+  paletteDialog.value = false
+}
 
 function showWorkspace() {
   if (drawerOpen.value) { closeWorkspace(); return }
@@ -309,7 +338,7 @@ async function generate() {
     const encoded = await Promise.all(selectedReferences.map(item => readMarketingImage(item.blob)))
     const { data } = await api.post('/aitoia/marketing/generations', {
       walletId: confirmed.walletId, format: confirmed.format, maxBilledUsdCents: confirmed.maxBilledUsdCents,
-      prompt: prompt.value.trim(), references: encoded, components,
+      prompt: prompt.value.trim(), references: encoded, components, palette: palette.value,
     }, config(access, controller.signal, { 'X-Aito-Request-Id': crypto.randomUUID() }))
     const blob = await exportMarketingImage(data.data.image, imageFormat)
     if (access !== token() || controller.signal.aborted) return
@@ -365,6 +394,20 @@ onBeforeUnmount(() => {
           <AitoStudioProjectPicker drawer :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
             :disabled="!accountId || locked" @create="createProject" @open="selectProject" @remove="deleteProject" />
           <q-input v-if="projectId" v-model="projectTitle" dark outlined label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
+        </section>
+        <section class="marketing__drawer-section" aria-labelledby="marketing-palette">
+          <div class="marketing__section-title"><h2 id="marketing-palette">Paleta de Cores</h2><span>{{ palette.length }}/{{ maxPaletteColors }}</span></div>
+          <p v-if="!palette.length">Use as cores da sua marca nas imagens deste projeto.</p>
+          <ul v-if="palette.length" class="marketing__palette">
+            <li v-for="(color, index) in palette" :key="index">
+              <q-btn flat no-caps align="left" class="marketing__palette-color" :aria-label="`Editar cor ${color}`" :disable="paletteLocked" @click="editPaletteColor(index)">
+                <span class="marketing__swatch" :style="{ backgroundColor: color }" aria-hidden="true" /><span>{{ color }}</span><q-icon name="mdi-pencil-outline" size="16px" />
+              </q-btn>
+              <q-btn flat round icon="mdi-delete-outline" :aria-label="`Remover cor ${color}`" :disable="paletteLocked" @click="palette = palette.filter((_, position) => position !== index)" />
+            </li>
+          </ul>
+          <q-btn outline no-caps class="marketing__add-component" icon="mdi-plus" label="Adicionar cor"
+            :disable="paletteLocked || palette.length >= maxPaletteColors" @click="editPaletteColor()" />
         </section>
         <section class="marketing__drawer-section" aria-labelledby="marketing-kit">
           <div class="marketing__section-title"><h2 id="marketing-kit">Kit de marca</h2><span v-if="kit.length">{{ activeKit.length }}/{{ kit.length }} em uso</span></div>
@@ -426,7 +469,7 @@ onBeforeUnmount(() => {
               </ul>
             </section>
 
-            <q-btn v-if="!drawerOpen" flat no-caps icon="mdi-palette-outline" class="marketing__brand-link" :label="activeKit.length ? `Kit de marca · ${activeKit.length} em uso` : 'Usar kit de marca'" @click="showWorkspace" />
+            <q-btn v-if="!drawerOpen" flat no-caps icon="mdi-palette-outline" class="marketing__brand-link" label="Paleta e kit de marca" @click="showWorkspace" />
             <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || projectLoading || catalogLoading || (signedIn && (!catalog?.available || !prompt.trim()))" />
           </q-form>
 
@@ -454,8 +497,16 @@ onBeforeUnmount(() => {
         <h2>Confirmar geração</h2>
         <p>{{ format.label }} · {{ format.width }} × {{ format.height }}</p>
         <p>Limite de débito <strong>{{ usd(quote.maxBilledUsdCents) }}</strong> do saldo AitoTokens.</p>
-        <p>A descrição e as referências selecionadas são enviadas à OpenAI para gerar a imagem.</p>
+        <p>A descrição, as referências e as cores escolhidas são enviadas à OpenAI para gerar a imagem.</p>
         <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Voltar" /><q-btn unelevated no-caps class="marketing__primary" label="Gerar imagem" @click="generate" /></div>
+      </q-card>
+    </q-dialog>
+
+    <q-dialog v-model="paletteDialog" aria-labelledby="marketing-palette-editor">
+      <q-card dark class="aito-ai-theme marketing__dialog marketing__palette-dialog">
+        <h2 id="marketing-palette-editor">{{ paletteIndex < 0 ? 'Adicionar cor' : 'Editar cor' }}</h2>
+        <q-color v-model="paletteColor" dark flat bordered format-model="hex" class="full-width" />
+        <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Cancelar" /><q-btn unelevated no-caps class="marketing__primary" label="Salvar cor" :disable="paletteLocked || !isPaletteColor(paletteColor)" @click="savePaletteColor" /></div>
       </q-card>
     </q-dialog>
 
@@ -535,6 +586,14 @@ onBeforeUnmount(() => {
 .marketing__kit button { min-height: 44px; padding-inline: 7px; }
 .marketing__kit button:first-child { min-width: 0; flex: 1; justify-content: start; gap: 8px; text-align: left; }
 .marketing__kit button :is(img, .q-icon) { flex: none; }
+.marketing__palette { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.marketing__palette li { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--aito-ai-line); border-radius: 7px; background: var(--aito-ai-panel); }
+.marketing__palette-color { flex: 1; min-width: 0; min-height: 44px; }
+.marketing__palette-color :deep(.q-btn__content) { flex-wrap: nowrap; gap: 8px; }
+.marketing__palette-color .q-icon { margin-inline-start: auto; }
+.marketing__swatch { flex: none; width: 22px; height: 22px; border: 1px solid var(--aito-ai-line); border-radius: 50%; }
+.marketing__palette-dialog { max-width: 350px; }
+.marketing__palette-dialog .marketing__actions { margin-top: 12px; }
 .marketing__gallery img { width: 49px; height: 49px; }
 .marketing__gallery button[aria-pressed=true], .marketing__kit button[aria-pressed=true] { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .marketing__primary { min-height: 42px; color: var(--aito-ai-ink); background: var(--aito-ai-gradient); font-weight: 750; }
