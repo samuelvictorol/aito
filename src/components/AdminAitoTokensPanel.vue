@@ -23,10 +23,15 @@ const modelsLoading = ref(false)
 const modelsError = ref('')
 const modelCatalog = ref([])
 const modelQuery = ref('')
-const editing = reactive({ exchangeRate: false, config: false, billing: false, grant: false })
+const editing = reactive({ exchangeRate: false, config: false, billing: false, alerts: false, grant: false })
 const exchange = reactive({ rate: null, autoRefresh: true })
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
-const multiplier = ref(null)
+const multipliers = reactive({ multiplier: null, higgsfieldMultiplier: null })
+const alerts = reactive({ alertsEnabled: false, alertEmail: '', alertPhone: '', openaiLimit: null, higgsfieldLimit: null })
+const providerSettings = [
+  { name: 'OpenAI', feature: 'Chat e outras ferramentas OpenAI', icon: 'mdi-message-text-outline', multiplier: 'multiplier', limit: 'openaiLimit' },
+  { name: 'Higgsfield', feature: 'Estúdio de vídeo e vídeo no chat', icon: 'mdi-movie-open-play-outline', multiplier: 'higgsfieldMultiplier', limit: 'higgsfieldLimit' },
+]
 const billingLoaded = ref(false)
 const billingLoading = ref(false)
 const billingError = ref('')
@@ -51,6 +56,12 @@ function validMultiplier(value) {
   const factor = parseMultiplier(value)
   return factor >= 1 && factor <= 100
 }
+function validAlertLimit(value) {
+  const amount = parseMultiplier(value)
+  return amount >= 0 && amount <= 1000000
+}
+const validAlertEmail = value => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254
+const validAlertPhone = value => typeof value === 'string' && /^\+?[\d\s()-]+$/.test(value) && /^[1-9]\d{9,14}$/.test(value.replace(/\D/g, ''))
 const selectedModel = computed(() => modelCatalog.value.find(item => item.id === config.model))
 const modelOptions = computed(() => modelCatalog.value
   .filter(item => `${item.label || ''} ${item.id}`.toLowerCase().includes(modelQuery.value))
@@ -133,7 +144,7 @@ async function saveConfig() {
 }
 
 async function loadBilling() {
-  if (editing.billing) return
+  if (editing.billing || editing.alerts) return
   billingLoad?.abort()
   const request = new AbortController()
   billingLoad = request
@@ -142,28 +153,63 @@ async function loadBilling() {
   try {
     const { data } = await api.get(`${root}/billing`, { ...financeHeaders(true), signal: request.signal })
     if (!request.signal.aborted) {
-      multiplier.value = data.data.multiplier
+      setMultipliers(data.data)
+      setAlerts(data.data)
       billingLoaded.value = true
     }
   } catch (error) {
-    if (!request.signal.aborted) billingError.value = error.response?.data?.message || 'Não foi possível consultar o multiplicador.'
+    if (!request.signal.aborted) billingError.value = error.response?.data?.message || 'Não foi possível consultar a configuração de cobrança e alertas.'
   } finally {
     if (billingLoad === request) billingLoading.value = false
   }
 }
 
+function setMultipliers(data) {
+  multipliers.multiplier = data.multiplier
+  multipliers.higgsfieldMultiplier = data.higgsfieldMultiplier
+}
+
+function setAlerts(data) {
+  alerts.alertsEnabled = data.alertsEnabled
+  alerts.alertEmail = data.alertEmail
+  alerts.alertPhone = data.alertPhone
+  alerts.openaiLimit = Number.isFinite(data.openaiAlertUsdCents) ? data.openaiAlertUsdCents / 100 : null
+  alerts.higgsfieldLimit = Number.isFinite(data.higgsfieldAlertUsdCents) ? data.higgsfieldAlertUsdCents / 100 : null
+}
+
 async function saveMultiplier() {
-  if (!billingLoaded.value || billingLoading.value || editing.billing || !validMultiplier(multiplier.value)) return
+  if (!billingLoaded.value || billingLoading.value || editing.billing || !Object.values(multipliers).every(validMultiplier)) return
   editing.billing = true
   billingError.value = ''
   try {
-    const { data } = await api.put(`${root}/billing`, { multiplier: parseMultiplier(multiplier.value) }, financeHeaders(true))
-    multiplier.value = data.data.multiplier
-    $q.notify({ type: 'positive', message: 'Multiplicador de cobrança atualizado.' })
+    const changes = Object.fromEntries(Object.entries(multipliers).map(([key, value]) => [key, parseMultiplier(value)]))
+    const { data } = await api.put(`${root}/billing`, changes, financeHeaders(true))
+    setMultipliers(data.data)
+    $q.notify({ type: 'positive', message: 'Multiplicadores de cobrança atualizados.' })
   } catch (error) {
-    notify(error, 'Não foi possível salvar o multiplicador.')
+    notify(error, 'Não foi possível salvar os multiplicadores.')
   } finally {
     editing.billing = false
+  }
+}
+
+async function saveAlerts() {
+  const { alertsEnabled, alertEmail, alertPhone, openaiLimit, higgsfieldLimit } = alerts
+  if (!billingLoaded.value || billingLoading.value || editing.alerts ||
+    !validAlertEmail(alertEmail) || !validAlertPhone(alertPhone) || ![openaiLimit, higgsfieldLimit].every(validAlertLimit)) return
+  editing.alerts = true
+  try {
+    const { data } = await api.put(`${root}/billing`, {
+      alertsEnabled, alertEmail, alertPhone,
+      openaiAlertUsdCents: Math.round(parseMultiplier(openaiLimit) * 100),
+      higgsfieldAlertUsdCents: Math.round(parseMultiplier(higgsfieldLimit) * 100),
+    }, financeHeaders(true))
+    setAlerts(data.data)
+    $q.notify({ type: 'positive', message: 'Alertas de saldo atualizados.' })
+  } catch (error) {
+    notify(error, 'Não foi possível salvar os alertas de saldo.')
+  } finally {
+    editing.alerts = false
   }
 }
 
@@ -306,13 +352,42 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
       </q-form>
       <q-form class="token-admin__box" @submit.prevent="saveMultiplier">
         <h3>Cobrança AitoTokens</h3>
-        <q-input v-model="multiplier" dark outlined label="Multiplicador sobre o custo" suffix="×" type="number" inputmode="decimal"
-          min="1" max="100" step="0.01" required :loading="billingLoading" :disable="!billingLoaded || billingLoading || editing.billing"
-          :rules="[value => validMultiplier(value) || 'Informe um número de 1 a 100, com até duas casas decimais.']" hide-bottom-space />
-        <p>Aplica-se às próximas chamadas de OpenAI e Higgsfield. A taxa de cada chamada fica registrada.</p>
-        <p v-if="validMultiplier(multiplier)">US$ 1,00 de custo equivale a <strong>{{ purchaseMoney(100 * parseMultiplier(multiplier), 'USD') }}</strong> em AitoTokens.</p>
+        <div v-for="provider in providerSettings" :key="provider.name" class="token-admin__provider-field">
+          <header>
+            <span class="token-admin__provider-icon"><q-icon :name="provider.icon" size="20px" /></span>
+            <div><strong>{{ provider.name }}</strong><small>{{ provider.feature }}</small></div>
+          </header>
+          <q-input v-model="multipliers[provider.multiplier]" dark outlined dense :label="`Multiplicador ${provider.name}`" suffix="×"
+            type="number" inputmode="decimal" min="1" max="100" step="0.01" required :loading="billingLoading"
+            :disable="!billingLoaded || billingLoading || editing.billing"
+            :rules="[value => validMultiplier(value) || 'Informe um número de 1 a 100, com até duas casas decimais.']" hide-bottom-space />
+          <small v-if="validMultiplier(multipliers[provider.multiplier])">US$ 1,00 de custo equivale a
+            <strong>{{ purchaseMoney(100 * parseMultiplier(multipliers[provider.multiplier]), 'USD') }}</strong> em AitoTokens.</small>
+        </div>
+        <p>Os dois provedores usam a mesma carteira AitoTokens. A taxa de cada cobrança fica registrada.</p>
         <p v-if="billingError" role="alert" class="token-admin__warning">{{ billingError }}</p>
-        <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar multiplicador" :loading="editing.billing" :disable="!billingLoaded || billingLoading" />
+        <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar multiplicadores" :loading="editing.billing" :disable="!billingLoaded || billingLoading" />
+      </q-form>
+      <q-form class="token-admin__box" @submit.prevent="saveAlerts">
+        <h3><q-icon name="mdi-bell-ring-outline" color="teal-3" /> Alertas de saldo</h3>
+        <p>Avise por WhatsApp Web e e-mail quando o saldo estimado de um provedor atingir o limite configurado.</p>
+        <q-toggle v-model="alerts.alertsEnabled" dark color="teal-4" label="Ativar alertas de saldo"
+          :disable="!billingLoaded || billingLoading || editing.alerts" />
+        <div class="token-admin__alert-limits">
+          <q-input v-for="provider in providerSettings" :key="provider.name" v-model="alerts[provider.limit]" dark outlined dense
+            :label="`Limite ${provider.name}`" prefix="US$" type="number" min="0" max="1000000" step="0.01" inputmode="decimal" required
+            :disable="!billingLoaded || billingLoading || editing.alerts"
+            :rules="[value => validAlertLimit(value) || 'Informe um valor válido em dólares.']" hide-bottom-space />
+        </div>
+        <q-input v-model.trim="alerts.alertPhone" dark outlined dense label="WhatsApp de destino" type="tel" maxlength="24" autocomplete="off" required
+          :disable="!billingLoaded || billingLoading || editing.alerts" :rules="[value => validAlertPhone(value) || 'Informe um telefone válido com DDD.']" hide-bottom-space>
+          <template #prepend><q-icon name="mdi-whatsapp" /></template>
+        </q-input>
+        <q-input v-model.trim="alerts.alertEmail" dark outlined dense label="E-mail de destino" type="email" maxlength="254" autocomplete="off" required
+          :disable="!billingLoaded || billingLoading || editing.alerts" :rules="[value => validAlertEmail(value) || 'Informe um e-mail válido.']" hide-bottom-space>
+          <template #prepend><q-icon name="mdi-email-outline" /></template>
+        </q-input>
+        <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar alertas" :loading="editing.alerts" :disable="!billingLoaded || billingLoading" />
       </q-form>
     </div>
     <AdminAitoProviderKeys :checkout-state="config.checkoutState" @updated="refreshLicenseSettings" @reauthenticated="emit('reauthenticated', $event)" />
@@ -373,6 +448,11 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
 .token-admin__status { display: flex; flex-wrap: wrap; gap: .45rem; }
 .token-admin__status:empty { display: none; }
 .token-admin__model-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .4rem; }
+.token-admin__provider-field { display: grid; gap: .6rem; padding: .65rem; border: 1px solid #345857; border-radius: .65rem; }
+.token-admin__provider-field header { display: flex; align-items: center; gap: .65rem; }
+.token-admin__provider-field small { display: block; color: #c2d9d3; }
+.token-admin__provider-icon { display: grid; place-items: center; flex: 0 0 35px; height: 35px; border-radius: 10px; background: #18403c; color: #91f4d6; }
+.token-admin__alert-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: .5rem; }
 .token-admin p.token-admin__warning { color: #ffd190; }
 .token-admin h3, .token-admin__dialog h3 { margin: 0; font-size: 1.2rem; font-weight: 700; line-height: 1.4; }
 .token-admin__table { background: #0c2022; border-color: #345857; }

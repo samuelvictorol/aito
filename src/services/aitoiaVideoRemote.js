@@ -132,3 +132,41 @@ export async function sampleVideoFrames(file, signal) {
     URL.revokeObjectURL(url)
   }
 }
+
+export async function captureTransitionFrame(file, position, format, resolution, signal) {
+  checkVideoReference(file)
+  const url = URL.createObjectURL(file)
+  const video = document.createElement('video')
+  video.muted = true
+  video.preload = 'auto'
+  video.playsInline = true
+  try {
+    await mediaEvent(video, 'loadeddata', signal, () => { video.src = url })
+    if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
+      throw new Error('Cada clipe precisa ter imagem e duração válidas.')
+    }
+    const time = Math.max(0, video.duration - .04)
+    if (position === 'end' && time > 0) {
+      await mediaEvent(video, 'seeked', signal, () => { video.currentTime = time })
+    }
+    const [widthRatio, heightRatio] = format.split(':').map(Number)
+    const shortSide = resolution === '1080p' ? 1080 : 720
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(shortSide * widthRatio / Math.min(widthRatio, heightRatio))
+    canvas.height = Math.round(shortSide * heightRatio / Math.min(widthRatio, heightRatio))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Seu navegador não disponibilizou leitura de vídeo.')
+    const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight)
+    const width = video.videoWidth * scale
+    const height = video.videoHeight * scale
+    context.drawImage(video, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .86))
+    signal.throwIfAborted()
+    if (!blob) throw new Error('O navegador não conseguiu extrair o quadro do clipe.')
+    return new File([blob], position === 'end' ? 'fim-clipe-1.jpg' : 'inicio-clipe-2.jpg', { type: 'image/jpeg' })
+  } finally {
+    video.removeAttribute('src')
+    video.load()
+    URL.revokeObjectURL(url)
+  }
+}

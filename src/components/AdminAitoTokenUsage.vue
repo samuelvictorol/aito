@@ -50,6 +50,8 @@ const sourceLabels = {
   unknown: 'Origem não identificada',
 }
 const providerLabels = { openai: 'OpenAI', higgsfield: 'Higgsfield' }
+const providerIcons = { openai: 'mdi-message-text-outline', higgsfield: 'mdi-movie-open-play-outline' }
+const providerBalanceKeys = { openai: 'openaiBalanceUsdCents', higgsfield: 'higgsfieldBalanceUsdCents' }
 const logStates = { applied: 'Concluída', reserved: 'Em processamento', released: 'Reserva liberada', reconciliation: 'Conciliação pendente' }
 const stateColors = { applied: 'teal-3', reserved: 'blue-3', released: 'grey-4', reconciliation: 'amber-4' }
 const optionList = labels => Object.entries(labels).map(([value, label]) => ({ label, value }))
@@ -66,7 +68,7 @@ const summary = ref(null)
 const exchangeRate = ref(null)
 const funding = ref(null)
 const fundingDraft = reactive({ openai: undefined, higgsfield: undefined })
-const savingFunding = ref(false)
+const savingFunding = ref('')
 const groups = ref([])
 const logs = ref([])
 const providerTotals = ref([])
@@ -74,6 +76,7 @@ const projects = ref([])
 const clients = ref([])
 const pagination = ref({ page: 1, rowsPerPage: 50, rowsNumber: 0 })
 const simulatedCost = ref('')
+const simulatedProvider = ref('openai')
 const reconciliation = ref(null)
 const reconciliationCost = ref('')
 const reconciliationBusy = ref(false)
@@ -155,7 +158,7 @@ const coverageMetrics = computed(() => {
   const data = summary.value || {}
   const totalTopUp = funding.value?.totalTopUpUsdCents
   return [
-    { label: 'Saldo combinado nos provedores', value: funding.value?.totalUsdCents },
+    { label: 'Saldo estimado nos provedores', value: funding.value?.estimatedTotalUsdCents ?? funding.value?.totalUsdCents },
     { label: 'Saldo AitoTokens dos clientes', value: data.outstandingUsdCents },
     { label: 'Custo estimado para cobrir esse saldo', value: data.projectedProviderUsdCents },
     { label: totalTopUp == null ? 'Diferença no total' : 'Recarga estimada nos provedores', value: totalTopUp ?? data.fundingGapUsdCents },
@@ -163,6 +166,8 @@ const coverageMetrics = computed(() => {
 })
 const providerBalances = computed(() => funding.value?.providers || [])
 const balanceValue = row => fundingDraft[row.provider] ?? row.balanceUsdCents / 100
+const estimatedBalance = row => row.estimatedBalanceUsdCents ?? row.balanceUsdCents
+const alertLimitReached = row => Number.isFinite(row.alertThresholdUsdCents) && estimatedBalance(row) <= row.alertThresholdUsdCents
 function validBalance(value) {
   const cents = usdCents(value)
   return Number.isSafeInteger(cents) && cents <= 100000000
@@ -171,7 +176,6 @@ function validGrantAmount(value) {
   const cents = usdCents(value)
   return Number.isSafeInteger(cents) && cents >= 1 && cents <= 100000
 }
-const balancesChanged = computed(() => providerBalances.value.some(row => usdCents(balanceValue(row)) !== row.balanceUsdCents))
 const grantLabels = { user: 'Carteira', license: 'Licença', project: 'Projeto' }
 const grantOptions = computed(() => grantTargets.value.map(target => ({
   ...target,
@@ -186,7 +190,8 @@ const simulatedCents = computed(() => {
   const cents = usdCents(simulatedCost.value)
   return Number.isSafeInteger(cents) && cents >= 0 && cents <= 1000000 ? cents : 0
 })
-const simulatedCharge = computed(() => Math.round(simulatedCents.value * (funding.value?.multiplier ?? 2) * 10000) / 10000)
+const simulatedMultiplier = computed(() => providerBalances.value.find(row => row.provider === simulatedProvider.value)?.multiplier ?? funding.value?.multiplier ?? 2)
+const simulatedCharge = computed(() => Math.round(simulatedCents.value * simulatedMultiplier.value * 10000) / 10000)
 const liveStatus = computed(() => {
   if (!liveEnabled.value) return 'Atualização automática pausada'
   if (needsReview.value) return 'Revise a consulta para retomar'
@@ -345,23 +350,19 @@ async function loadOptions() {
   clients.value = [...new Map(available.map(item => [item._id, { label: [item.name, item.email].filter(Boolean).join(' · '), value: item._id }])).values()]
 }
 
-async function saveProviderBalances() {
-  if (savingFunding.value || !providerBalances.value.every(row => validBalance(balanceValue(row)))) return
-  const keys = { openai: 'openaiBalanceUsdCents', higgsfield: 'higgsfieldBalanceUsdCents' }
-  const changed = Object.fromEntries(providerBalances.value.filter(row => usdCents(balanceValue(row)) !== row.balanceUsdCents)
-    .map(row => [keys[row.provider], usdCents(balanceValue(row))]))
-  if (!Object.keys(changed).length) return
-  savingFunding.value = true
+async function saveProviderBalance(row) {
+  const key = providerBalanceKeys[row.provider]
+  const amount = balanceValue(row)
+  if (!key || savingFunding.value || !validBalance(amount)) return
+  savingFunding.value = row.provider
   try {
-    await api.put('/aito-tokens/admin/billing', changed, financeHeaders(true))
-    if (await load(pagination.value.page)) {
-      for (const provider of Object.keys(keys)) fundingDraft[provider] = undefined
-    }
-    $q.notify({ type: 'positive', message: 'Saldos dos provedores atualizados.' })
+    await api.put('/aito-tokens/admin/billing', { [key]: usdCents(amount) }, financeHeaders(true))
+    if (await load(pagination.value.page)) fundingDraft[row.provider] = undefined
+    $q.notify({ type: 'positive', message: `Saldo de referência da ${providerName(row.provider)} atualizado.` })
   } catch (cause) {
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível salvar os saldos.' })
+    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível atualizar o saldo de referência.' })
   } finally {
-    savingFunding.value = false
+    savingFunding.value = ''
   }
 }
 
@@ -563,24 +564,33 @@ onBeforeUnmount(() => {
         <div class="token-usage__provider-head">
           <div>
             <h4 id="token-forecast-title">Caixa dos provedores</h4>
-            <p>Informe o saldo em dólares de cada conta para calcular a cobertura dos AitoTokens.</p>
+            <p>Registre o saldo exibido em cada provedor após reabastecer. O consumo registrado a partir desse valor atualiza a estimativa.</p>
           </div>
-          <q-badge outline color="teal-3" :label="`${numbers.format(funding.multiplier)}× sobre o custo`" />
         </div>
-        <q-form class="token-usage__funding-form" @submit.prevent="saveProviderBalances">
-          <article v-for="row in providerBalances" :key="row.provider" class="token-usage__funding-provider">
-            <q-input :model-value="balanceValue(row)" dark outlined dense :label="`Saldo ${providerName(row.provider)}`" prefix="US$"
-              type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required :disable="savingFunding"
+        <div class="token-usage__funding-grid">
+          <q-form v-for="row in providerBalances" :key="row.provider" class="token-usage__funding-provider" @submit.prevent="saveProviderBalance(row)">
+            <header class="token-usage__provider-head">
+              <h4><q-icon :name="providerIcons[row.provider]" color="teal-3" size="20px" /> {{ providerName(row.provider) }}</h4>
+              <q-badge outline :color="alertLimitReached(row) ? 'amber-4' : 'teal-3'" :label="alertLimitReached(row) ? 'Saldo baixo' : `${numbers.format(row.multiplier ?? funding.multiplier)}× sobre o custo`" />
+            </header>
+            <dl class="token-usage__amounts">
+              <div><dt>Saldo estimado</dt><dd>{{ money(estimatedBalance(row)) }}</dd></div>
+              <div v-if="row.alertThresholdUsdCents != null"><dt>Limite de alerta</dt><dd>{{ money(row.alertThresholdUsdCents) }}</dd></div>
+            </dl>
+            <q-input :model-value="balanceValue(row)" dark outlined dense :label="`Saldo de referência ${providerName(row.provider)}`" prefix="US$"
+              type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required :disable="Boolean(savingFunding)"
               :rules="[value => validBalance(value) || 'Informe um valor válido em dólares.']" hide-bottom-space
               @update:model-value="fundingDraft[row.provider] = $event ?? ''" />
+            <small v-if="row.asOf">Saldo de referência registrado em {{ formatEvent(row.asOf) }}.</small>
             <dl class="token-usage__amounts">
               <div><dt>Capacidade em AitoTokens</dt><dd>{{ money(row.coveredAitoUsdCents) }}</dd></div>
               <div v-if="row.projectedCostUsdCents != null"><dt>Custo estimado</dt><dd>{{ money(row.projectedCostUsdCents) }}</dd></div>
               <div v-if="row.topUpUsdCents != null"><dt>Recarga sugerida</dt><dd>{{ money(row.topUpUsdCents) }}</dd></div>
             </dl>
-          </article>
-          <q-btn outline no-caps color="teal-3" type="submit" icon="mdi-content-save-outline" label="Salvar saldos" :loading="savingFunding" :disable="!balancesChanged" />
-        </q-form>
+            <q-btn outline no-caps color="teal-3" type="submit" icon="mdi-content-save-outline" label="Atualizar saldo de referência"
+              :loading="savingFunding === row.provider" :disable="Boolean(savingFunding)" />
+          </q-form>
+        </div>
         <dl class="token-usage__forecast">
           <div v-for="item in coverageMetrics" :key="item.label">
             <dt>{{ item.label }}</dt>
@@ -588,10 +598,11 @@ onBeforeUnmount(() => {
             <dd v-if="typeof item.value === 'number' && exchangeRate?.rate" class="token-usage__conversion">{{ money(item.value * exchangeRate.rate, reais) }}</dd>
           </div>
         </dl>
-        <p class="token-usage__note">Os saldos ficam em contas separadas. {{ funding.splitBasis === 'historical' ? 'A projeção por provedor usa a proporção de custos do período filtrado.' : 'A projeção por provedor aparece na consulta geral quando há histórico de custos.' }}</p>
+        <p class="token-usage__note">Os saldos dos provedores ficam em contas separadas e os clientes usam a mesma carteira AitoTokens. {{ funding.splitBasis === 'historical' ? 'A projeção por provedor usa a proporção de custos do período filtrado.' : 'A projeção por provedor aparece na consulta geral quando há histórico de custos.' }}</p>
         <details>
           <summary>Simular uma cobrança</summary>
           <div class="token-usage__reserve-input">
+            <q-select v-model="simulatedProvider" :options="providerOptions" label="Provedor" emit-value map-options dark outlined dense />
             <q-input v-model="simulatedCost" dark outlined dense label="Custo do provedor" prefix="US$" type="number" min="0" max="10000" step="0.01" />
             <p>Débito AitoTokens <strong>{{ money(simulatedCharge) }}</strong> · Margem bruta <strong>{{ money(simulatedCharge - simulatedCents) }}</strong></p>
           </div>
@@ -740,10 +751,11 @@ onBeforeUnmount(() => {
 .token-usage__split-track span { display: block; height: 100%; background: #65cdb0; }
 .token-usage__split-labels { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem .7rem; margin-top: .3rem; color: #c2d9d3; font-size: .85rem; }
 .token-usage__reserve-input { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
-.token-usage__funding, .token-usage__funding-form { display: grid; gap: .8rem; }
-.token-usage__funding-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); align-items: start; }
-.token-usage__funding-form > .q-btn { justify-self: start; grid-column: 1 / -1; }
-.token-usage__funding-provider { padding: .7rem; border: 1px solid #345857; border-radius: .6rem; }
+.token-usage__funding, .token-usage__funding-grid, .token-usage__funding-provider { display: grid; gap: .8rem; }
+.token-usage__funding-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); align-items: start; }
+.token-usage__funding-provider { padding: .85rem; border: 1px solid #345857; border-radius: .6rem; }
+.token-usage__funding-provider > .q-btn { justify-self: start; }
+.token-usage__funding-provider .token-usage__amounts { margin: 0; }
 .token-usage__forecast { margin: .1rem 0; }
 .token-usage__forecast dd { margin: .15rem 0 0; font-size: 1.18rem; }
 .token-usage__forecast .token-usage__conversion { font-size: .8rem; font-weight: 400; color: #c2d9d3; }
