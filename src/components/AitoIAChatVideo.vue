@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { api } from 'boot/axios'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
+import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { usd } from 'src/composables/useAitoIA'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
@@ -180,6 +181,7 @@ async function poll(signal) {
     signal.throwIfAborted()
     if (result.status === 'completed') { clip.value = { ...result, url: safeVideoUrl(result.url) }; job.value = null; return }
     if (!['queued', 'in_progress'].includes(result.status)) { job.value = null; throw new Error(result.message || 'O provedor encerrou esta geração.') }
+    job.value = { ...job.value, ...result }
     delay = 4000
   }
   if (job.value) throw new Error('O clipe continua em produção. Use Verificar geração para acompanhar.')
@@ -250,6 +252,7 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <template v-else-if="catalog"><span>A geração de clipes aguarda a configuração da Higgsfield.</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
       <span v-if="action" role="status"><q-spinner size="16px" /> {{ action }}</span>
     </div>
+    <AitoVideoProgress v-if="job && busy" :stage="job.status || 'queued'" />
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
     <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" /><div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a><router-link :to="{ name: 'aito-ia-video-studio', query: { tab: 'ai' } }">Abrir no Estúdio</router-link></div></div>

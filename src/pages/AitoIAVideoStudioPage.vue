@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
+import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokens, useAitoIA, usd } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
@@ -518,6 +519,7 @@ async function readJob(job, signal) {
     keepJob(current, true)
     throw new Error(current.message || 'O provedor não conseguiu gerar o vídeo.')
   }
+  activeJob.value = current
   const previous = clipLibrary.value.find(item => item.id === current.id)
   const asset = { id: current.id, remoteUrl: current.url, number: previous?.number || ((clipLibrary.value[0]?.number || 0) + 1) }
   try { asset.file = previous?.file || await generatedFile(asset, signal) }
@@ -1003,7 +1005,7 @@ onBeforeUnmount(() => { mounted = false; activeOperation?.abort(); optionsReques
             </div>
             <div v-if="!generated || busy === 'video'" class="video-studio__clip-empty" role="status">
               <q-spinner v-if="busy === 'video'" size="30px" /><q-icon v-else name="mdi-filmstrip-box-multiple" size="32px" />
-              <p v-if="busy === 'video'">{{ activeJob?.status === 'in_progress' ? 'O provedor está produzindo seu clipe.' : 'Aguardando o provedor…' }}</p>
+              <AitoVideoProgress v-if="busy === 'video'" :stage="activeJob?.status || 'submitting'" />
               <p v-else-if="activeJob">Geração pendente. Clique em Verificar geração para acompanhar.</p>
               <p v-else>Os vídeos gerados aparecem aqui.</p>
             </div>
