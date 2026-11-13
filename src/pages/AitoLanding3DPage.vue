@@ -50,6 +50,7 @@
           <q-icon name="mdi-instagram" aria-hidden="true" />
         </a>
       </div>
+      <div v-if="$slots['install-aitoia']" class="landing-3d__install"><slot name="install-aitoia" /></div>
     </header>
 
     <nav class="landing-3d__progress" aria-label="Navegacao entre secoes">
@@ -81,7 +82,7 @@
       >
         <div class="landing-3d__section-inner">
           <div v-if="section.id === 'inicio'" class="landing-3d__visual landing-3d__hero-monitor">
-            <LandingVideoMonitor />
+            <LandingVideoMonitor video-slot="home-presentation" />
           </div>
           <div class="landing-3d__copy" :style="sectionCopyStyle(index)">
             <p :id="`${section.id}-eyebrow`" class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
@@ -623,6 +624,7 @@ onBeforeUnmount(() => {
 .landing-3d__brand > span > span { color: var(--aito-teal); }
 
 .landing-3d__header-actions { display: flex; align-items: center; gap: 0.65rem; }
+.landing-3d__install { position: absolute; top: calc(100% + .55rem); right: max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)); }
 .landing-3d__product-link { color: var(--aito-aqua); font-size: .72rem; font-weight: 700; text-decoration: none; border: 1px solid rgba(143,255,238,.35); border-radius: 999px; padding: .55rem .8rem; white-space: nowrap; pointer-events: auto; }
 .landing-3d__product-link:hover,.landing-3d__product-link:focus-visible { background: rgba(19,188,157,.18); outline: none; }
 @media(max-width:600px){.landing-3d__product-link{font-size:.62rem;padding:.45rem .55rem}}
@@ -825,6 +827,8 @@ onBeforeUnmount(() => {
 
 @media (max-width: 767px) {
   .landing-3d__header { padding: 1rem 0.9rem; }
+  .landing-3d__install { right: max(.9rem, env(safe-area-inset-right)); }
+  .landing-3d:has(.landing-3d__install) .landing-3d__section--inicio { padding-top: 9rem; }
   .landing-3d__account-label { display: inline; max-width: 7ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .landing-3d__account-link { padding: 0.25rem 0.62rem; }
   .landing-3d__progress { display: none; }

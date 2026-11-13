@@ -121,12 +121,15 @@
               <div class="learn-launch__media-tag"><q-icon name="mdi-play" /> Aula demonstrativa</div>
               <div class="learn-launch__video-wrap">
                 <iframe
+                  v-if="videoUrl"
                   :src="videoUrl"
                   title="AitoLearn - aula demonstrativa"
                   loading="lazy"
+                  referrerpolicy="strict-origin-when-cross-origin"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowfullscreen
                 ></iframe>
+                <p v-else class="learn-launch__video-empty">Aula demonstrativa em breve</p>
               </div>
               <!-- <span class="learn-launch__media-caption">Veja a mentalidade por tras de um projeto high ticket.</span> -->
             </div>
@@ -201,6 +204,9 @@ import { api } from 'boot/axios'
 import AitoThreeScene from 'components/landing3d/AitoThreeScene.vue'
 import AuthDialog from 'components/AuthDialog.vue'
 import { useLandingScroll } from 'src/composables/useLandingScroll'
+import { useLandingVideo } from 'src/composables/useLandingVideos'
+import { youtubeEmbedUrl } from 'src/services/landingVideoSources'
+import { learnPreviewDefault } from 'src/data/landingVideoSlots'
 
 const route = useRoute()
 const router = useRouter()
@@ -236,7 +242,8 @@ const catalogLoading = ref(false)
 const catalogCourses = ref([])
 const catalogSearch = ref('')
 let loaderWatchdog
-const videoUrl = import.meta.env.VITE_AITOLEARN_VIDEO_URL || 'https://www.youtube.com/embed/ekZtwCJvH1g?playsinline=1&rel=0'
+const videoSource = useLandingVideo('aitolearn-preview', import.meta.env.VITE_AITOLEARN_VIDEO_URL || learnPreviewDefault)
+const videoUrl = computed(() => youtubeEmbedUrl(videoSource.value) || videoSource.value)
 const profileOptions = [
   { label: 'Iniciante', value: 'iniciante' },
   { label: 'Empresario', value: 'empresario' },
@@ -424,6 +431,7 @@ onBeforeUnmount(() => window.clearTimeout(loaderWatchdog))
 .learn-launch__media-tag { display: flex; align-items: center; gap: .4rem; padding: .35rem .2rem .6rem; color: var(--aqua); font-size: .72rem; font-weight: 800; }
 .learn-launch__video-wrap { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: .65rem; background: #061617; }
 .learn-launch__video-wrap iframe { width: 100%; height: 100%; border: 0; }
+.learn-launch__video-empty { display: grid; height: 100%; margin: 0; place-items: center; color: #a5c7bf; text-align: center; }
 .learn-launch__media-caption { display: block; padding: .65rem .25rem .2rem; color: rgba(229,255,250,.62); font-size: .68rem; }
 .learn-launch__stack-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
 .learn-launch__stack-strip span { padding: .5rem .7rem; border: 1px solid rgba(19,188,157,.28); border-radius: 999px; color: rgba(229,255,250,.76); background: rgba(3,25,26,.42); font-size: .68rem; }

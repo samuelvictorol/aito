@@ -1,8 +1,15 @@
 <template>
-  <router-view /><CosmicScene v-if="screenLoading"/>
+  <router-view v-slot="{ Component }">
+    <component :is="Component">
+      <template v-if="installEvent && canPromoteInstall && route.name === 'landing-3d'" #install-aitoia>
+        <button type="button" class="aito-install-button aito-install-button--landing" @click="installAitoIA"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
+      </template>
+    </component>
+  </router-view>
+  <CosmicScene v-if="screenLoading"/>
   <AitoCodexOffer />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
-  <button v-if="installEvent && canPromoteInstall" type="button" class="aito-install-button" @click="installAitoIA"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
+  <button v-if="installEvent && canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" @click="installAitoIA"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
 </template>
 
 <script setup>
@@ -60,4 +67,5 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .aito-install-button { position: fixed; top: calc(60px + env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 20; display: flex; align-items: center; gap: .4rem; padding: .45rem .65rem; border: 1px solid #5ead9e; border-radius: .55rem; background: #0c2a28; color: #c0fcf0; cursor: pointer; font: inherit; font-size: .75rem; }
+.aito-install-button--landing { position: static; pointer-events: auto; }
 </style>

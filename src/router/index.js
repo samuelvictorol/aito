@@ -20,7 +20,13 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     : (process.env.VUE_ROUTER_MODE === 'history' ? createWebHistory : createWebHashHistory)
 
   const Router = createRouter({
-    scrollBehavior: () => ({ left: 0, top: 0 }),
+    scrollBehavior: (to, _from, savedPosition) => {
+      if (savedPosition) return savedPosition
+      if (/^#[a-z][a-z\d-]*$/i.test(to.hash) && ['landing-3d', 'whatsapp-solutions-product', 'whatsapp-solutions-source', 'aito-tokens-product', 'aitolearn-catalog'].includes(to.name)) {
+        return { el: to.hash, top: 80 }
+      }
+      return { left: 0, top: 0 }
+    },
     routes,
 
     // Leave this as is and make changes in quasar.conf.js instead!

@@ -101,7 +101,7 @@ useMeta({
       <router-link to="/app">Área do cliente <q-icon name="mdi-arrow-top-right" /></router-link>
     </header>
 
-    <section class="tokens-landing__hero" aria-labelledby="aitotokens-title">
+    <section id="apresentacao" class="tokens-landing__hero" aria-labelledby="aitotokens-title">
       <div class="tokens-landing__intro">
         <p class="tokens-landing__tag">Créditos de IA</p>
         <h1 id="aitotokens-title">Aito<span>Tokens</span></h1>
@@ -116,7 +116,7 @@ useMeta({
         </div>
       </div>
       <figure class="tokens-landing__visual">
-        <LandingVideoMonitor :video="null" title="Apresentação dos AitoTokens" eyebrow="AITOTOKENS" headline="Um saldo para criar com IA." description="Converse, crie imagens e produza vídeos." />
+        <LandingVideoMonitor :video="null" video-slot="aitotokens-presentation" title="Apresentação dos AitoTokens" eyebrow="AITOTOKENS" headline="Um saldo para criar com IA." description="Converse, crie imagens e produza vídeos." />
         <figcaption><q-icon name="mdi-swap-horizontal" /> Saldo em dólares · recarga em reais</figcaption>
       </figure>
     </section>

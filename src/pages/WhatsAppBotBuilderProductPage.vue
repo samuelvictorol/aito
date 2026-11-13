@@ -117,9 +117,9 @@ function scrollToProductSection(event) {
           </nav>
         </header>
 
-        <section class="hero solutions-hero">
+        <section id="apresentacao" class="hero solutions-hero">
           <div class="hero-video">
-            <LandingVideoMonitor :video="productVideo" title="Apresentação do Kit Desktop" eyebrow="CONHEÇA O KIT DESKTOP"
+            <LandingVideoMonitor :video="productVideo" video-slot="desktop-presentation" title="Apresentação do Kit Desktop" eyebrow="CONHEÇA O KIT DESKTOP"
               headline="Da primeira mensagem ao próximo passo." description="Notificações, atendimento e automação em um só aplicativo." />
           </div>
           <div class="copy">
@@ -197,7 +197,7 @@ function scrollToProductSection(event) {
               <li>Conecte seus canais e teste o primeiro fluxo ou envio.</li>
             </ol>
           </div>
-          <LandingVideoMonitor :video="desktopSolutionVideos.installation" title="Guia de instalação" eyebrow="PASSO A PASSO"
+          <LandingVideoMonitor :video="desktopSolutionVideos.installation" video-slot="desktop-installation" title="Guia de instalação" eyebrow="PASSO A PASSO"
             headline="Seu primeiro acesso, do começo ao fim." description="Do download à configuração dos canais." />
         </section>
 

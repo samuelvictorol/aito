@@ -8,9 +8,9 @@ import { desktopSolutionVideos } from 'src/data/landingHeroVideo'
 const modules = [
   { id: 'agentes', tone: 'gold', name: 'AITO IA', icon: 'mdi-auto-fix', ...desktopSolutions.agent },
   { id: 'notificacoes', tone: 'blue', name: 'AITONOTIFY', icon: 'mdi-bullhorn-outline', ...desktopSolutions.notifications,
-    video: desktopSolutionVideos.notifications, videoTitle: 'Notificações com a API oficial', videoIntro: 'Da preparação à entrega em cada canal.' },
+    video: desktopSolutionVideos.notifications, videoSlot: 'desktop-notifications', videoTitle: 'Notificações com a API oficial', videoIntro: 'Da preparação à entrega em cada canal.' },
   { id: 'chatbots', tone: 'green', name: 'WHATSAPP BOT BUILDER', icon: 'mdi-sitemap-outline', ...desktopSolutions.bot,
-    video: desktopSolutionVideos.botBuilder, videoTitle: 'Conheça o WhatsApp Bot Builder', videoIntro: 'Do primeiro card à conversa pronta.' },
+    video: desktopSolutionVideos.botBuilder, videoSlot: 'desktop-botbuilder', videoTitle: 'Conheça o WhatsApp Bot Builder', videoIntro: 'Do primeiro card à conversa pronta.' },
 ]
 
 const actionPreview = [
@@ -39,7 +39,7 @@ const actionPreview = [
           <p>{{ feature.text }}</p>
         </details>
       </div>
-      <LandingVideoMonitor v-if="item.video" :video="item.video" :title="item.videoTitle" :headline="item.videoTitle"
+      <LandingVideoMonitor v-if="item.video" :video="item.video" :video-slot="item.videoSlot" :title="item.videoTitle" :headline="item.videoTitle"
         eyebrow="DEMONSTRAÇÃO DO MÓDULO" :description="item.videoIntro" />
       <div v-else class="desktop-module__preview" aria-label="Exemplo de fluxo de trabalho da Aito IA">
         <div class="desktop-module__preview-top"><img src="/ia.gif" alt="" width="48" height="48" loading="lazy" /> <strong>Aito IA</strong><span>EXEMPLO</span></div>

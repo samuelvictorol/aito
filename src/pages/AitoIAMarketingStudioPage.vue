@@ -1,6 +1,6 @@
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { useMeta } from 'quasar'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { useMeta, useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
@@ -14,6 +14,13 @@ import 'src/css/aitoia-theme.css'
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const path = '/aitoia-marketing-studio'
+const $q = useQuasar()
+const drawerBreakpoint = 900
+const drawerOpen = ref(false)
+const drawerButton = ref(null)
+const drawerCloseButton = ref(null)
+const mobileDrawer = computed(() => $q.screen.width > 0 && $q.screen.width <= drawerBreakpoint)
+const drawerWidth = computed(() => mobileDrawer.value ? Math.min(320, Math.round($q.screen.width * .9)) : 304)
 const wallet = useAitoIA({ chatHistory: false })
 const { accountId, signedIn, status, walletId } = wallet
 const catalog = ref(null)
@@ -141,6 +148,22 @@ const project = useAitoStudioProjects({
   },
 })
 const { projects, activeId: projectId, loading: projectLoading, storageError, cloudState, createProject, openProject, deleteProject, saveProject } = project
+
+function showWorkspace() {
+  if (drawerOpen.value) { closeWorkspace(); return }
+  drawerOpen.value = true
+  nextTick(() => drawerCloseButton.value?.$el?.focus())
+}
+
+function closeWorkspace() {
+  drawerOpen.value = false
+  nextTick(() => drawerButton.value?.$el?.focus())
+}
+
+function selectProject(id) {
+  openProject(id)
+  if (mobileDrawer.value) closeWorkspace()
+}
 
 function removeImage(image) {
   disposeAsset(image)
@@ -315,92 +338,116 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="aito-ai-theme marketing">
-    <header class="marketing__bar">
-      <router-link to="/" class="marketing__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="37" height="37" alt="" /><strong>AitoIA</strong></router-link>
-      <div class="marketing__mode"><AitoIAModeSwitch mode="marketing" :busy="busy" /></div>
-      <div class="marketing__account">
-        <button v-if="signedIn" type="button" class="marketing__balance" :disabled="locked" @click="showWallet"><img src="/aitotokens.svg" width="24" height="24" alt="" />{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }} <q-icon name="mdi-plus" /></button>
-        <button v-else type="button" class="marketing__secondary" @click="showAuth()">Entrar</button>
+  <q-layout view="hHh Lpr fFf" class="aito-ai-theme marketing">
+    <q-header class="marketing__header" :inert="mobileDrawer && drawerOpen">
+      <div class="marketing__bar">
+        <div class="marketing__navigation">
+          <q-btn ref="drawerButton" flat round icon="mdi-menu" aria-controls="marketing-workspace" :aria-expanded="drawerOpen"
+            :aria-label="drawerOpen ? 'Recolher projetos e componentes' : 'Abrir projetos e componentes'"
+            @click="showWorkspace"><q-tooltip>Projetos e componentes</q-tooltip></q-btn>
+          <router-link to="/" class="marketing__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="37" height="37" alt="" /><strong>AitoIA</strong></router-link>
+        </div>
+        <div class="marketing__mode"><AitoIAModeSwitch mode="marketing" :busy="busy" /></div>
+        <div class="marketing__account">
+          <button v-if="signedIn" type="button" class="marketing__balance" :disabled="locked" @click="showWallet"><img src="/aitotokens.svg" width="24" height="24" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" /></button>
+          <button v-else type="button" class="marketing__secondary" @click="showAuth()">Entrar</button>
+        </div>
       </div>
-    </header>
+    </q-header>
 
-    <main class="marketing__main" @paste="pasteReferences">
-      <div class="marketing__intro">
-        <h1>Estúdio de Marketing</h1>
-        <p>Crie imagens no formato de cada canal e reutilize os componentes da sua marca.</p>
-      </div>
-      <div class="marketing__workspace">
-      <aside class="marketing__panel marketing__projects" aria-label="Projetos do Estúdio de Marketing">
-        <AitoStudioProjectPicker :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
-          :disabled="!accountId || locked" @create="createProject" @open="openProject" @remove="deleteProject" />
-        <q-input v-if="projectId" v-model="projectTitle" dark outlined dense label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
-      </aside>
-      <div class="marketing__output">
-      <p v-if="blockedExit" class="marketing__notice" role="status">Aguarde a conclusão antes de sair do estúdio.</p>
-      <p v-if="catalogError" class="marketing__notice" role="status">Não foi possível carregar os formatos. <button type="button" @click="loadCatalog">Tentar novamente</button></p>
-      <p v-else-if="catalog && !catalog.available" class="marketing__notice" role="status">A geração de imagens está temporariamente indisponível.</p>
-      <p v-if="error" class="marketing__notice marketing__notice--error" role="alert">{{ error }}</p>
-
-      <div class="marketing__grid">
-        <q-form class="marketing__panel marketing__form" @submit.prevent="quoteGeneration">
-          <fieldset :disabled="locked">
-            <legend>Formato</legend>
-            <div class="marketing__formats">
-              <label v-for="item in formats" :key="item.id">
-                <input v-model="formatId" type="radio" name="format" :value="item.id" />
-                <q-icon :name="item.icon" size="20px" />
-                <strong>{{ item.label }}</strong><small>{{ item.width }} × {{ item.height }}</small>
-              </label>
-            </div>
-          </fieldset>
-          <q-input v-model="prompt" dark outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="catalog?.maxPromptCharacters || 3000" :disable="locked" />
-
-          <section aria-labelledby="marketing-references">
-            <div class="marketing__section-title"><h2 id="marketing-references">Referências</h2><span>{{ referenceCount }}/{{ maxReferences }}</span></div>
-            <label class="marketing__drop" @dragover.prevent @drop.prevent="addReferences(Array.from($event.dataTransfer.files))">
-              <input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="locked || referenceCount >= maxReferences" @change="pickReferences" />
-              <q-icon name="mdi-image-plus-outline" size="24px" /><span>Adicione, arraste ou cole imagens</span>
-            </label>
-            <ul v-if="references.length" class="marketing__references">
-              <li v-for="item in references" :key="item.id"><img :src="item.url" alt="" /><span>{{ item.label }}</span><button type="button" :disabled="locked" :aria-label="`Remover ${item.label}`" @click="removeReference(item)"><q-icon name="mdi-close" /></button></li>
-            </ul>
-          </section>
-
-          <section aria-labelledby="marketing-kit">
-            <div class="marketing__section-title"><h2 id="marketing-kit">Kit de marca</h2><button type="button" class="marketing__secondary" :disabled="locked || kitBusy || kitLoading || (signedIn && !accountId) || kit.length >= maxComponents" @click="signedIn ? openComponent() : showAuth()"><q-icon name="mdi-plus" /> Componente</button></div>
-            <p v-if="kitError" role="status">{{ kitError }}</p>
-            <p v-else-if="kitLoading" role="status">Carregando componentes deste navegador…</p>
-            <p v-else-if="!kit.length">Guarde logos, endereços e textos neste navegador para usar em outras peças.</p>
-            <ul v-if="kit.length" class="marketing__kit">
-              <li v-for="item in kit" :key="item.id">
-                <button type="button" :aria-pressed="selectedKit.includes(item.id)" :disabled="locked || kitBusy" @click="toggleKit(item)"><img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-text-box-outline" /><span>{{ item.label }}</span><q-icon v-if="selectedKit.includes(item.id)" name="mdi-check-circle" /></button>
-                <button type="button" :disabled="locked || kitBusy" :aria-label="`Excluir componente ${item.label}`" @click="removeComponent(item)"><q-icon name="mdi-close" /></button>
-              </li>
-            </ul>
-          </section>
-          <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || projectLoading || catalogLoading || (signedIn && (!catalog?.available || !prompt.trim()))" />
-        </q-form>
-
-        <section class="marketing__panel marketing__preview" aria-labelledby="marketing-preview" :aria-busy="busy">
-          <div class="marketing__section-title"><h2 id="marketing-preview">Prévia</h2><span>{{ (output?.format || format).width }} × {{ (output?.format || format).height }}</span></div>
-          <div v-if="output" class="marketing__result"><img :src="output.url" :alt="`Imagem gerada em formato ${output.format.label}`" /></div>
-          <div v-else class="marketing__canvas"><div :style="{ aspectRatio: format.width / format.height }"><q-spinner v-if="busy" size="34px" /><q-icon v-else name="mdi-image-outline" size="36px" /><span>{{ busy ? 'Preparando sua imagem' : format.label }}</span></div></div>
-          <button v-if="output" type="button" class="marketing__secondary" @click="downloadAitoIAFile(output.blob, `aitoia-${output.format.id}.png`)"><q-icon name="mdi-download" /> Baixar PNG</button>
-          <section v-if="images.length" aria-label="Imagens do projeto">
-            <div class="marketing__section-title"><h2>Imagens do projeto</h2><span>{{ images.length }}</span></div>
-            <ul class="marketing__references marketing__gallery">
-              <li v-for="image in images" :key="image.id">
-                <button type="button" :aria-pressed="imageId === image.id" :title="image.label" :disabled="locked" @click="imageId = image.id"><img :src="image.url" :alt="image.label" /></button>
-                <button type="button" :disabled="locked" :aria-label="`Excluir imagem ${image.label}`" @click="removeImage(image)"><q-icon name="mdi-delete-outline" /></button>
-              </li>
-            </ul>
-          </section>
+    <q-drawer v-model="drawerOpen" show-if-above bordered dark no-swipe-open :breakpoint="drawerBreakpoint" :width="drawerWidth" class="marketing__drawer">
+      <aside id="marketing-workspace" class="marketing__drawer-content" aria-labelledby="marketing-workspace-title" :inert="!drawerOpen" @keydown.esc.stop="closeWorkspace">
+        <div class="marketing__section-title marketing__drawer-title">
+          <h2 id="marketing-workspace-title">Projetos e componentes</h2>
+          <q-btn ref="drawerCloseButton" flat round dense icon="mdi-close" aria-label="Fechar projetos e componentes" @click="closeWorkspace" />
+        </div>
+        <section class="marketing__drawer-section" aria-label="Projetos do Estúdio de Marketing">
+          <AitoStudioProjectPicker drawer :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
+            :disabled="!accountId || locked" @create="createProject" @open="selectProject" @remove="deleteProject" />
+          <q-input v-if="projectId" v-model="projectTitle" dark outlined label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
         </section>
-      </div>
-      </div>
-      </div>
-    </main>
+        <section class="marketing__drawer-section" aria-labelledby="marketing-kit">
+          <div class="marketing__section-title"><h2 id="marketing-kit">Kit de marca</h2><span v-if="kit.length">{{ activeKit.length }}/{{ kit.length }} em uso</span></div>
+          <q-btn outline no-caps class="marketing__add-component" icon="mdi-plus" label="Adicionar componente"
+            :disable="locked || kitBusy || kitLoading || (signedIn && !accountId) || kit.length >= maxComponents"
+            @click="signedIn ? openComponent() : showAuth()" />
+          <p v-if="kitError" role="status">{{ kitError }}</p>
+          <p v-else-if="kitLoading" role="status">Carregando componentes…</p>
+          <p v-else-if="!kit.length">Adicione seu logo ou um texto que você reutiliza nas peças.</p>
+          <ul v-if="kit.length" class="marketing__kit">
+            <li v-for="item in kit" :key="item.id">
+              <button type="button" :aria-pressed="selectedKit.includes(item.id)" :disabled="locked || kitBusy" @click="toggleKit(item)">
+                <img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-text-box-outline" size="24px" /><span :title="item.label">{{ item.label }}</span><q-icon v-if="selectedKit.includes(item.id)" name="mdi-check-circle" size="17px" />
+              </button>
+              <button type="button" :disabled="locked || kitBusy" :aria-label="`Excluir componente ${item.label}`" @click="removeComponent(item)"><q-icon name="mdi-delete-outline" size="19px" /></button>
+            </li>
+          </ul>
+        </section>
+        <footer class="marketing__drawer-footer">
+          <q-btn v-if="signedIn" flat no-caps class="full-width" icon="mdi-account-circle-outline" label="Meu perfil" :to="{ path: '/app', query: { tab: 'profile' } }" :disable="busy" />
+          <q-btn v-else flat no-caps class="full-width" icon="mdi-account-circle-outline" label="Entrar para acessar o perfil" @click="showAuth()" />
+        </footer>
+      </aside>
+    </q-drawer>
+
+    <q-page-container :inert="mobileDrawer && drawerOpen">
+      <q-page tag="main" class="marketing__main" @paste="pasteReferences">
+        <div class="marketing__intro">
+          <h1>Estúdio de Marketing</h1>
+          <p>Crie imagens no formato de cada canal e reutilize os componentes da sua marca.</p>
+        </div>
+        <p v-if="blockedExit" class="marketing__notice" role="status">Aguarde a conclusão antes de sair do estúdio.</p>
+        <p v-if="catalogError" class="marketing__notice" role="status">Não foi possível carregar os formatos. <button type="button" @click="loadCatalog">Tentar novamente</button></p>
+        <p v-else-if="catalog && !catalog.available" class="marketing__notice" role="status">A geração de imagens está temporariamente indisponível.</p>
+        <p v-if="error" class="marketing__notice marketing__notice--error" role="alert">{{ error }}</p>
+
+        <div class="marketing__grid">
+          <q-form class="marketing__panel marketing__form" @submit.prevent="quoteGeneration">
+            <fieldset :disabled="locked">
+              <legend>Formato</legend>
+              <div class="marketing__formats">
+                <label v-for="item in formats" :key="item.id">
+                  <input v-model="formatId" type="radio" name="format" :value="item.id" />
+                  <q-icon :name="item.icon" size="20px" />
+                  <strong>{{ item.label }}</strong><small>{{ item.width }} × {{ item.height }}</small>
+                </label>
+              </div>
+            </fieldset>
+            <q-input v-model="prompt" dark outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="catalog?.maxPromptCharacters || 3000" :disable="locked" />
+
+            <section aria-labelledby="marketing-references">
+              <div class="marketing__section-title"><h2 id="marketing-references">Referências</h2><span>{{ referenceCount }}/{{ maxReferences }}</span></div>
+              <label class="marketing__drop" @dragover.prevent @drop.prevent="addReferences(Array.from($event.dataTransfer.files))">
+                <input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="locked || referenceCount >= maxReferences" @change="pickReferences" />
+                <q-icon name="mdi-image-plus-outline" size="24px" /><span>Adicione, arraste ou cole imagens</span>
+              </label>
+              <ul v-if="references.length" class="marketing__references">
+                <li v-for="item in references" :key="item.id"><img :src="item.url" alt="" /><span>{{ item.label }}</span><button type="button" :disabled="locked" :aria-label="`Remover ${item.label}`" @click="removeReference(item)"><q-icon name="mdi-close" /></button></li>
+              </ul>
+            </section>
+
+            <q-btn v-if="!drawerOpen" flat no-caps icon="mdi-palette-outline" class="marketing__brand-link" :label="activeKit.length ? `Kit de marca · ${activeKit.length} em uso` : 'Usar kit de marca'" @click="showWorkspace" />
+            <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || projectLoading || catalogLoading || (signedIn && (!catalog?.available || !prompt.trim()))" />
+          </q-form>
+
+          <section class="marketing__panel marketing__preview" aria-labelledby="marketing-preview" :aria-busy="busy">
+            <div class="marketing__section-title"><h2 id="marketing-preview">Prévia</h2><span>{{ (output?.format || format).width }} × {{ (output?.format || format).height }}</span></div>
+            <div v-if="output" class="marketing__result"><img :src="output.url" :alt="`Imagem gerada em formato ${output.format.label}`" /></div>
+            <div v-else class="marketing__canvas"><div :style="{ aspectRatio: format.width / format.height }"><q-spinner v-if="busy" size="34px" /><q-icon v-else name="mdi-image-outline" size="36px" /><span>{{ busy ? 'Preparando sua imagem' : format.label }}</span></div></div>
+            <button v-if="output" type="button" class="marketing__secondary" @click="downloadAitoIAFile(output.blob, `aitoia-${output.format.id}.png`)"><q-icon name="mdi-download" /> Baixar PNG</button>
+            <section v-if="images.length" aria-label="Imagens do projeto">
+              <div class="marketing__section-title"><h2>Imagens do projeto</h2><span>{{ images.length }}</span></div>
+              <ul class="marketing__references marketing__gallery">
+                <li v-for="image in images" :key="image.id">
+                  <button type="button" :aria-pressed="imageId === image.id" :title="image.label" :disabled="locked" @click="imageId = image.id"><img :src="image.url" :alt="image.label" /></button>
+                  <button type="button" :disabled="locked" :aria-label="`Excluir imagem ${image.label}`" @click="removeImage(image)"><q-icon name="mdi-delete-outline" /></button>
+                </li>
+              </ul>
+            </section>
+          </section>
+        </div>
+      </q-page>
+    </q-page-container>
 
     <q-dialog :model-value="!!quote" @update:model-value="value => { if (!value) quote = null }">
       <q-card v-if="quote" dark class="aito-ai-theme marketing__dialog">
@@ -431,27 +478,38 @@ onBeforeUnmount(() => {
     </q-dialog>
     <AuthDialog v-if="authOpen" v-model="authOpen" :initial-mode="authMode" :return-path="path" :show-project-login="false" @authenticated="wallet.syncSession()" />
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="wallet" />
-  </div>
+  </q-layout>
 </template>
 
 <style scoped>
 .marketing { min-height: 100svh; color: var(--aito-ai-text); background: var(--aito-ai-glow), var(--aito-ai-bg); font-family: var(--aito-ai-font); }
-.marketing__bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; padding: 9px 22px; background: var(--aito-ai-surface); border-bottom: 1px solid var(--aito-ai-line); }
-.marketing__brand, .marketing__account, .marketing__balance { display: flex; align-items: center; gap: 7px; }
+.marketing__header { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-bottom: 1px solid var(--aito-ai-line); }
+.marketing__bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left)); }
+.marketing__brand, .marketing__account, .marketing__balance, .marketing__navigation { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.marketing__navigation .q-btn { color: var(--aito-ai-accent); flex: none; }
 .marketing__brand { width: fit-content; color: var(--aito-ai-text); text-decoration: none; font-size: 1.1rem; }
 .marketing__brand img, .marketing__balance img { object-fit: contain; }
 .marketing__account { justify-self: end; }
-.marketing__balance, .marketing__secondary { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 38px; padding: 5px 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-panel); font: inherit; font-size: .84rem; cursor: pointer; }
+.marketing__balance, .marketing__secondary { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 44px; padding: 5px 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-panel); font: inherit; font-size: .84rem; cursor: pointer; }
 .marketing__balance { color: var(--aito-ai-gold); border-color: var(--aito-ai-gold-line); background: var(--aito-ai-gold-soft); }
-.marketing__main { width: min(1400px, calc(100% - 32px)); margin-inline: auto; padding: clamp(25px, 4vw, 48px) 0; }
+.marketing__balance span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.marketing__balance .q-icon, .marketing__balance img { flex: none; }
+.marketing__main { width: min(1400px, 100%); margin-inline: auto; padding: clamp(22px, 3.5vw, 42px) clamp(12px, 2.6vw, 36px) max(28px, env(safe-area-inset-bottom)); }
 .marketing__intro { margin-bottom: 20px; }
 .marketing__intro h1 { margin: 0 0 6px; font-size: clamp(1.9rem, 4.6vw, 3rem); font-weight: 780; line-height: 1.1; letter-spacing: -.045em; }
 .marketing p, .marketing small, .marketing__section-title span { color: var(--aito-ai-muted); }
 .marketing__grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: 14px; }
 .marketing__panel, .marketing__dialog { padding: clamp(14px, 2.3vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 14px; background: var(--aito-ai-surface); }
-.marketing__projects { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
-.marketing__projects .q-field { width: min(260px, 100%); }
-.marketing__workspace { display: grid; grid-template-columns: minmax(195px, 235px) minmax(0, 1fr); align-items: start; gap: 14px; }
+.marketing :deep(.marketing__drawer) { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-color: var(--aito-ai-line); }
+.marketing__drawer-content { display: flex; min-height: 100%; flex-direction: column; gap: 18px; padding: 18px 16px max(16px, env(safe-area-inset-bottom)); }
+.marketing__drawer-title { margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--aito-ai-line); }
+.marketing__drawer-section { display: grid; gap: 12px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--aito-ai-line); }
+.marketing__drawer-section .marketing__section-title, .marketing__drawer-section p { margin: 0; }
+.marketing__drawer-section p, .marketing__section-title span { font-size: .79rem; }
+.marketing__drawer-footer { margin-top: auto; padding-top: 5px; }
+.marketing__drawer-footer .q-btn { min-height: 44px; background: var(--aito-ai-panel); }
+.marketing__add-component { min-height: 44px; color: var(--aito-ai-accent); }
+.marketing__brand-link { justify-self: start; min-height: 44px; color: var(--aito-ai-accent); }
 .marketing__component-preview { width: 100%; max-height: 160px; object-fit: contain; border-radius: 8px; background: var(--aito-ai-bg); }
 .marketing__form, .marketing__preview { display: grid; gap: 14px; }
 .marketing fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
@@ -469,10 +527,14 @@ onBeforeUnmount(() => {
 .marketing__drop { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 64px; padding: 8px; border: 1px dashed var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-accent); background: var(--aito-ai-panel); text-align: center; cursor: pointer; }
 .marketing__drop:has(:disabled), .marketing button:disabled { opacity: .55; cursor: default; }
 .marketing__references, .marketing__kit { display: flex; flex-wrap: wrap; gap: 7px; list-style: none; margin: 8px 0 0; padding: 0; }
+.marketing__kit { display: grid; margin: 0; }
 .marketing__references li, .marketing__kit li { display: flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px; border: 1px solid var(--aito-ai-line); border-radius: 7px; background: var(--aito-ai-panel); }
 .marketing__references img, .marketing__kit img { width: 29px; height: 29px; border-radius: 4px; object-fit: cover; }
 .marketing__references span, .marketing__kit span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; }
 .marketing__references button, .marketing__kit button { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px; border: 0; border-radius: 4px; color: var(--aito-ai-text); background: transparent; cursor: pointer; }
+.marketing__kit button { min-height: 44px; padding-inline: 7px; }
+.marketing__kit button:first-child { min-width: 0; flex: 1; justify-content: start; gap: 8px; text-align: left; }
+.marketing__kit button :is(img, .q-icon) { flex: none; }
 .marketing__gallery img { width: 49px; height: 49px; }
 .marketing__gallery button[aria-pressed=true], .marketing__kit button[aria-pressed=true] { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .marketing__primary { min-height: 42px; color: var(--aito-ai-ink); background: var(--aito-ai-gradient); font-weight: 750; }
@@ -483,7 +545,21 @@ onBeforeUnmount(() => {
 .marketing__notice--error { background: var(--aito-ai-error-soft); border-color: var(--aito-ai-error-line); }
 .marketing__notice button { color: var(--aito-ai-accent); background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .marketing__actions { display: flex; justify-content: end; gap: 8px; }
-@media (max-width: 940px) { .marketing__workspace { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 760px) { .marketing__grid { grid-template-columns: minmax(0, 1fr); } .marketing__preview { grid-row: 1; } }
-@media (max-width: 670px) { .marketing__bar { grid-template-columns: 1fr auto; padding-inline: 10px; } .marketing__mode { grid-row: 2; grid-column: 1 / -1; justify-self: center; } }
+@media (max-width: 900px) {
+  .marketing__drawer-content { padding-top: calc(16px + env(safe-area-inset-top)); }
+}
+@media (max-width: 760px) {
+  .marketing__grid { grid-template-columns: minmax(0, 1fr); }
+  .marketing__preview { grid-row: 1; }
+  .marketing__canvas, .marketing__result { min-height: 0; }
+  .marketing__canvas > div { height: clamp(126px, 47vw, 220px); }
+  .marketing__formats { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+}
+@media (max-width: 670px) {
+  .marketing__bar { grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: 5px; padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
+  .marketing__mode { grid-row: 2; grid-column: 1 / -1; justify-self: center; }
+  .marketing__navigation, .marketing__brand { gap: 3px; }
+  .marketing__brand img { width: 30px; height: 30px; }
+  .marketing__balance { font-size: .74rem; }
+}
 </style>

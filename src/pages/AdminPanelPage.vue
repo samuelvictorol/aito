@@ -7,6 +7,11 @@
         <q-btn flat no-caps icon="mdi-forum-outline" label="Comunicação" to="/admin/comunicacao" class="header-communication" />
         <q-btn-dropdown flat no-caps icon="mdi-web" label="Site" class="header-landings" aria-label="Abrir páginas do site">
           <q-list class="admin-landing-menu">
+            <q-item v-close-popup clickable @click="openDetail('landing-videos')">
+              <q-item-section avatar><q-icon name="mdi-monitor-play" /></q-item-section>
+              <q-item-section>Vídeos das landing pages</q-item-section>
+            </q-item>
+            <q-separator dark />
             <q-item v-for="link in siteLinks" :key="link.route" v-close-popup clickable :to="{ name: link.route }">
               <q-item-section avatar><q-icon :name="link.icon" /></q-item-section>
               <q-item-section>{{ link.label }}</q-item-section>
@@ -25,6 +30,7 @@
           <q-tab-panels v-model="tab" class="admin-app__panels">
             <q-tab-panel name="desktop-expirations"><DesktopExpirations/></q-tab-panel>
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
+            <q-tab-panel name="landing-videos"><AdminLandingVideos /></q-tab-panel>
             <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @reauthenticated="refreshAdminSession" @open-projects="openDetail('projects')" /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="access-security">
@@ -120,6 +126,7 @@ import SiteAssistantHistoryManager from 'components/SiteAssistantHistoryManager.
 
 const AdminEmailTemplates = defineAsyncComponent(() => import('components/AdminEmailTemplates.vue'))
 const AdminAitoTokensPanel = defineAsyncComponent(() => import('components/AdminAitoTokensPanel.vue'))
+const AdminLandingVideos = defineAsyncComponent(() => import('components/AdminLandingVideos.vue'))
 const siteLinks = [
   { route: 'landing-3d', label: 'Site AitoSoftwares', icon: 'mdi-home-outline' },
   { route: 'whatsapp-solutions-product', label: 'Aplicativo Desktop', icon: 'mdi-microsoft-windows' },
@@ -136,7 +143,7 @@ const siteLinks = [
 
 export default {
   name: 'AdminPanelPage',
-  components: { AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  components: { AdminLandingVideos, AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   watch: {
     '$route.query.tab' (tab) { if (['access-security', 'aito-tokens', 'projects'].includes(tab)) this.openDetail(tab) },
   },
@@ -153,7 +160,7 @@ export default {
   },
   computed: {
     sortedDetailOptions () { return [...this.detailOptions,{name:'aito-tokens',label:'AitoTokens',description:'Recargas, consumo, cotação e configuração da Aito IA.',icon:'mdi-circle-multiple-outline'},{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
-    sectionTitle () { return this.tab==='overview'?'Dashboard':this.tab==='projects'?'Projetos':this.tab==='detail'?'Detalhar':this.sortedDetailOptions.find(item=>item.name===this.tab)?.label || 'Administração' },
+    sectionTitle () { return this.tab==='overview'?'Dashboard':this.tab==='projects'?'Projetos':this.tab==='detail'?'Detalhar':this.tab==='landing-videos'?'Site · Vídeos':this.sortedDetailOptions.find(item=>item.name===this.tab)?.label || 'Administração' },
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
     navigationTab: {

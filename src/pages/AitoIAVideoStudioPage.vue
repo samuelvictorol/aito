@@ -81,6 +81,13 @@ const inventoryLoading = ref(false)
 const inventoryError = ref('')
 const projectComponents = shallowRef([])
 const componentTypes = ref(['Personagens', 'Cenas', 'Modelos de cena', 'Cenários', 'Roteiros'])
+const componentIcons = {
+  Personagens: 'mdi-account-outline',
+  Cenas: 'mdi-filmstrip',
+  'Modelos de cena': 'mdi-view-dashboard-outline',
+  Cenários: 'mdi-image-outline',
+  Roteiros: 'mdi-script-text-outline',
+}
 const componentType = ref('Cenas')
 const componentOpen = ref(false)
 const componentForm = shallowRef(null)
@@ -91,6 +98,12 @@ const saveClipOpen = ref(false)
 const destinationProject = ref('')
 const savingClip = ref(false)
 const projectsOpen = ref(false)
+const masterOpen = ref(false)
+const modelListOpen = ref(false)
+const studioHeader = ref(null)
+const workspace = ref(null)
+const headerHeight = ref(104)
+let headerObserver
 const draft = shallowRef(null)
 const dragItem = ref(null)
 const dragTarget = ref(null)
@@ -204,6 +217,25 @@ const { projects, records, activeId, loading: projectLoading, storageError, clou
 })
 
 function showAuth(mode = 'register') { authMode.value = mode; authOpen.value = true }
+const compactViewport = () => window.matchMedia('(max-width: 900px)').matches
+function closeMobilePanel(panel) {
+  if (compactViewport()) panel.value = false
+}
+function chooseProject(id) {
+  closeMobilePanel(projectsOpen)
+  return id ? openProject(id) : createProject()
+}
+function chooseEditorTab(value) {
+  tab.value = value
+  if (compactViewport() && workspace.value?.getBoundingClientRect().top < headerHeight.value) {
+    workspace.value.scrollIntoView({ block: 'start' })
+  }
+}
+function selectMasterScene(id) {
+  selectScene(id)
+  chooseEditorTab('scenes')
+  closeMobilePanel(masterOpen)
+}
 function selectVideoModel(item) {
   changeGenerationMode(item.mode || 'text')
   if (!item.mode) videoModel.value = item.id
@@ -234,6 +266,7 @@ const inventory = computed(() => {
     (!query || `${clip.title || 'Clipe ' + clip.number} ${clip.project}`.toLocaleLowerCase('pt-BR').includes(query)))
 })
 function openInventory() {
+  closeMobilePanel(masterOpen)
   inventoryQuery.value = ''
   inventoryProject.value = ''
   inventoryClips.value = []
@@ -260,7 +293,13 @@ const matchingComponents = computed(() => projectComponents.value.filter(item =>
   (!inventoryQuery.value || `${item.title} ${item.prompt}`.toLocaleLowerCase('pt-BR').includes(inventoryQuery.value.toLocaleLowerCase('pt-BR')))))
 const missingArchiveItems = computed(() => scenes.value.filter(unavailableScene).length +
   clipLibrary.value.filter(clip => clip.expired || !clip.file).length)
-function openComponents(type) { componentType.value = type; inventoryQuery.value = ''; componentForm.value = null; componentOpen.value = true }
+function openComponents(type) {
+  closeMobilePanel(projectsOpen)
+  componentType.value = type
+  inventoryQuery.value = ''
+  componentForm.value = null
+  componentOpen.value = true
+}
 function editComponent(item) {
   componentForm.value = item ? { ...item } : { id: crypto.randomUUID(), type: componentType.value, title: '', prompt: '', file: null }
 }
@@ -595,7 +634,9 @@ async function setSceneMedia(file, signal, id = sceneId.value) {
 }
 function attach(file) { if (file) run('media', signal => setSceneMedia(file, signal)) }
 function importClip(file) {
-  if (file) run('media', signal => insertClip(file, signal))
+  if (!file) return
+  closeMobilePanel(masterOpen)
+  run('media', signal => insertClip(file, signal))
 }
 function fileFrom(event, callback) { callback(event.target.files[0]); event.target.value = '' }
 function pasteMedia(event) {
@@ -1250,7 +1291,8 @@ function expireCurrentMedia() {
 
 function createForScene() {
   if (!prompt.value.trim()) prompt.value = [selectedScene.value?.heading, selectedScene.value?.caption].filter(Boolean).join('. ')
-  tab.value = 'ai'
+  closeMobilePanel(masterOpen)
+  chooseEditorTab('ai')
   nextTick(() => clipPrompt.value?.focus())
 }
 
@@ -1268,23 +1310,65 @@ onMounted(async () => {
   exportFormats.value = studioVideoExports()
   exportFormat.value = exportFormats.value[0]?.extension || ''
   expireTimer = setInterval(expireCurrentMedia, 10000)
+  if (studioHeader.value && typeof ResizeObserver !== 'undefined') {
+    headerObserver = new ResizeObserver(([entry]) => { headerHeight.value = Math.ceil(entry.target.getBoundingClientRect().height) })
+    headerObserver.observe(studioHeader.value)
+  }
   await nextTick()
   paint(0)
 })
-onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOperation?.abort(); optionsRequest?.abort(); resetProject() })
+onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObserver?.disconnect(); activeOperation?.abort(); optionsRequest?.abort(); resetProject() })
 </script>
 
 <template>
-  <div class="aito-ai-theme video-studio">
-    <header class="video-studio__bar">
-      <router-link to="/" class="video-studio__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="37" height="37" alt="" /> <strong>AitoIA</strong></router-link>
-      <div class="video-studio__mode"><AitoIAModeSwitch mode="video" :busy="guarded" /></div>
-      <div class="video-studio__account">
-        <button v-if="signedIn" class="video-studio__balance" type="button" aria-label="Abrir carteira AitoTokens" :disabled="guarded" @click="showWallet"><img src="/aitotokens.svg" width="26" height="26" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="16px" /></button>
-        <template v-else><button class="video-studio__login" type="button" @click="showAuth('login')">Entrar</button><button class="video-studio__primary" type="button" @click="showAuth()">Criar conta</button></template>
-      </div>
-    </header>
-
+  <q-layout view="hHh Lpr fFf" class="aito-ai-theme video-studio" :style="{ '--video-header-height': headerHeight + 'px' }">
+    <q-header class="video-studio__header">
+      <header ref="studioHeader" class="video-studio__bar">
+        <div class="video-studio__header-start">
+          <q-btn flat round icon="mdi-menu" :aria-label="projectsOpen ? 'Fechar projetos e componentes' : 'Abrir projetos e componentes'"
+            :aria-expanded="projectsOpen" aria-controls="video-studio-project-drawer" @click="projectsOpen = !projectsOpen" />
+          <router-link to="/" class="video-studio__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="37" height="37" alt="" /> <strong>AitoIA</strong></router-link>
+        </div>
+        <div class="video-studio__mode"><AitoIAModeSwitch mode="video" :busy="guarded" /></div>
+        <div class="video-studio__account">
+          <button v-if="signedIn" class="video-studio__balance" type="button" aria-label="Abrir carteira AitoTokens" :disabled="guarded" @click="showWallet"><img src="/aitotokens.svg" width="26" height="26" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="16px" /></button>
+          <template v-else><button class="video-studio__login" type="button" @click="showAuth('login')">Entrar</button><button class="video-studio__primary" type="button" @click="showAuth()">Criar conta</button></template>
+        </div>
+      </header>
+    </q-header>
+    <q-drawer v-model="projectsOpen" show-if-above dark bordered :breakpoint="900" :width="306" class="video-studio__drawer">
+      <aside id="video-studio-project-drawer" class="video-studio__drawer-content" aria-label="Projetos e componentes">
+        <header class="video-studio__drawer-heading">
+          <div><span>Estúdio de vídeo</span><h2>Projetos e componentes</h2></div>
+          <q-btn flat round dense icon="mdi-close" aria-label="Fechar painel de projetos" @click="projectsOpen = false" />
+        </header>
+        <div class="video-studio__drawer-section">
+          <AitoStudioProjectPicker v-if="signedIn" drawer :projects="projects" :active-id="activeId" :loading="projectLoading"
+            :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)" @create="chooseProject()" @open="chooseProject" @remove="deleteProject" />
+          <q-btn v-else outline no-caps color="teal-3" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
+          <q-input v-if="signedIn && activeId" v-model="title" dark outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
+        </div>
+        <div class="video-studio__drawer-section">
+          <h3>Componentes</h3>
+          <q-list dark bordered separator class="video-studio__drawer-list">
+            <q-item v-for="type in componentTypes" :key="type" clickable :disable="!mayEdit" @click="openComponents(type)">
+              <q-item-section avatar><q-icon :name="componentIcons[type] || 'mdi-folder-outline'" size="20px" /></q-item-section>
+              <q-item-section>{{ type }}</q-item-section><q-item-section side><q-icon name="mdi-chevron-right" size="18px" /></q-item-section>
+            </q-item>
+          </q-list>
+          <q-form class="video-studio__drawer-add" @submit.prevent="addComponentType">
+            <q-input v-model.trim="componentTypeName" dark outlined dense label="Novo tipo" maxlength="32" :disable="!mayEdit" />
+            <q-btn outline color="teal-3" type="submit" round dense icon="mdi-plus" aria-label="Criar tipo de componente" :disable="!mayEdit || !componentTypeName" />
+          </q-form>
+        </div>
+        <footer class="video-studio__drawer-footer">
+          <q-btn v-if="signedIn" flat no-caps align="left" icon="mdi-account-circle-outline" label="Meu perfil"
+            :to="{ path: '/app', query: { tab: 'profile' } }" :disable="guarded" />
+          <q-btn v-else flat no-caps align="left" icon="mdi-account-circle-outline" label="Meu perfil" @click="showAuth('login')" />
+        </footer>
+      </aside>
+    </q-drawer>
+    <q-page-container>
     <main class="video-studio__main" @paste="pasteStudioMedia">
       <div class="video-studio__intro">
         <div><h1>Estúdio de vídeo</h1><p>Gere cenas, monte seu vídeo e exporte o resultado.</p></div>
@@ -1305,22 +1389,12 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
         <button type="button" class="video-studio__primary" :disabled="!draftReady" @click="applyDraft(true)">Criar projeto</button>
       </div>
 
-      <div class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai' }">
-        <aside class="video-studio__panel video-studio__sidebar" aria-label="Projetos e componentes">
-          <button class="video-studio__secondary video-studio__sidebar-toggle" type="button" :aria-expanded="projectsOpen" @click="projectsOpen = !projectsOpen"><q-icon name="mdi-folder-multiple-outline" /> Projetos e componentes</button>
-          <div class="video-studio__sidebar-content" :class="{ 'video-studio__sidebar-content--open': projectsOpen }">
-            <AitoStudioProjectPicker v-if="signedIn" :projects="projects" :active-id="activeId" :loading="projectLoading"
-              :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)" @create="createProject" @open="openProject" @remove="deleteProject" />
-            <label>Nome do projeto<input v-model="title" maxlength="80" :disabled="!mayEdit" /></label>
-            <div class="video-studio__sidebar-components">
-              <h2>Componentes</h2>
-              <button v-for="type in componentTypes" :key="type" type="button" class="video-studio__secondary" @click="openComponents(type)">{{ type }}</button>
-              <label>Novo tipo<input v-model.trim="componentTypeName" maxlength="32" @keydown.enter.prevent="addComponentType" /></label>
-              <button type="button" class="video-studio__secondary" :disabled="!componentTypeName" @click="addComponentType"><q-icon name="mdi-plus" /> Criar tipo</button>
-            </div>
-          </div>
-        </aside>
-        <div class="video-studio__tabs" role="group" aria-label="Ferramentas do editor"><button v-for="item in tabs" :key="item.id" type="button" :aria-pressed="tab === item.id" :disabled="!mayEdit" @click="tab = item.id"><q-icon :name="item.icon" size="20px" /> {{ item.label }}</button></div>
+      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai' }">
+        <nav class="video-studio__tabs" aria-label="Ferramentas do editor">
+          <q-tabs :model-value="tab" dark dense no-caps align="justify" indicator-color="transparent" active-color="teal-2" @update:model-value="chooseEditorTab">
+            <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label" :disable="!mayEdit" />
+          </q-tabs>
+        </nav>
 
         <section v-if="tab === 'ai'" class="video-studio__catalog" aria-label="Modo de geração">
           <div class="video-studio__catalog-header">
@@ -1332,8 +1406,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
               <q-icon :name="item.icon" size="19px" /> {{ item.label }}
             </button>
           </div>
-          <details v-if="generationMode === 'text'" class="video-studio__catalog-models">
-            <summary><q-icon name="mdi-movie-open-outline" size="19px" /> Modelos de vídeo <strong v-if="selectedModel">{{ selectedModel.name }}</strong></summary>
+          <q-expansion-item v-if="generationMode === 'text'" v-model="modelListOpen" class="video-studio__catalog-models" icon="mdi-movie-open-outline" label="Modelos de vídeo" :caption="selectedModel?.name">
             <div class="video-studio__model-grid"><article v-for="item in modelCards" :key="item.id" class="video-studio__model-card" :class="{ 'video-studio__model-card--selected': videoModel === item.id && item.selectable }">
               <div class="video-studio__model-poster" :style="{ backgroundPosition: item.poster }" aria-hidden="true">
                 <span class="video-studio__model-type" :class="{ 'video-studio__model-type--image': item.type === 'image' }"><q-icon :name="item.type === 'image' ? 'mdi-image-outline' : 'mdi-play-box-outline'" size="15px" /> {{ item.type === 'image' ? 'Imagem' : 'Vídeo' }}</span>
@@ -1350,14 +1423,22 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
                 <q-icon :name="videoModel === item.id ? 'mdi-check-circle' : 'mdi-arrow-top-right'" size="18px" aria-hidden="true" />
               </button>
             </article></div>
-          </details>
+          </q-expansion-item>
         </section>
 
-        <section class="video-studio__panel video-studio__timeline" aria-labelledby="video-studio-timeline">
-          <div class="video-studio__scene-heading">
-            <h2 id="video-studio-timeline">Vídeo master</h2>
+        <section class="video-studio__panel video-studio__timeline" :class="{ 'is-expanded': masterOpen }" aria-label="Vídeo master">
+          <div class="video-studio__scene-heading video-studio__master-desktop">
+            <h2>Vídeo master</h2>
             <span class="video-studio__hint">{{ durationLabel(timeline.duration) }}</span>
           </div>
+          <q-btn class="video-studio__master-toggle" flat no-caps align="left" :aria-expanded="masterOpen" aria-controls="video-studio-master-controls"
+            :aria-label="masterOpen ? 'Minimizar vídeo master' : 'Expandir vídeo master'" @click="masterOpen = !masterOpen">
+            <q-icon name="mdi-filmstrip" size="20px" />
+            <strong>Vídeo master</strong>
+            <span class="video-studio__master-count">{{ scenes.length }} {{ scenes.length === 1 ? 'cena' : 'cenas' }} · {{ durationLabel(timeline.duration) }}</span>
+            <q-icon :name="masterOpen ? 'mdi-chevron-down' : 'mdi-chevron-up'" size="23px" />
+          </q-btn>
+          <div id="video-studio-master-controls" class="video-studio__master-controls">
           <div class="video-studio__actions">
             <button class="video-studio__primary" type="button" :disabled="!mayEdit" @click="createForScene"><q-icon name="mdi-creation-outline" size="18px" /> Gerar cena</button>
             <input ref="importInput" type="file" accept="video/*" hidden @change="fileFrom($event, importClip)" />
@@ -1370,12 +1451,13 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
             <button v-for="({ scene, start, end }, index) in timeline.segments" :key="scene.id" type="button" :aria-pressed="sceneId === scene.id" :disabled="!mayEdit"
               :draggable="mayEdit" :class="{ 'video-studio__scene-drop': dragTarget === scene.id && dragItem !== scene.id }"
               @dragstart="dragItem = scene.id; $event.dataTransfer.setData('text/plain', scene.id)" @dragend="cancelDrag"
-              @dragover.prevent="dragTarget = scene.id" @drop="dragItem && finishDrag(scene.id)" @click="selectScene(scene.id); tab = 'scenes'">
+              @dragover.prevent="dragTarget = scene.id" @drop="dragItem && finishDrag(scene.id)" @click="selectMasterScene(scene.id)">
               <span class="video-studio__scene-thumb"><img v-if="scene.media?.poster || (scene.media && !scene.media.isVideo)" :src="scene.media.poster || scene.media.url" alt="" loading="lazy" /><q-icon v-else :name="scene.media ? 'mdi-filmstrip' : 'mdi-image-outline'" size="20px" /></span>
               <span class="video-studio__scene-label"><strong>{{ scene.heading || (scene.kind === 'transition' ? 'Transição' : `Cena ${index + 1}`) }}</strong><small>{{ durationLabel(start) }} · {{ (end - start).toFixed(1) }} s</small><small v-if="unavailableScene(scene)">Mídia indisponível</small></span>
             </button>
           </div>
           <p v-else class="video-studio__hint">Adicione uma cena ou gere um clipe com IA para começar.</p>
+          </div>
         </section>
 
         <section class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
@@ -1564,6 +1646,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
         </section>
       </div>
     </main>
+    </q-page-container>
     <q-dialog v-model="inventoryOpen">
       <q-card class="aito-ai-theme video-studio__dialog">
         <q-card-section class="video-studio__scene-heading"><h2>Adicionar do projeto</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar lista de clipes" /></q-card-section>
@@ -1642,7 +1725,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
     </q-dialog>
     <AuthDialog v-if="authOpen" v-model="authOpen" :initial-mode="authMode" return-path="/aitoia-video-studio" :show-project-login="false" @authenticated="wallet.syncSession()" />
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="wallet" />
-  </div>
+  </q-layout>
 </template>
 
 <style scoped>
@@ -1653,8 +1736,11 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
 .video-studio button:disabled { cursor: not-allowed; opacity: .54; }
 .video-studio a { text-decoration: none; }
 .video-studio h1, .video-studio h2, .video-studio h3, .video-studio p { margin: 0; }
-.video-studio__bar { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 10px clamp(14px, 4vw, 52px); border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
-.video-studio__brand, .video-studio__mode, .video-studio__account, .video-studio__balance { display: flex; align-items: center; }
+.video-studio__header { background: var(--aito-ai-surface); color: var(--aito-ai-text); }
+.video-studio__bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: calc(8px + env(safe-area-inset-top, 0px)) clamp(14px, 3vw, 40px) 8px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
+.video-studio__header-start, .video-studio__brand, .video-studio__mode, .video-studio__account, .video-studio__balance { display: flex; align-items: center; }
+.video-studio__header-start { gap: 8px; min-width: 0; }
+.video-studio__header-start .q-btn { color: var(--aito-ai-accent); }
 .video-studio__brand { width: max-content; gap: 6px; color: var(--aito-ai-text); font-size: 1.12rem; }
 .video-studio__mode { justify-content: center; }
 .video-studio__account { justify-self: end; gap: 8px; }
@@ -1667,35 +1753,43 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
 .video-studio__intro h1 { font-size: clamp(2rem, 4vw, 3.15rem); line-height: 1.05; font-weight: 780; letter-spacing: -.045em; }
 .video-studio__intro p { margin-top: 10px; color: var(--aito-ai-muted); }
 .video-studio__zip { display: grid; gap: 5px; justify-items: end; }
-.video-studio__grid { display: grid; grid-template-columns: clamp(176px, 17%, 238px) minmax(0, 1.18fr) minmax(0, .82fr); align-items: start; gap: 14px; }
+.video-studio__grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, .82fr); align-items: start; gap: 14px; scroll-margin-top: calc(var(--video-header-height) + 6px); }
 .video-studio__panel { min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: var(--aito-ai-surface); }
-.video-studio__sidebar { grid-column: 1; grid-row: 1 / span 4; padding: 11px; }
-.video-studio__sidebar-content, .video-studio__sidebar-components { display: grid; min-width: 0; gap: 9px; }
-.video-studio__sidebar-components { margin-top: 5px; padding-top: 11px; border-top: 1px solid var(--aito-ai-line); }
-.video-studio__sidebar-components .video-studio__secondary { width: 100%; justify-content: flex-start; }
-.video-studio__sidebar-toggle { display: none; }
-.video-studio__editor { grid-column: 3; grid-row: 2; overflow: hidden; }
-.video-studio__tabs { grid-column: 2 / -1; grid-row: 1; display: grid; width: min(620px, 100%); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 7px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
-.video-studio__tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--aito-ai-muted); cursor: pointer; white-space: nowrap; }
-.video-studio__tabs button[aria-pressed=true] { border-color: var(--aito-ai-line); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); font-weight: 650; }
+.video-studio :deep(.video-studio__drawer) { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-color: var(--aito-ai-line); }
+.video-studio__drawer-content { display: flex; min-height: 100%; flex-direction: column; gap: 20px; padding: 20px 18px max(16px, env(safe-area-inset-bottom, 0px)); }
+.video-studio__drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.video-studio__drawer-heading span { display: block; margin-bottom: 4px; font-size: .76rem; color: var(--aito-ai-muted); }
+.video-studio__drawer-section { display: grid; gap: 12px; padding-bottom: 19px; border-bottom: 1px solid var(--aito-ai-line); }
+.video-studio__drawer-list { overflow: hidden; border-radius: 10px; border-color: var(--aito-ai-line); background: var(--aito-ai-panel); }
+.video-studio__drawer-list :deep(.q-item) { min-height: 44px; padding: 7px 10px; }
+.video-studio__drawer-list :deep(.q-item__section--avatar) { min-width: 33px; color: var(--aito-ai-accent); }
+.video-studio__drawer-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.video-studio__drawer-footer { padding-top: 4px; margin-top: auto; }
+.video-studio__drawer-footer .q-btn { width: 100%; border: 1px solid var(--aito-ai-line); color: var(--aito-ai-accent); }
+.video-studio__editor { grid-column: 2; grid-row: 2; overflow: hidden; }
+.video-studio__tabs { grid-column: 1 / -1; grid-row: 1; width: min(620px, 100%); padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
+.video-studio__tabs :deep(.q-tab) { min-height: 40px; min-width: 0; padding: 0 5px; color: var(--aito-ai-muted); border-radius: 8px; }
+.video-studio__tabs :deep(.q-tab__content) { flex-direction: row; gap: 6px; min-width: 0; }
+.video-studio__tabs :deep(.q-tab__icon) { width: 18px; height: 18px; font-size: 18px; }
+.video-studio__tabs :deep(.q-tab--active) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
-.video-studio__preview { grid-column: 2; grid-row: 2; }
-.video-studio__grid--generate .video-studio__editor { grid-column: 2; grid-row: 3; }
-.video-studio__preview--clips { grid-column: 3; grid-row: 3; }
+.video-studio__preview { grid-column: 1; grid-row: 2; }
+.video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 3; }
+.video-studio__preview--clips { grid-column: 2; grid-row: 3; }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .video-studio h2 { font-size: 1.13rem; font-weight: 730; line-height: 1.2; }
 .video-studio h3 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
 .video-studio__preview header span, .video-studio__hint, .video-studio__script small { color: var(--aito-ai-muted); font-size: .84rem; }
 .video-studio__fields { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr); gap: 10px; }
 .video-studio__fields--clip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.video-studio__catalog { grid-column: 2 / -1; grid-row: 2; min-width: 0; display: grid; gap: 12px; }
+.video-studio__catalog { grid-column: 1 / -1; grid-row: 2; min-width: 0; display: grid; gap: 12px; }
 .video-studio__catalog-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .video-studio__catalog-header p { margin-top: 4px; color: var(--aito-ai-muted); font-size: .9rem; }
-.video-studio__catalog-models { padding: 9px 12px; border: 1px solid var(--aito-ai-line); border-radius: 11px; background: var(--aito-ai-surface); }
-.video-studio__catalog-models summary { cursor: pointer; color: var(--aito-ai-muted); }
-.video-studio__catalog-models summary strong { margin-inline-start: 8px; color: var(--aito-ai-accent); }
-.video-studio__catalog-models[open] summary { margin-bottom: 11px; }
-.video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.video-studio__catalog-models { overflow: hidden; border: 1px solid var(--aito-ai-line); border-radius: 11px; background: var(--aito-ai-surface); }
+.video-studio__catalog-models :deep(.q-item) { min-height: 49px; padding: 8px 12px; }
+.video-studio__catalog-models :deep(.q-item__section--avatar) { min-width: 36px; color: var(--aito-ai-accent); }
+.video-studio__catalog-models :deep(.q-item__label--caption) { color: var(--aito-ai-accent); }
+.video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 5px 10px 10px; }
 .video-studio__model-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 13px; background: var(--aito-ai-surface); }
 .video-studio__model-card--selected, .video-studio__model-card:has(.video-studio__model-hit:not(:disabled):hover) { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-panel); }
 .video-studio__model-poster { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; background-color: var(--aito-ai-panel); background-image: url('/aitoia-model-posters.webp'); background-size: 200% 400%; }
@@ -1713,15 +1807,17 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
 .video-studio__model-hit :deep(.q-icon) { width: 27px; height: 27px; border-radius: 7px; background: #092322eb; }
 .video-studio__model-hit[aria-pressed=true] :deep(.q-icon) { color: var(--aito-ai-accent); }
 .video-studio label { display: grid; min-width: 0; gap: 6px; color: var(--aito-ai-muted); font-weight: 620; font-size: .84rem; }
-.video-studio input:not([type=range]), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
+.video-studio input:not([type=range], .q-field__native), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio textarea { min-height: 60px; resize: vertical; }
 .video-studio input::placeholder, .video-studio textarea::placeholder { color: var(--aito-ai-muted); opacity: .75; }
 .video-studio__script { padding: 8px 10px; border: 1px solid var(--aito-ai-purple-line); border-radius: 9px; background: var(--aito-ai-purple-soft); }
 .video-studio__script summary { color: var(--aito-ai-purple); cursor: pointer; font-weight: 650; }
 .video-studio__script[open] summary, .video-studio__script label, .video-studio__script button { margin-bottom: 8px; }
 .video-studio__script small { display: block; }
-.video-studio__timeline { grid-column: 2 / -1; grid-row: 3; display: grid; min-width: 0; gap: 10px; padding: 12px clamp(13px, 2vw, 20px); }
+.video-studio__timeline { grid-column: 1 / -1; grid-row: 3; display: grid; min-width: 0; gap: 10px; padding: 12px clamp(13px, 2vw, 20px); }
 .video-studio__grid--generate .video-studio__timeline { grid-row: 4; }
+.video-studio__timeline .video-studio__master-toggle { display: none; }
+.video-studio__master-controls { display: grid; gap: 10px; min-width: 0; }
 .video-studio__scenes { display: flex; overflow-x: auto; gap: 8px; padding: 3px 2px 5px; }
 .video-studio__scenes button { display: flex; flex: 0 0 clamp(126px, 18vw, 178px); align-items: center; gap: 7px; min-width: 0; padding: 6px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); cursor: pointer; text-align: left; }
 .video-studio__scene-thumb { display: grid; flex: 0 0 43px; height: 34px; place-items: center; overflow: hidden; border-radius: 5px; background: var(--aito-ai-bg); }
@@ -1787,21 +1883,42 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); activeOpera
 .video-studio__actions [aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
 .video-studio__draft { flex-wrap: wrap; }
 @media (max-width: 900px) {
+  .video-studio__main { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
   .video-studio__grid, .video-studio__grid--generate { grid-template-columns: minmax(0, 1fr); }
   .video-studio__grid > * { grid-column: 1 !important; grid-row: auto !important; }
-  .video-studio__sidebar { order: 0; }
-  .video-studio__sidebar-toggle { display: inline-flex; width: 100%; }
-  .video-studio__sidebar-content { display: none; margin-top: 10px; }
-  .video-studio__sidebar-content--open { display: grid; }
-  .video-studio__tabs { order: 1; }
+  .video-studio__tabs { position: sticky; top: calc(var(--video-header-height) + 4px); z-index: 8; order: 1; width: 100%; box-shadow: 0 4px 14px #0009; }
   .video-studio__catalog { order: 2; }
   .video-studio__preview { order: 3; }
-  .video-studio__timeline { order: 4; }
+  .video-studio__timeline { position: fixed; z-index: 15; inset: auto 0 0; padding: 0 max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px)); border-width: 1px 0 0; border-radius: 12px 12px 0 0; box-shadow: 0 -5px 16px #0009; }
+  .video-studio__timeline .video-studio__master-desktop { display: none; }
+  .video-studio__timeline .video-studio__master-toggle { display: flex; width: 100%; min-height: 46px; color: var(--aito-ai-accent); }
+  .video-studio__master-toggle :deep(.q-btn__content) { width: 100%; flex-wrap: nowrap; gap: 7px; }
+  .video-studio__master-count { margin-inline-start: auto; color: var(--aito-ai-muted); white-space: nowrap; font-size: .76rem; }
+  .video-studio__timeline:not(.is-expanded) .video-studio__master-controls { display: none; }
+  .video-studio__master-controls { max-height: min(35dvh, 260px); padding: 0 4px 10px; overflow: auto; overscroll-behavior: contain; }
+  .video-studio__master-controls .video-studio__actions :is(button, a) { min-height: 41px; }
+  .video-studio__scenes { scroll-snap-type: x proximity; overscroll-behavior-inline: contain; }
+  .video-studio__scenes button { min-height: 52px; scroll-snap-align: start; }
   .video-studio__editor { order: 5; }
   .video-studio__grid--generate .video-studio__editor { order: 3; }
   .video-studio__preview--clips { order: 4; }
-  .video-studio__grid--generate .video-studio__timeline { order: 5; }
+  .video-studio__screen canvas { max-height: min(42dvh, 390px); }
 }
 @media (max-width: 640px) { .video-studio__model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .video-studio__model-content { padding-inline: 5px; } }
-@media (max-width: 560px) { .video-studio__bar { grid-template-columns: 1fr auto; padding: 7px 10px; gap: 6px; } .video-studio__mode { grid-row: 2; grid-column: 1 / -1; } .video-studio__intro { align-items: flex-start; flex-direction: column; } .video-studio__tabs button { font-size: .8rem; } .video-studio__tabs :deep(.q-icon) { font-size: 17px !important; } }
+@media (max-width: 640px) {
+  .video-studio__bar { grid-template-columns: minmax(0, 1fr) auto; padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 6px; gap: 5px; }
+  .video-studio__header-start { gap: 2px; }
+  .video-studio__header-start .q-btn { min-width: 38px; min-height: 40px; }
+  .video-studio__brand { gap: 3px; font-size: .94rem; }
+  .video-studio__brand img { width: 30px; height: 30px; }
+  .video-studio__mode { grid-row: 2; grid-column: 1 / -1; }
+  .video-studio__account { gap: 4px; }
+  .video-studio__account :is(button, a) { white-space: nowrap; font-size: .76rem; }
+  .video-studio__intro { align-items: flex-start; flex-direction: column; margin-bottom: 15px; }
+  .video-studio__intro h1 { font-size: 1.85rem; }
+  .video-studio__intro p { margin-top: 4px; }
+  .video-studio__zip { justify-items: start; }
+  .video-studio__tabs :deep(.q-tab__label) { font-size: .78rem; }
+  .video-studio__tabs :deep(.q-tab__content) { gap: 4px; }
+}
 </style>

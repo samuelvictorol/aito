@@ -8,6 +8,7 @@ const props = defineProps({
   disabled: Boolean,
   storageError: { type: String, default: '' },
   cloudState: { type: String, default: 'local' },
+  drawer: Boolean,
 })
 const emit = defineEmits(['create', 'open', 'remove'])
 const deleting = ref(false)
@@ -16,7 +17,7 @@ const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: '
 </script>
 
 <template>
-  <div class="aito-projects">
+  <div class="aito-projects" :class="{ 'aito-projects--drawer': drawer }">
     <div class="aito-projects__controls">
       <label>
         <span><q-icon name="mdi-folder-multiple-outline" size="18px" /> Projetos</span>
@@ -54,6 +55,14 @@ const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: '
 .aito-projects__controls button { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .aito-projects__controls button:disabled { opacity: .54; cursor: not-allowed; }
 .aito-projects__controls button:focus-visible, .aito-projects__controls select:focus-visible { outline: 2px solid var(--aito-ai-accent); outline-offset: 2px; }
+.aito-projects--drawer { gap: 9px; }
+.aito-projects--drawer .aito-projects__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+.aito-projects--drawer .aito-projects__controls label { display: grid; grid-column: 1 / -1; gap: 8px; }
+.aito-projects--drawer .aito-projects__controls label span { font-size: .9rem; }
+.aito-projects--drawer .aito-projects__controls select { width: 100%; padding-inline: 11px; }
+.aito-projects--drawer .aito-projects__controls button { justify-content: center; padding-inline: 10px; }
+.aito-projects--drawer .aito-projects__controls :is(select, button) { min-height: 44px; }
+.aito-projects--drawer small { line-height: 1.4; }
 .aito-projects small { color: var(--aito-ai-muted); }
 .aito-projects__error { color: var(--aito-ai-error) !important; }
 .aito-projects__dialog { width: min(420px, 95vw); background: var(--aito-ai-surface); color: var(--aito-ai-text); }

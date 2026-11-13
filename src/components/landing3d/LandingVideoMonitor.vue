@@ -1,9 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { landingHeroVideo } from 'src/data/landingHeroVideo'
+import { useLandingVideo } from 'src/composables/useLandingVideos'
+import { youtubeEmbedUrl } from 'src/services/landingVideoSources'
 
 const props = defineProps({
   video: { type: Object, default: () => landingHeroVideo },
+  videoSlot: String,
   title: { type: String, default: 'Conheça a AitoSoftwares' },
   eyebrow: { type: String, default: 'AITOSOFTWARES EM MOVIMENTO' },
   headline: { type: String, default: 'Seu próximo passo\ncomeça com uma ideia.' },
@@ -12,20 +15,8 @@ const props = defineProps({
 const screen = ref(null)
 const visible = ref(false)
 let observer
-const source = computed(() => String(props.video?.src || '').trim())
-const embed = computed(() => {
-  try {
-    const url = new URL(source.value)
-    if (url.protocol !== 'https:') return ''
-    const id = url.hostname === 'youtu.be'
-      ? url.pathname.slice(1)
-      : ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com'].includes(url.hostname)
-        ? url.searchParams.get('v') || url.pathname.match(/^\/(?:embed|shorts)\/([^/]+)$/)?.[1]
-        : ''
-    if (id && /^[\w-]{11}$/.test(id)) return `https://www.youtube-nocookie.com/embed/${id}`
-  } catch { /* Local video files use the native player. */ }
-  return ''
-})
+const source = useLandingVideo(() => props.videoSlot, () => String(props.video?.src || '').trim())
+const embed = computed(() => youtubeEmbedUrl(source.value))
 onMounted(() => {
   if (!window.IntersectionObserver) { visible.value = true; return }
   observer = new IntersectionObserver(([entry]) => {
@@ -42,7 +33,7 @@ onBeforeUnmount(() => observer?.disconnect())
       <div class="video-monitor__camera" aria-hidden="true"></div>
       <div class="video-monitor__screen">
         <iframe v-if="embed" :src="embed" :title="title" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-        <video v-else-if="source" :src="visible ? source : undefined" :poster="video.poster || undefined" controls playsinline preload="metadata" :aria-label="title"></video>
+        <video v-else-if="source" :src="visible ? source : undefined" :poster="video?.poster || undefined" controls playsinline preload="metadata" :aria-label="title"></video>
         <div v-else class="video-monitor__placeholder">
           <img src="/aito-logo-restored.png" alt="" width="76" height="76" />
           <span class="video-monitor__eyebrow">{{ eyebrow }}</span>
