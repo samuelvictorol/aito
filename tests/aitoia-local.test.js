@@ -2,10 +2,47 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   AITOIA_RETENTION_MS,
+  AITOIA_CHAT_LIMIT,
+  AITOIA_STUDIO_LIMIT,
+  STUDIO_RENEWAL_WINDOW_MS,
   createAitoIALocalStore,
   exportAitoIAJson,
   exportAitoIAZip,
 } from '../src/services/aitoiaLocal.js'
+
+test('active limits preserve existing records, and project renewal adds seven days only in the renewal window', async () => {
+  let now = Date.UTC(2026, 10, 12)
+  const base = { indexedDB: null, now: () => now }
+  const chat = createAitoIALocalStore('limit-chat', { ...base, maxRecords: AITOIA_CHAT_LIMIT })
+  const studio = createAitoIALocalStore('limit-studio', { ...base, studio: true, maxRecords: AITOIA_STUDIO_LIMIT })
+  try {
+    for (const [store, limit] of [[chat, 5], [studio, 3]]) {
+      await Promise.all(Array.from({ length: limit }, (_, index) => store.save({ id: String(index) })))
+      await assert.rejects(store.save({ id: 'overflow' }), { code: 'AITOIA_RECORD_LIMIT' })
+      await store.save({ id: '0', title: 'editada' })
+      await store.remove('1')
+      await store.save({ id: 'overflow' })
+    }
+    const expiry = now + AITOIA_RETENTION_MS
+    const file = new Blob(['media'])
+    await studio.save({ id: '0', expiresAt: expiry, clips: [{ file, expiresAt: expiry }] })
+    await assert.rejects(studio.renew('0', expiry), /três dias/)
+    now = expiry - STUDIO_RENEWAL_WINDOW_MS
+    await assert.rejects(chat.renew('0', expiry), /três dias/)
+    const renewed = await studio.renew('0', expiry)
+    assert.equal(renewed.expiresAt, expiry + AITOIA_RETENTION_MS)
+    assert.equal(renewed.clips[0].expiresAt, renewed.expiresAt)
+    await assert.rejects(studio.renew('0', expiry), /três dias/)
+    now = expiry + 1
+    assert.deepEqual((await studio.list()).map(row => row.id), ['0'])
+    assert.equal((await chat.list()).length, 0)
+    now = renewed.expiresAt - STUDIO_RENEWAL_WINDOW_MS
+    assert.equal((await studio.renew('0', renewed.expiresAt)).expiresAt, renewed.expiresAt + AITOIA_RETENTION_MS)
+  } finally {
+    await chat.clear(); chat.dispose()
+    await studio.clear(); studio.dispose()
+  }
+})
 
 test('local chats isolate accounts and expire seven days after creation even when edited', async () => {
   let now = Date.UTC(2026, 10, 12)

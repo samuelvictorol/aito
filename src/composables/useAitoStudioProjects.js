@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { AITOIA_RETENTION_MS, createAitoIALocalStore } from 'src/services/aitoiaLocal'
+import { AITOIA_RETENTION_MS, AITOIA_STUDIO_LIMIT, canRenewStudio, createAitoIALocalStore, renewStudioMedia } from 'src/services/aitoiaLocal'
 import { createStudioCloud } from 'src/services/aitoiaStudioCloud'
 
 export function useAitoStudioProjects({ studio, accountId, busy, defaultName, snapshot, restore, watch: fields }) {
@@ -9,6 +9,7 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
   const records = shallowRef([])
   const cloudState = ref('loading')
   const projects = computed(() => records.value.map(({ id, title, expiresAt }) => ({ id, title, expiresAt })))
+  const atLimit = computed(() => projects.value.length >= AITOIA_STUDIO_LIMIT)
   let store
   let cloud
   let operation
@@ -53,7 +54,7 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
         cloudProjects.add(project.id)
         if (activeId.value === project.id) cloudState.value = 'saved'
         records.value = records.value.map(item => item.id === project.id ? { ...item, cloudSaved: true,
-          expiresAt: Math.min(item.expiresAt, saved.expiresAt) } : item)
+          expiresAt: saved.expiresAt } : item)
       } catch {
         if (cloud === remote && activeId.value === project.id) cloudState.value = 'local'
       }
@@ -81,7 +82,9 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
       if (reset) await restore(resolved, controller.signal)
       if (project?.cloudOnly && resolved) {
         remember(resolved)
-        await store?.save(resolved)
+        await store?.save(resolved).catch(cause => {
+          if (cause.code !== 'AITOIA_RECORD_LIMIT') throw cause
+        })
       }
       if (resolved && cloudState.value !== 'saving') cloudState.value = cloudProjects.has(resolved.id) ? 'saved' : 'local'
     } catch (cause) {
@@ -91,20 +94,69 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
     }
   }
 
-  async function create({ reset = true } = {}) {
+  async function create({ reset = true, readImport } = {}) {
+    const target = store
+    const remote = cloud
+    if (!target || atLimit.value) return
+    const previousId = activeId.value
+    loading.value = true
+    storageError.value = ''
+    const controller = new AbortController()
+    operation = controller
     const createdAt = Date.now()
-    const project = { id: crypto.randomUUID(), title: defaultName, createdAt, expiresAt: createdAt + AITOIA_RETENTION_MS }
-    remember(project)
-    await loadProject(project, { reset })
-    if (project.id !== activeId.value) return
-    dirty = true
-    flush()
+    const id = crypto.randomUUID()
+    const expiresAt = createdAt + AITOIA_RETENTION_MS
+    try {
+      const imported = readImport ? await readImport({ expiresAt, signal: controller.signal }) : null
+      controller.signal.throwIfAborted()
+      await writes
+      controller.signal.throwIfAborted()
+      const project = await target.save({ ...imported, id, title: imported?.title || defaultName, createdAt, expiresAt })
+      if (store !== target) return
+      if (remote) {
+        try {
+          await cloudWrites
+          controller.signal.throwIfAborted()
+          const saved = await remote.save(project)
+          if (store !== target) return
+          project.cloudSaved = true
+          project.expiresAt = saved.expiresAt
+          cloudProjects.add(id)
+        } catch (cause) {
+          if (cause.response?.data?.code === 'AITO_STUDIO_LIMIT' || [409, 429].includes(cause.response?.status)) {
+            await target.remove(id)
+            throw new Error(cause.response?.data?.message || 'Não foi possível criar o projeto agora. Tente novamente.')
+          }
+        }
+      }
+      controller.signal.throwIfAborted()
+      remember(project)
+      await loadProject(project, { reset })
+      if (project.id !== activeId.value) return
+      if (!imported) {
+        dirty = true
+        flush()
+      }
+    } catch (cause) {
+      if (store === target && !controller.signal.aborted) {
+        activeId.value = previousId
+        storageError.value = cause.message || 'Não foi possível salvar o novo projeto.'
+      }
+    } finally {
+      if (operation === controller) { operation = null; loading.value = false }
+    }
   }
 
   function createProject() {
     if (!store || busy.value || loading.value) return
     flush()
     return create()
+  }
+
+  function importProject(readImport) {
+    if (!store || busy.value || loading.value || atLimit.value) return
+    flush()
+    return create({ readImport })
   }
 
   function openProject(id) {
@@ -143,6 +195,41 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
     } finally { if (store === target) loading.value = false }
   }
 
+  async function renewProject(id) {
+    const target = store
+    const remote = cloud
+    if (!target || busy.value || loading.value) return
+    flush()
+    const previous = records.value.find(item => item.id === id)
+    if (!previous || !canRenewStudio(previous.expiresAt)) return
+    loading.value = true
+    storageError.value = ''
+    try {
+      await Promise.all([writes, cloudWrites])
+      if (store !== target) return
+      const current = records.value.find(item => item.id === id)
+      if (!current) return
+      let renewed
+      if (remote && (cloudProjects.has(id) || current.cloudSaved)) {
+        const saved = await remote.renew(id, current.expiresAt)
+        if (store !== target) return
+        if (current.cloudOnly) renewed = saved
+        else {
+          renewed = renewStudioMedia(current, saved.expiresAt)
+          await target.save(renewed).catch(cause => {
+            if (cause.code !== 'AITOIA_RECORD_LIMIT') throw cause
+          })
+        }
+      } else renewed = await target.renew(id, current.expiresAt)
+      if (store !== target) return
+      remember(renewed)
+      if (activeId.value === id) await loadProject(renewed)
+      else replaceExpiredProject()
+    } catch (cause) {
+      if (store === target) storageError.value = cause.response?.data?.message || cause.message || 'Não foi possível prorrogar o projeto.'
+    } finally { if (store === target) loading.value = false }
+  }
+
   function replaceExpiredProject() {
     if (!expiredActive || busy.value || loading.value || !store) return
     if (records.value.length) void loadProject(records.value[0])
@@ -172,7 +259,7 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
       return
     }
     loading.value = true
-    const target = createAitoIALocalStore(`studio:${studio}:${id}`, { onExpire: () => {
+    const target = createAitoIALocalStore(`studio:${studio}:${id}`, { studio: true, maxRecords: AITOIA_STUDIO_LIMIT, onExpire: () => {
       if (store !== target) return
       records.value = records.value.filter(item => item.expiresAt > Date.now())
       expiredActive = !records.value.some(item => item.id === activeId.value)
@@ -192,14 +279,14 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
         cloudProjects.add(item.id)
         const duplicate = savedById.get(item.id)
         if (!duplicate || item.updatedAt > duplicate.updatedAt + 2000) savedById.set(item.id, item)
-        else savedById.set(item.id, { ...duplicate, cloudSaved: true, expiresAt: Math.min(duplicate.expiresAt, item.expiresAt) })
+        else savedById.set(item.id, { ...renewStudioMedia(duplicate, item.expiresAt), cloudSaved: true })
       }
       const saved = [...savedById.values()].filter(item => item.expiresAt > Date.now()).sort((a, b) => b.updatedAt - a.updatedAt)
       cloudState.value = uploaded === null ? 'local' : 'saved'
       records.value = saved
       if (saved.length) {
         await loadProject(saved[0])
-        if (uploaded && uploaded.items.length < 20 && !saved[0].cloudSaved && store === target && activeId.value === saved[0].id) {
+        if (uploaded && uploaded.items.length < AITOIA_STUDIO_LIMIT && !saved[0].cloudSaved && store === target && activeId.value === saved[0].id) {
           dirty = true
           flush()
         }
@@ -225,5 +312,6 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
     void cloudWrites.then(() => oldCloud?.dispose())
   })
 
-  return { projects, records, activeId, loading, storageError, cloudState, createProject, openProject, resolveProject, deleteProject, saveProject: flush }
+  return { projects, records, activeId, loading, storageError, cloudState, atLimit,
+    createProject, importProject, openProject, resolveProject, deleteProject, renewProject, saveProject: flush }
 }

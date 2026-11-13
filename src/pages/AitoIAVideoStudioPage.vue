@@ -11,6 +11,7 @@ import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { downloadAitoIAFile, zipAitoIAFiles } from 'src/services/aitoiaArchive'
+import { readStudioProject } from 'src/services/aitoiaStudioArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia, parseStudioScript,
@@ -225,12 +226,16 @@ watch(accountId, (next, previous) => {
 })
 
 const { projects, records, activeId, loading: projectLoading, storageError, cloudState, createProject, openProject,
-  resolveProject, deleteProject, saveProject } = useAitoStudioProjects({
+  resolveProject, deleteProject, renewProject, importProject, atLimit, saveProject } = useAitoStudioProjects({
   studio: 'video', accountId, busy, defaultName: defaultProjectName, snapshot: snapshotProject, restore: restoreProject,
   watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, prompt, generationMode,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
     activeJob, projectComponents, componentTypes],
 })
+
+function importArchive(file) {
+  return importProject(options => readStudioProject(file, 'video', options))
+}
 
 function showAuth(mode = 'register') { authMode.value = mode; authOpen.value = true }
 const compactViewport = () => window.matchMedia('(max-width: 900px)').matches
@@ -381,7 +386,12 @@ async function applyDraft(fresh = false) {
   if (!draftReady.value) return
   const incoming = draft.value
   const owner = accountId.value
-  if (fresh) await createProject()
+  if (fresh) {
+    if (atLimit.value) { error.value = 'Exclua um projeto para criar outro.'; return }
+    const previous = activeId.value
+    await createProject()
+    if (activeId.value === previous) return
+  }
   if (!activeId.value || accountId.value !== owner || !mayEdit.value) return
   if (incoming.generated || incoming.purpose === 'save-clip') {
     const asset = incoming.generated || incoming.attachments[0]
@@ -1234,7 +1244,7 @@ function snapshotProject() {
   return { title: projectTitle.value, projectColor: projectColor.value, formatId: formatId.value, sceneId: sceneId.value,
     scenes: scenes.value.map(({ media, ...scene }) => ({ ...scene, file: media?.file })),
     narrationText: narrationText.value, narration: narration.value?.file, recording: recording.value?.blob,
-    prompt: prompt.value, scriptPrompt: scriptPrompt.value, generationMode: generationMode.value,
+    prompt: prompt.value, scriptPrompt: scriptPrompt.value, generationMode: generationMode.value, videoModel: videoModel.value,
     reference: reference.value?.file, referenceImages: referenceImages.value.map(item => item.file), referenceAnalysis: referenceAnalysis.value,
     transitionClips: transitionClips.value.map(clip => clip?.file || null), sourceFrames: sourceFrames.value.map(frame => frame.file),
     insertionAfter: insertionAfter.value, componentTypes: componentTypes.value, components: projectComponents.value,
@@ -1258,7 +1268,7 @@ async function restoreProject(project, signal) {
     signal.throwIfAborted()
     opened = true
     if (videoFormats.some(item => item.id === project.formatId)) formatId.value = project.formatId
-    replaceScenes(project.scenes.map(({ file, ...scene }) => ({ ...scene, media: localMedia.get(file) || null,
+    replaceScenes(project.scenes.map(({ file, ...scene }) => freshScene({ ...scene, media: localMedia.get(file) || null,
       missingMedia: scene.missingMedia || Boolean(file && !localMedia.get(file)) })), { remember: false })
     selectScene(scenes.value.some(scene => scene.id === project.sceneId) ? project.sceneId : scenes.value[0]?.id || '')
     narrationText.value = project.narrationText || ''
@@ -1266,7 +1276,8 @@ async function restoreProject(project, signal) {
     updateRecording(project.recording)
     prompt.value = project.prompt || ''
     scriptPrompt.value = project.scriptPrompt || ''
-    generationMode.value = project.generationMode || 'text'
+    generationMode.value = generationModes.some(mode => mode.id === project.generationMode) ? project.generationMode : 'text'
+    if (videoCatalog.some(model => model.id === project.videoModel)) videoModel.value = project.videoModel
     reference.value = project.reference ? { file: project.reference, url: URL.createObjectURL(project.reference) } : null
     referenceImages.value = (project.referenceImages || []).map(file => ({ file, url: URL.createObjectURL(file) }))
     transitionClips.value = [0, 1].map(index => {
@@ -1368,7 +1379,8 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
         </header>
         <div class="video-studio__drawer-section">
           <AitoStudioProjectPicker v-if="signedIn" drawer :projects="projects" :active-id="activeId" :loading="projectLoading"
-            :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)" @create="chooseProject()" @open="chooseProject" @remove="deleteProject" />
+            :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)"
+            @create="chooseProject()" @open="chooseProject" @remove="deleteProject" @renew="renewProject" @import="importArchive" />
           <q-btn v-else outline no-caps color="teal-3" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
           <q-input v-if="signedIn && activeId" v-model="title" dark outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
         </div>
@@ -1419,7 +1431,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
         <q-icon name="mdi-message-arrow-right-outline" size="22px" />
         <strong>{{ draft.purpose === 'save-clip' || draft.generated ? 'Clipe do chat' : 'Rascunho do chat' }}</strong>
         <button type="button" class="video-studio__secondary" :disabled="!draftReady" @click="applyDraft()">Usar neste projeto</button>
-        <button type="button" class="video-studio__primary" :disabled="!draftReady" @click="applyDraft(true)">Criar projeto</button>
+        <button type="button" class="video-studio__primary" :disabled="!draftReady || atLimit" @click="applyDraft(true)">Criar projeto</button>
       </div>
 
       <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai' }">

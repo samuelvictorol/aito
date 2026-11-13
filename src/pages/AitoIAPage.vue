@@ -10,6 +10,7 @@ import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
 import { requestsVideoGeneration, saveVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { api } from 'boot/axios'
+import { AITOIA_CHAT_LIMIT } from 'src/services/aitoiaLocal'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -22,7 +23,7 @@ const $q = useQuasar()
 const state = useAitoIA()
 const { signedIn, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
   modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
-  activeId, active, request, chatList, storageError, loadingConversation, hasInput, walletLoading, imageQuote } = state
+  activeId, active, chatLimitReached, chatLimitMessage, request, chatList, storageError, loadingConversation, hasInput, walletLoading, imageQuote } = state
 const composer = ref(null)
 const fileInput = ref(null)
 const authOpen = ref(false)
@@ -61,7 +62,7 @@ function showAuth(mode = 'register') {
 }
 function focusComposer() { nextTick(() => composer.value?.focus()) }
 function chooseChat(id) { stopped.value = false; state.selectChat(id); sidebarOpen.value = false; focusComposer() }
-function newChat() { if (signedIn.value) chooseChat(''); else showAuth() }
+function newChat() { if (!signedIn.value) showAuth(); else if (!chatLimitReached.value) chooseChat('') }
 function showWallet() {
   if (!signedIn.value) { showAuth(); return }
   walletOpen.value = true
@@ -76,6 +77,7 @@ function showSettings() {
 function requestSend() {
   if (!signedIn.value) { showAuth(); return }
   if (busy.value) return
+  if (!active.value && chatLimitReached.value) { error.value = chatLimitMessage; return }
   if (isVideoRequest.value) { chooseVideoMode(); return }
   if (status.value?.balanceUsdCents <= 0) { showWallet(); return }
   if (!status.value || !status.value.configured) return
@@ -174,9 +176,10 @@ onMounted(() => {
         <router-link to="/" class="aito-studio__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="42" height="42" alt="" /><span>Aito<span>IA</span></span></router-link>
         <button type="button" class="aito-studio__icon aito-studio__sidebar-close" aria-label="Fechar conversas" @click="sidebarOpen = false"><q-icon name="mdi-close" size="21px" /></button>
       </div>
-      <button type="button" class="aito-studio__new" @click="newChat"><q-icon name="mdi-plus" size="20px" /> Nova conversa</button>
+      <button type="button" class="aito-studio__new" :disabled="chatLimitReached" @click="newChat"><q-icon name="mdi-plus" size="20px" /> Nova conversa</button>
+      <div v-if="chatLimitReached" class="aito-studio__empty-list" role="status">{{ chatLimitMessage }}</div>
       <div class="aito-studio__sidebar-label">
-        <span>Conversas</span>
+        <span>Conversas<span v-if="signedIn"> · {{ chats.length }}/{{ AITOIA_CHAT_LIMIT }}</span></span>
         <button v-if="chats.length" type="button" class="aito-studio__icon" aria-label="Exportar conversas"><q-icon name="mdi-tray-arrow-down" size="18px" />
           <q-menu dark class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 190px">
             <q-item v-close-popup clickable @click="state.exportChats('zip')"><q-item-section>Baixar tudo em ZIP</q-item-section></q-item>

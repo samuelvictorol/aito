@@ -9,6 +9,7 @@ import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { accessMarketingKit, exportMarketingImage, loadMarketingReferenceUrl, marketingFormats, prepareMarketingReference, readMarketingImage } from 'src/services/aitoiaMarketingLocal'
+import { exportMarketingProject, readStudioProject } from 'src/services/aitoiaStudioArchive'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -30,6 +31,7 @@ const formatId = ref('feed')
 const prompt = ref('')
 const references = shallowRef([])
 const kit = shallowRef([])
+const projectKit = shallowRef([])
 const selectedKit = ref([])
 const kitLoading = ref(false)
 const componentDialog = ref(false)
@@ -73,7 +75,8 @@ const maxReferences = computed(() => catalog.value?.maxReferences || 6)
 const maxReferenceBytes = computed(() => catalog.value?.maxReferenceBytes || 786432)
 const maxComponents = computed(() => catalog.value?.maxComponents || 6)
 const maxPaletteColors = computed(() => catalog.value?.maxPaletteColors || 10)
-const activeKit = computed(() => kit.value.filter(item => selectedKit.value.includes(item.id)))
+const availableKit = computed(() => [...kit.value, ...projectKit.value])
+const activeKit = computed(() => availableKit.value.filter(item => selectedKit.value.includes(item.id)))
 const referenceCount = computed(() => references.value.length + activeKit.value.filter(item => item.blob).length)
 const locked = computed(() => busy.value || uploading.value || !!quote.value)
 const output = computed(() => images.value.find(image => image.id === imageId.value) || null)
@@ -112,7 +115,7 @@ async function previewComponent() {
     if (!controller.signal.aborted) componentImageError.value = cause.message || 'Não foi possível abrir a imagem.'
   } finally { if (previewRequest === controller) componentPreviewBusy.value = false }
 }
-function clearProjectMedia() { [...images.value, ...references.value].forEach(disposeAsset) }
+function clearProjectMedia() { [...images.value, ...references.value, ...projectKit.value].forEach(disposeAsset) }
 function resetKit() { kit.value.forEach(disposeAsset); kit.value = [] }
 function token() { return localStorage.getItem('aito_user_token') || '' }
 const config = (access, signal, headers = {}) => ({ signal, headers: { Authorization: `Bearer ${access}`, ...headers } })
@@ -139,9 +142,9 @@ watch(accountId, async (id, previous) => {
 const stripUrl = ({ url: _url, ...asset }) => asset
 const project = useAitoStudioProjects({
   studio: 'marketing', accountId, busy: locked, defaultName: 'Projeto de marketing',
-  watch: [projectTitle, formatId, prompt, references, selectedKit, palette, images, imageId],
+  watch: [projectTitle, formatId, prompt, references, selectedKit, projectKit, palette, images, imageId],
   snapshot: () => ({ title: projectTitle.value, formatId: formatId.value, prompt: prompt.value,
-    references: references.value.map(stripUrl), selectedKit: [...selectedKit.value], palette: [...palette.value],
+    references: references.value.map(stripUrl), selectedKit: [...selectedKit.value], projectKit: projectKit.value.map(stripUrl), palette: [...palette.value],
     images: images.value.map(stripUrl), imageId: imageId.value }),
   restore(saved) {
     clearProjectMedia()
@@ -150,6 +153,7 @@ const project = useAitoStudioProjects({
     prompt.value = saved?.prompt || ''
     references.value = (saved?.references || []).map(localAsset)
     selectedKit.value = saved?.selectedKit || []
+    projectKit.value = (saved?.projectKit || []).map(localAsset)
     paletteDialog.value = false
     palette.value = Array.isArray(saved?.palette) ? saved.palette.filter(isPaletteColor).slice(0, maxPaletteColors.value) : []
     images.value = (saved?.images || []).map(localAsset)
@@ -157,7 +161,28 @@ const project = useAitoStudioProjects({
     error.value = ''
   },
 })
-const { projects, activeId: projectId, loading: projectLoading, storageError, cloudState, createProject, openProject, deleteProject, saveProject } = project
+const { projects, activeId: projectId, loading: projectLoading, storageError, cloudState, createProject, openProject,
+  deleteProject, renewProject, importProject, resolveProject, saveProject } = project
+
+function importArchive(file) {
+  return importProject(options => readStudioProject(file, 'marketing', options))
+}
+
+async function archiveProject() {
+  if (locked.value || projectLoading.value) return
+  const owner = accountId.value
+  busy.value = true
+  try {
+    await saveProject()
+    const record = await resolveProject(projectId.value)
+    if (!record) throw new Error('O projeto expirou.')
+    const zip = await exportMarketingProject(record, availableKit.value.filter(item =>
+      record.selectedKit?.includes(item.id) || projectKit.value.includes(item)).map(stripUrl))
+    if (owner === accountId.value) downloadAitoIAFile(zip, 'aitoia-projeto-marketing.zip')
+  } catch (cause) {
+    if (owner === accountId.value) error.value = cause.message || 'Não foi possível baixar o projeto.'
+  } finally { busy.value = false }
+}
 
 const paletteLocked = computed(() => locked.value || projectLoading.value)
 function editPaletteColor(index = -1) {
@@ -249,6 +274,10 @@ function removeReference(item) {
 
 function toggleKit(item) {
   const selected = selectedKit.value.includes(item.id)
+  if (!selected && activeKit.value.length >= maxComponents.value) {
+    error.value = 'Desmarque um componente antes de selecionar outro.'
+    return
+  }
   if (!selected && item.blob && referenceCount.value >= maxReferences.value) {
     error.value = 'Remova uma referência antes de adicionar esta imagem da marca.'
     return
@@ -300,7 +329,8 @@ async function addComponent() {
 }
 
 async function removeComponent(item) {
-  if (!await saveKit(kit.value.filter(entry => entry.id !== item.id))) return
+  if (projectKit.value.includes(item)) projectKit.value = projectKit.value.filter(entry => entry.id !== item.id)
+  else if (!await saveKit(kit.value.filter(entry => entry.id !== item.id))) return
   selectedKit.value = selectedKit.value.filter(id => id !== item.id)
   disposeAsset(item)
 }
@@ -391,8 +421,9 @@ onBeforeUnmount(() => {
           <q-btn ref="drawerCloseButton" flat round dense icon="mdi-close" aria-label="Fechar projetos e componentes" @click="closeWorkspace" />
         </div>
         <section class="marketing__drawer-section" aria-label="Projetos do Estúdio de Marketing">
-          <AitoStudioProjectPicker drawer :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
-            :disabled="!accountId || locked" @create="createProject" @open="selectProject" @remove="deleteProject" />
+          <AitoStudioProjectPicker drawer can-export :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
+            :disabled="!accountId || locked" @create="createProject" @open="selectProject" @remove="deleteProject"
+            @renew="renewProject" @import="importArchive" @export="archiveProject" />
           <q-input v-if="projectId" v-model="projectTitle" dark outlined label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
         </section>
         <section class="marketing__drawer-section" aria-labelledby="marketing-palette">
@@ -410,15 +441,15 @@ onBeforeUnmount(() => {
             :disable="paletteLocked || palette.length >= maxPaletteColors" @click="editPaletteColor()" />
         </section>
         <section class="marketing__drawer-section" aria-labelledby="marketing-kit">
-          <div class="marketing__section-title"><h2 id="marketing-kit">Kit de marca</h2><span v-if="kit.length">{{ activeKit.length }}/{{ kit.length }} em uso</span></div>
+          <div class="marketing__section-title"><h2 id="marketing-kit">Kit de marca</h2><span v-if="availableKit.length">{{ activeKit.length }}/{{ availableKit.length }} em uso</span></div>
           <q-btn outline no-caps class="marketing__add-component" icon="mdi-plus" label="Adicionar componente"
             :disable="locked || kitBusy || kitLoading || (signedIn && !accountId) || kit.length >= maxComponents"
             @click="signedIn ? openComponent() : showAuth()" />
           <p v-if="kitError" role="status">{{ kitError }}</p>
           <p v-else-if="kitLoading" role="status">Carregando componentes…</p>
-          <p v-else-if="!kit.length">Adicione seu logo ou um texto que você reutiliza nas peças.</p>
-          <ul v-if="kit.length" class="marketing__kit">
-            <li v-for="item in kit" :key="item.id">
+          <p v-else-if="!availableKit.length">Adicione seu logo ou um texto que você reutiliza nas peças.</p>
+          <ul v-if="availableKit.length" class="marketing__kit">
+            <li v-for="item in availableKit" :key="item.id">
               <button type="button" :aria-pressed="selectedKit.includes(item.id)" :disabled="locked || kitBusy" @click="toggleKit(item)">
                 <img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-text-box-outline" size="24px" /><span :title="item.label">{{ item.label }}</span><q-icon v-if="selectedKit.includes(item.id)" name="mdi-check-circle" size="17px" />
               </button>

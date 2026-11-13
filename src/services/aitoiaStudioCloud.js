@@ -1,5 +1,4 @@
 import { api } from 'boot/axios'
-import { AITOIA_RETENTION_MS } from './aitoiaLocal'
 
 const limits = { file: 60 * 1024 * 1024, project: 100 * 1024 * 1024 }
 const tokenStorageKey = 'aito_user_token'
@@ -65,7 +64,8 @@ export function createStudioCloud(studio) {
     const project = await pack(snapshot)
     for (const [digest, { value, type, deadline }] of jobs) {
       const key = digest + ':' + deadline
-      const operation = running.get(key) || api.put(path + '/assets/' + digest + '?expiresAt=' + encodeURIComponent(new Date(deadline).toISOString()),
+      const params = new URLSearchParams({ expiresAt: new Date(deadline).toISOString(), projectId: id })
+      const operation = running.get(key) || api.put(path + '/assets/' + digest + '?' + params,
         value, { ...options({ 'Content-Type': type }), timeout: 120000 }).then(({ data }) => {
         uploaded.set(digest, timeOf(data.data.expiresAt))
       }).finally(() => running.delete(key))
@@ -101,11 +101,16 @@ export function createStudioCloud(studio) {
     }
     const { cloudOnly: _remote, ...stored } = record
     const project = await read(stored)
-    if (!(project.expiresAt > Date.now()) || project.expiresAt > project.createdAt + AITOIA_RETENTION_MS) throw new Error('O projeto expirou.')
+    if (!(project.expiresAt > Date.now())) throw new Error('O projeto expirou.')
     return project
   }
   async function remove(id) {
     await api.delete(path + '/projects/' + encodeURIComponent(id), options())
   }
-  return { list, save, expand, remove, dispose: () => life.abort() }
+  async function renew(id, expectedExpiry) {
+    const { data } = await api.post(path + '/projects/' + encodeURIComponent(id) + '/renew', { expectedExpiry }, options())
+    uploaded.clear()
+    return unpack(data.data)
+  }
+  return { list, save, expand, remove, renew, dispose: () => life.abort() }
 }

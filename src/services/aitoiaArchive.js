@@ -119,6 +119,51 @@ export async function zipAitoIAFiles(files) {
   return new Blob([...contents, ...directory, endOfDirectory(entries.length, directorySize, offset)], { type: 'application/zip' })
 }
 
+export async function readAitoProjectZip(blob) {
+  const invalid = () => new Error('Selecione um ZIP de projeto exportado pela AitoSoftwares. O arquivo está inválido ou incompleto.')
+  if (!blob || blob.size < 22 || blob.size > 256 * 1024 * 1024) throw invalid()
+  const view = async (start, end) => new DataView(await blob.slice(start, end).arrayBuffer())
+  const end = await view(-22)
+  const count = end.getUint16(10, true)
+  const size = end.getUint32(12, true)
+  const offset = end.getUint32(16, true)
+  if (end.getUint32(0, true) !== 0x06054b50 || end.getUint32(4, true) || end.getUint16(20, true) ||
+      end.getUint16(8, true) !== count || !count || count > 402 || size > 256 * 1024 || offset + size + 22 !== blob.size) throw invalid()
+  const directory = await view(offset, offset + size)
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  const files = new Map()
+  let cursor = 0
+  let nextOffset = 0
+  for (let i = 0; i < count; i++) {
+    if (cursor + 46 > size || directory.getUint32(cursor, true) !== 0x02014b50 ||
+        directory.getUint16(cursor + 8, true) !== UTF8 || directory.getUint16(cursor + 10, true) ||
+        directory.getUint32(cursor + 42, true) !== nextOffset) throw invalid()
+    const bytes = directory.getUint32(cursor + 20, true)
+    const crc = directory.getUint32(cursor + 16, true)
+    const nameSize = directory.getUint16(cursor + 28, true)
+    const nameStart = cursor + 46
+    if (!nameSize || nameStart + nameSize > size || bytes !== directory.getUint32(cursor + 24, true) ||
+        directory.getUint16(cursor + 30, true) || directory.getUint16(cursor + 32, true) || directory.getUint16(cursor + 34, true)) throw invalid()
+    const nameBytes = new Uint8Array(directory.buffer, nameStart, nameSize)
+    const name = decoder.decode(nameBytes)
+    const dataOffset = nextOffset + 30 + nameSize
+    if (files.has(name) || /[\\:\x00-\x1f\x7f]/.test(name) || name.split('/').some(part => !part || part === '.' || part === '..') ||
+        dataOffset + bytes > offset) throw invalid()
+    const header = await view(nextOffset, dataOffset)
+    if (header.getUint32(0, true) !== 0x04034b50 || header.getUint16(6, true) !== UTF8 || header.getUint16(8, true) ||
+        header.getUint32(14, true) !== crc || header.getUint32(18, true) !== bytes || header.getUint32(22, true) !== bytes ||
+        header.getUint16(26, true) !== nameSize || header.getUint16(28, true) ||
+        !nameBytes.every((byte, index) => byte === header.getUint8(30 + index))) throw invalid()
+    const file = blob.slice(dataOffset, dataOffset + bytes)
+    if (await checksum(file) !== crc) throw invalid()
+    files.set(name, file)
+    nextOffset = dataOffset + bytes
+    cursor = nameStart + nameSize
+  }
+  if (nextOffset !== offset || cursor !== size) throw invalid()
+  return files
+}
+
 export async function exportAitoIAZip(conversations) {
   const { metadata, files } = toExport(conversations, true)
   return zipAitoIAFiles([{ name: 'conversas.json', blob: metadata }, ...files])

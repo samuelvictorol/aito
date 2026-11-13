@@ -5,6 +5,20 @@ const sessions = new Map()
 export { downloadAitoIAJson, downloadAitoIAZip, exportAitoIAJson, exportAitoIAZip } from './aitoiaArchive.js'
 
 export const AITOIA_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+export const STUDIO_RENEWAL_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+export const AITOIA_STUDIO_LIMIT = 3
+export const AITOIA_CHAT_LIMIT = 5
+
+export function canRenewStudio(expiresAt, now = Date.now()) {
+  return expiresAt > now && expiresAt - now <= STUDIO_RENEWAL_WINDOW_MS
+}
+
+export function renewStudioMedia(project, expiresAt, now = Date.now()) {
+  if (expiresAt <= project.expiresAt) return { ...project, expiresAt }
+  const update = item => item.file && item.expiresAt > now ? { ...item, expiresAt: Math.max(item.expiresAt, expiresAt) } : item
+  return { ...project, expiresAt, ...(project.scenes && { scenes: project.scenes.map(update) }),
+    ...(project.clips && { clips: project.clips.map(update) }) }
+}
 
 function clone(value) {
   if (!value || typeof value !== 'object' || value instanceof Blob) return value
@@ -28,9 +42,11 @@ function expiredError() {
   })
 }
 
-function recordFor(accountId, conversation, previous, now) {
+function recordFor(accountId, conversation, previous, now, studio) {
   const createdAt = previous?.createdAt ?? (Number.isSafeInteger(conversation.createdAt) ? Math.min(conversation.createdAt, now) : now)
-  const expiresAt = createdAt + AITOIA_RETENTION_MS
+  const expiresAt = studio && Number.isSafeInteger(conversation.expiresAt)
+    ? Math.min(now + AITOIA_RETENTION_MS + STUDIO_RENEWAL_WINDOW_MS, Math.max(previous?.expiresAt || 0, conversation.expiresAt))
+    : createdAt + AITOIA_RETENTION_MS
   if (expiresAt <= now) throw expiredError()
   return { ...clone(conversation), accountId, createdAt, updatedAt: now, expiresAt }
 }
@@ -83,7 +99,7 @@ function purgeMemory(now) {
 
 export function createAitoIALocalStore(accountId, options = {}) {
   if (typeof accountId !== 'string' || !accountId.trim() || accountId.length > 256) throw new TypeError('Conta inválida.')
-  const { now = Date.now, onExpire } = options
+  const { now = Date.now, onExpire, studio = false, maxRecords = Infinity } = options
   let connection
   let deadline = Infinity
   let expiryTimer
@@ -136,20 +152,56 @@ export function createAitoIALocalStore(accountId, options = {}) {
     const id = conversationId(conversation?.id)
     const db = await database()
     let record
+    const build = (previous, rows, time) => {
+      if (!previous && rows.filter(row => row.expiresAt > time).length >= maxRecords) {
+        throw Object.assign(new Error(`Limite de ${maxRecords} ${studio ? 'projetos' : 'conversas'} ativos atingido.`), { code: 'AITOIA_RECORD_LIMIT' })
+      }
+      return recordFor(accountId, conversation, previous, time, studio)
+    }
     if (db) {
       record = await transaction(db, (table, read, finish) => {
         read(table.get([accountId, id]), previous => {
-          const next = recordFor(accountId, conversation, previous, now())
-          table.put(next)
-          finish(next)
+          const save = rows => {
+            const next = build(previous, rows, now())
+            table.put(next)
+            finish(next)
+          }
+          if (previous || maxRecords === Infinity) save([])
+          else read(table.index('accountId').getAll(accountId), save)
         })
       })
     } else {
       const rows = sessions.get(accountId) || new Map()
-      record = recordFor(accountId, conversation, rows.get(id), now())
+      record = build(rows.get(id), [...rows.values()], now())
       purgeMemory(now())
       rows.set(id, record)
       sessions.set(accountId, rows)
+    }
+    schedule(record.expiresAt)
+    return publicRecord(record)
+  }
+
+  async function renew(id, expectedExpiry) {
+    conversationId(id)
+    const db = await database()
+    const extend = previous => {
+      const time = now()
+      if (!studio || previous?.expiresAt !== expectedExpiry || !canRenewStudio(expectedExpiry, time)) {
+        throw new Error('Este projeto só pode ser prorrogado nos últimos três dias do prazo.')
+      }
+      return { ...renewStudioMedia(previous, expectedExpiry + AITOIA_RETENTION_MS, time), updatedAt: time }
+    }
+    let record
+    if (db) {
+      record = await transaction(db, (table, read, finish) => read(table.get([accountId, id]), previous => {
+        const next = extend(previous)
+        table.put(next)
+        finish(next)
+      }))
+    } else {
+      const rows = sessions.get(accountId)
+      record = extend(rows?.get(id))
+      rows.set(id, record)
     }
     schedule(record.expiresAt)
     return publicRecord(record)
@@ -179,5 +231,5 @@ export function createAitoIALocalStore(accountId, options = {}) {
     void connection?.then(db => db?.close())
   }
 
-  return { list, save, remove, clear, dispose }
+  return { list, save, renew, remove, clear, dispose }
 }

@@ -1,6 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { api } from 'boot/axios'
-import { createAitoIALocalStore } from 'src/services/aitoiaLocal'
+import { AITOIA_CHAT_LIMIT, createAitoIALocalStore } from 'src/services/aitoiaLocal'
 import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/services/aitoiaArchive'
 import { checkAttachment, checkoutLink, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
 import { artifactReferences, fileFromArtifact, fileFromImage, prepareArtifactReferences } from 'src/services/aitoiaArtifacts'
@@ -73,6 +73,8 @@ export function useAitoIA({ chatHistory = true } = {}) {
 
   const signedIn = computed(() => Boolean(token.value))
   const active = computed(() => chats.value.find(chat => chat.id === activeId.value) || null)
+  const chatLimitReached = computed(() => chats.value.length >= AITOIA_CHAT_LIMIT)
+  const chatLimitMessage = 'Você já tem cinco conversas. Exclua uma para começar outra.'
   const currentModel = computed(() => models.value.find(item => item.id === model.value))
   const efforts = computed(() => currentModel.value?.efforts || [])
   const speeds = computed(() => currentModel.value?.speeds || [])
@@ -96,7 +98,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   async function openStore(id, epoch) {
     if (typeof id !== 'string' || !id || storeAccount === id) return
     store?.dispose?.()
-    const target = createAitoIALocalStore(id, { onExpire: () => { if (store === target) pruneLocal() } })
+    const target = createAitoIALocalStore(id, { maxRecords: AITOIA_CHAT_LIMIT, onExpire: () => { if (store === target) pruneLocal() } })
     store = target
     storeAccount = id
     try {
@@ -318,6 +320,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   async function send() {
     if (!hasInput.value || !signedIn.value || request.value || !currentModel.value || !accountId.value) return
     pruneLocal()
+    if (!active.value && chatLimitReached.value) { error.value = chatLimitMessage; return }
     const epoch = sessionEpoch
     const at = Date.now()
     const text = draft.value.trim()
@@ -338,9 +341,19 @@ export function useAitoIA({ chatHistory = true } = {}) {
     activeId.value = chat.id
     draft.value = ''
     attachments.value = []
-    saveChat({ ...chat, updatedAt: at, messages })
-    scrollToEnd()
     try {
+      const next = { ...chat, updatedAt: at, messages }
+      if (active.value) await saveChat(next)
+      else {
+        try { await store?.save(next) }
+        catch (cause) {
+          if (cause.code === 'AITOIA_RECORD_LIMIT') throw new Error(chatLimitMessage)
+          storageError.value = 'O navegador não salvou esta conversa. Você ainda pode baixar os dados desta aba.'
+        }
+        if (controller.signal.aborted || sessionEpoch !== epoch) return
+        chats.value = [next, ...chats.value.filter(item => item.id !== next.id)]
+      }
+      scrollToEnd()
       const { input, shortened } = await requestMessages(messages)
       if (controller.signal.aborted || sessionEpoch !== epoch) return
       contextShortened.value = shortened
@@ -391,6 +404,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
               store?.remove(chat.id).catch(() => { storageError.value = 'Não foi possível remover o rascunho salvo.' })
             }
           }
+          else activeId.value = ''
           draft.value = text
           attachments.value = files
         }
@@ -560,7 +574,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
 
   return { accountId, signedIn, sessionLoading, status, walletId, models, model, currentModel, effort, efforts,
     speed, speeds, webSearch, modelLoading, settingsError, walletError, error, contextShortened,
-    draft, attachments, chats, activeId, active, request, pending, history, historyLoading, historyTotal,
+    draft, attachments, chats, activeId, active, chatLimitReached, chatLimitMessage, request, pending, history, historyLoading, historyTotal,
     historyOffset, historyLimit, walletLoading, checkoutBusy, paymentBusy, paymentNotice, chatList, storageError,
     loadingConversation, hasInput, imageQuote, quoteImage: processImage, confirmImage, syncSession, refreshStatus, refreshModels, selectChat, renameChat, removeChat,
     exportChats, addFiles, send, stop, selectWallet, loadHistory, checkout, checkPayment }
