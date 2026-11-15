@@ -14,12 +14,12 @@ const loading = ref(false)
 const savingLimit = ref(false)
 const error = ref('')
 const checkedAt = ref(null)
-const filters = reactive({ owner: '', status: null, source: null })
+const filters = reactive({ owner: '', status: 'queued', source: null })
 const pagination = ref({ page: 1, rowsPerPage: 10, rowsNumber: 0 })
 const preview = ref(null)
 const previewOpen = ref(false)
 const previewing = ref('')
-let appliedFilters = {}
+let appliedFilters = { status: filters.status }
 let pendingLoad
 let pendingSave
 let pendingPreview

@@ -2181,7 +2181,7 @@ onBeforeUnmount(() => {
               :disable="!mayEdit || Boolean(busy) || Boolean(activeJob)"
               @update:model-value="selectVideoModel" />
             <label>{{ transitionMode ? 'Como a transição deve acontecer?' : 'Descrição do clipe' }}
-              <textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="2000" :placeholder="transitionMode ? 'Ex.: faça a câmera avançar entre as duas cenas com um movimento suave…' : 'Descreva o cenário, o movimento de câmera e o estilo…'" :disabled="!mayEdit" />
+              <textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="2000" :placeholder="transitionMode ? 'Ex.: faça a câmera avançar entre as duas cenas com um movimento suave…' : 'Descreva o cenário, o movimento de câmera, o estilo e as falas dos personagens…'" :disabled="!mayEdit" />
             </label>
             <div v-if="generationMode === 'reference' && !reference && !referenceImages.length && !voiceReference" class="video-studio__actions">
               <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" @click="usePromptOnly">

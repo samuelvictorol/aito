@@ -2,12 +2,14 @@
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import AitoVideoProgress from './AitoVideoProgress.vue'
 import AitoVideoModelSelect from './AitoVideoModelSelect.vue'
+import AitoRemakeSubtitleRegion from './AitoRemakeSubtitleRegion.vue'
 import { aitoTokens } from 'src/composables/useAitoIA'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
-import { burnRemakeCaptions, maxRemakeInputBytes, remakeInputAccept, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
+import { burnRemakeCaptions, maxRemakeInputBytes, maxRemakeSceneSeconds, prepareRemakeVideoReference,
+  remakeInputAccept, remakeSplitDurations, removeRemakeSourceSubtitles, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
 import { prepareRemakePlan, quoteRemakePlan } from 'src/services/aitoiaVideoRemakePlan'
 import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 
@@ -31,6 +33,8 @@ const pendingStorageKey = 'aitoia-video-remakes-pending'
 const pendingLifetime = AITOIA_RETENTION_MS
 const maxReferences = 6
 const selectedFile = shallowRef(null)
+const subtitleScene = shallowRef(null)
+const splitDuration = ref(remakeSplitDurations[0])
 const input = ref(null)
 const inputError = ref('')
 const action = shallowRef(null)
@@ -56,13 +60,18 @@ const formatSeconds = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 
 const seconds = value => formatSeconds.format(Math.max(0, Number(value) || 0))
 const selectedReferences = ids => ids.map(id => props.references.find(item => item.id === id)).filter(Boolean)
 const referencesFor = scene => selectedReferences(scene.referenceIds ?? referenceIds.value)
-const modelFor = scene => props.models.find(model => model.id === scene.modelId) || props.models[0]
+const modelsFor = scene => props.models.filter(model => scene.duration <= (model.sourceSecondsMax ?? remakeSplitDurations[0]))
+const modelFor = scene => {
+  const models = modelsFor(scene)
+  return models.find(model => model.id === scene.modelId) || models[0]
+}
 const resolutionFor = scene => {
   const options = modelFor(scene)?.options || []
   const preferred = scene.resolution || resolution.value
   return (options.find(option => option.id === preferred) || options[0])?.id
 }
-const canQuote = scene => Boolean(scene.file && resolutionFor(scene) && (scene.edit.trim() || master.value.trim() || scene.plan || referencesFor(scene).length || scene.captions))
+const canQuote = scene => Boolean(scene.file && resolutionFor(scene) &&
+  (scene.edit.trim() || scene.dialogue.trim() || scene.subtitleRegion || master.value.trim() || scene.plan || referencesFor(scene).length || scene.captions))
 const lockedScene = scene => locked.value || Boolean(scene.job || scene.submitted)
 const approximateCharge = (total, estimateCents, estimateTokens) =>
   estimateCents > 0 && Number.isFinite(total) ? Math.round(total * estimateTokens / estimateCents) : 0
@@ -90,9 +99,11 @@ function pendingScene(scene) {
 }
 
 function draftSnapshot() {
-  return { master: master.value, referenceIds: [...referenceIds.value], resolution: resolution.value, discardedJobs: discardedJobs.value,
+  return { master: master.value, referenceIds: [...referenceIds.value], resolution: resolution.value, splitDuration: splitDuration.value,
+    discardedJobs: discardedJobs.value,
     scenes: scenes.value.map(scene => ({ index: scene.index, clientSceneId: scene.clientSceneId, start: scene.start, duration: scene.duration,
-      providerDuration: scene.providerDuration, file: scene.file, edit: scene.edit, referenceIds: scene.referenceIds,
+      providerDuration: scene.providerDuration, file: scene.file, edit: scene.edit, dialogue: scene.dialogue,
+      subtitleRegion: scene.subtitleRegion, referenceIds: scene.referenceIds,
       captions: scene.captions, caption: scene.caption, plan: scene.plan, transcript: scene.transcript, planSpend: scene.planSpend,
       modelId: scene.modelId, resolution: scene.resolution,
       ...(scene.result && { result: { ...scene.result, previewUrl: undefined, expiresAt: undefined } }),
@@ -105,18 +116,21 @@ function loadDraft(draft) {
   const saved = draft?.scenes || []
   const known = new Set(saved.map(item => item.index))
   restoreDraft = true
+  subtitleScene.value = null
   releaseScenes(scenes.value)
   scenes.value = []
   master.value = draft?.master || ''
   referenceIds.value = draft?.referenceIds || []
   resolution.value = draft?.resolution || '480p'
+  splitDuration.value = remakeSplitDurations.includes(draft?.splitDuration) ? draft.splitDuration : remakeSplitDurations[0]
   discardedJobs.value = (draft?.discardedJobs || []).slice(-300)
   scenes.value = [...saved, ...pending.filter(item => !known.has(item.index))].map(item => {
     const job = !item.result && (item.pending || pending.find(row => row.index === item.index && (!row.sceneId || !item.clientSceneId || row.sceneId === item.clientSceneId)))
     const result = item.result?.file && props.projectExpiresAt > Date.now()
       ? { ...item.result, expiresAt: props.projectExpiresAt, previewUrl: URL.createObjectURL(item.result.file) } : null
     return reactive({ ...item, clientSceneId: item.clientSceneId || job?.sceneId || crypto.randomUUID(),
-      requestId: job?.requestId, submittedAt: job?.submittedAt, edit: item.edit || '', referenceIds: item.referenceIds ?? null, captions: Boolean(item.captions || job?.caption),
+      requestId: job?.requestId, submittedAt: job?.submittedAt, edit: item.edit || '', dialogue: item.dialogue || '',
+      referenceIds: item.referenceIds ?? null, captions: Boolean(item.captions || job?.caption),
       caption: item.caption || job?.caption || '', plan: item.plan || '', planSpend: item.planSpend || 0, result, error: '',
       url: item.file ? URL.createObjectURL(item.file) : '', recovered: !item.file, job: job?.id ? { id: job.id, status: job.status || 'queued' } : null,
       submitted: Boolean(job), quote: job ? { caption: job.caption, billedUsdCents: job.billedUsdCents,
@@ -126,7 +140,7 @@ function loadDraft(draft) {
   draftLoaded = true
 }
 
-watch([scenes, master, referenceIds, resolution, discardedJobs], () => {
+watch([scenes, master, referenceIds, resolution, splitDuration, discardedJobs], () => {
   if (!restoreDraft && props.projectScope) emit('draft', draftSnapshot())
 }, { deep: true, flush: 'sync' })
 function clearQuote(scene) {
@@ -154,8 +168,13 @@ watch([() => props.blocked, () => props.projectScope], ([blocked, scope]) => {
 function patchScene(scene, patch) {
   if (lockedScene(scene)) return
   Object.assign(scene, patch)
-  if ('edit' in patch || 'referenceIds' in patch || 'captions' in patch) scene.plan = ''
+  if ('edit' in patch || 'dialogue' in patch || 'referenceIds' in patch || 'captions' in patch) scene.plan = ''
   clearQuote(scene)
+}
+function saveSubtitleRegion(region) {
+  const scene = subtitleScene.value
+  if (scene && scenes.value.includes(scene)) patchScene(scene, { subtitleRegion: region })
+  subtitleScene.value = null
 }
 function readPending(all = false) {
   if (typeof localStorage === 'undefined' || !props.projectScope) return []
@@ -165,7 +184,7 @@ function readPending(all = false) {
     const cutoff = Date.now()
     const rows = saved.filter(item => item?.expiresAt > cutoff && item.expiresAt <= cutoff + pendingLifetime &&
       typeof item.scope === 'string' && (typeof item.id === 'string' && item.id.length <= 1500 || typeof item.requestId === 'string' && item.requestId.length === 36) &&
-      Number.isSafeInteger(item.index) && item.index >= 0 && item.duration > 0 && item.duration <= 5)
+      Number.isSafeInteger(item.index) && item.index >= 0 && item.duration > 0 && item.duration <= maxRemakeSceneSeconds)
     if (!all && rows.length !== saved.length) localStorage.setItem(pendingStorageKey, JSON.stringify(rows))
     return all ? rows : rows.filter(item => item.scope === props.projectScope)
   } catch { return [] }
@@ -243,21 +262,22 @@ async function execute(kind, scene, operation) {
 function splittingProgress(value) { progress.value = Math.min(1, Math.max(0, Number(value) || 0)) }
 function confirmSource() {
   const file = selectedFile.value
+  const duration = splitDuration.value
   if (!file || rejectUpload(file) || scenes.value.some(scene => scene.job || scene.submitted)) return
   if (scenes.value.length) {
     confirmStudioRemoval('Substituir cenas de origem?', 'Os cortes e as prévias deste painel serão substituídos pelo novo vídeo.', () => {
-      if (!disposed && selectedFile.value === file) void splitSource(file)
+      if (!disposed && selectedFile.value === file) void splitSource(file, duration)
     }, 'Substituir')
-  } else void splitSource(file)
+  } else void splitSource(file, duration)
 }
-async function splitSource(file) {
+async function splitSource(file, duration) {
   if (scenes.value.some(scene => scene.job || scene.submitted)) return
   await execute('split', null, async signal => {
-    const clips = await splitRemakeVideo(file, { signal, onProgress: splittingProgress })
+    const clips = await splitRemakeVideo(file, { splitDuration: duration, signal, onProgress: splittingProgress })
     signal.throwIfAborted()
     releaseScenes(scenes.value)
     discardedJobs.value = [...discardedJobs.value, ...results.value.map(result => result.id)].slice(-300)
-    scenes.value = clips.map(clip => reactive({ ...clip, clientSceneId: crypto.randomUUID(), url: URL.createObjectURL(clip.file), edit: '',
+    scenes.value = clips.map(clip => reactive({ ...clip, clientSceneId: crypto.randomUUID(), url: URL.createObjectURL(clip.file), edit: '', dialogue: '',
       referenceIds: null, captions: false, caption: '', plan: '', planQuote: null, planSpend: 0,
       quote: null, submitted: false, job: null, result: null, error: '' }))
   })
@@ -269,7 +289,7 @@ async function planScene(scene) {
     scene.planQuote = await quoteRemakePlan({ apiGet: get, signal })
   })
   await execute('prepare', scene, async (signal, { post }) => {
-    const prepared = await prepareRemakePlan({ file: scene.file, master: master.value.trim(), scenePrompt: scene.edit.trim(),
+    const prepared = await prepareRemakePlan({ file: scene.file, master: master.value.trim(), scenePrompt: scene.edit.trim(), dialogue: scene.dialogue.trim(),
       captions: scene.captions, characterNames: referencesFor(scene).map(item => item.title), walletId: props.walletId,
       maxBilledUsdCents: offer.maxBilledUsdCents, apiPost: post, signal })
     signal.throwIfAborted()
@@ -292,7 +312,6 @@ function promptFor(scene, references, files) {
   return [
     'Preserve o ritmo, as ações e o enquadramento do trecho original, exceto pelas mudanças solicitadas.',
     scene.edit.trim() && `Direção específica desta cena: ${scene.edit.trim().slice(0, 600)}`,
-    scene.captions && scene.caption.trim() && `Se houver fala, sincronize a locução com este texto aprovado, sem desenhar letras no quadro: ${scene.caption.trim()}`,
     context,
     plan && `Plano de direção: ${plan.slice(0, 850)}`,
     master.value.trim() && `Direção geral: ${master.value.trim().slice(0, plan ? 550 : 1500)}`,
@@ -310,10 +329,13 @@ async function quoteScene(scene) {
     const outputResolution = resolutionFor(scene)
     const references = referencesFor(scene)
     const files = [...new Set(references.map(item => item.file).filter(Boolean))].slice(0, maxReferences)
-    const referenceToken = await upload(post, scene.file, 'video/mp4', putVideoReference, signal, walletId)
+    const cleanSource = scene.subtitleRegion ? await removeRemakeSourceSubtitles(scene.file, scene.subtitleRegion, { signal }) : scene.file
+    const referenceFile = await prepareRemakeVideoReference(cleanSource, { signal })
+    const referenceToken = await upload(post, referenceFile, 'video/mp4', putVideoReference, signal, walletId)
     const imageReferenceTokens = []
     for (const file of files) imageReferenceTokens.push(await upload(post, file, checkImageReference(file), putImageReference, signal, walletId))
     const body = { walletId, referenceToken, imageReferenceTokens, prompt: promptFor(scene, references, files),
+      dialogue: scene.dialogue.trim(), sourceDuration: scene.duration,
       subtitles: scene.captions, model, resolution: outputResolution }
     const { data } = await post(root + '/quote', body, { signal })
     signal.throwIfAborted()
@@ -369,9 +391,9 @@ function restoreQueuedScene(job) {
   if (scene?.result || scene?.job && scene.job.id !== job.id || scene?.requestId && scene.requestId !== job.requestId) return
   if (!scene) {
     const index = Math.max(-1, ...scenes.value.map(item => item.index)) + 1
-    const duration = Math.min(5, Math.max(.1, Number(job.sourceSeconds) || 5))
+    const duration = Math.min(maxRemakeSceneSeconds, Math.max(.001, Number(job.sourceDuration ?? job.sourceSeconds) || remakeSplitDurations[0]))
     scene = reactive({ index, start: 0, duration, providerDuration: duration, clientSceneId: job.sceneId, recovered: true,
-      edit: '', referenceIds: null, caption: '', captions: false, plan: '', planSpend: 0, error: '' })
+      edit: '', dialogue: '', referenceIds: null, caption: '', captions: false, plan: '', planSpend: 0, error: '' })
     scenes.value = [...scenes.value, scene]
   }
   scene.requestId = job.requestId
@@ -541,6 +563,11 @@ onBeforeUnmount(() => {
           <q-icon name="mdi-file-video-outline" size="25px" />
           <span><strong>{{ selectedFile?.name || 'Selecionar vídeo' }}</strong><small>MP4, MOV, WebM, MKV ou 3GP, até 70 MB</small></span>
         </button>
+        <label class="aito-remake__quality">Duração dos cortes
+          <select v-model="splitDuration" :disabled="locked || !projectScope || scenes.some(scene => scene.job || scene.submitted)">
+            <option v-for="duration in remakeSplitDurations" :key="duration" :value="duration">De {{ duration }} em {{ duration }} s</option>
+          </select>
+        </label>
         <q-btn no-caps unelevated color="teal-8" icon="mdi-content-cut" label="Confirmar e dividir"
           :disable="locked || !selectedFile || scenes.some(scene => scene.job || scene.submitted)" @click="confirmSource" />
       </div>
@@ -587,12 +614,12 @@ onBeforeUnmount(() => {
         <ul v-if="referenceIds.length" class="aito-remake__references" aria-label="Referências do vídeo">
           <li v-for="item in selectedReferences(referenceIds)" :key="item.id"><img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-account-outline" size="22px" />{{ item.title }}</li>
         </ul>
-        <p class="aito-remake__help">A divisão é gratuita. A preparação com OpenAI é opcional. Na cotação de cada cena, só o trecho escolhido e suas referências são enviados à Higgsfield.</p>
+        <p class="aito-remake__help">A divisão é gratuita e preserva a duração do último trecho. Na cotação, a Higgsfield recebe apenas a cena selecionada e suas referências.</p>
       </div>
     </section>
 
     <section v-if="scenes.length" class="aito-remake__panel aito-remake__column" aria-labelledby="remake-source">
-      <header><q-icon name="mdi-filmstrip" size="23px" /><div><h2 id="remake-source">Cenas de origem</h2><p>{{ scenes.length }} {{ scenes.length === 1 ? 'trecho' : 'trechos' }} de até 5 s</p></div></header>
+      <header><q-icon name="mdi-filmstrip" size="23px" /><div><h2 id="remake-source">Cenas de origem</h2><p>{{ scenes.length }} {{ scenes.length === 1 ? 'trecho' : 'trechos' }}</p></div></header>
       <article v-for="scene in scenes" :key="scene.clientSceneId" class="aito-remake__scene">
         <div class="aito-remake__scene-title"><h3>Cena {{ scene.index + 1 }}</h3><span>{{ seconds(scene.start) }}–{{ seconds(scene.start + scene.duration) }} s</span>
           <q-btn v-if="scene.file" flat round dense icon="mdi-download-outline" :aria-label="`Baixar cena de origem ${scene.index + 1}`"
@@ -605,9 +632,12 @@ onBeforeUnmount(() => {
         <video :src="scene.url" controls playsinline preload="none" :aria-label="`Trecho original da cena ${scene.index + 1}`" />
         <label :for="`remake-scene-${scene.index}`">Prompt da cena <small>opcional</small></label>
         <textarea :id="`remake-scene-${scene.index}`" :value="scene.edit" rows="2" maxlength="600" :disabled="lockedScene(scene)"
-          placeholder="Ex.: Troque o cenário por um estúdio iluminado." @input="patchScene(scene, { edit: $event.target.value })" />
-        <div v-if="models.length" class="aito-remake__defaults">
-          <AitoVideoModelSelect :model-value="modelFor(scene)?.id" :models="models" :disable="lockedScene(scene)"
+          placeholder="Ex.: Troque o cenário e traduza a conversa para português." @input="patchScene(scene, { edit: $event.target.value })" />
+        <label :for="`remake-dialogue-${scene.index}`">Falas exatas <small>opcional</small></label>
+        <textarea :id="`remake-dialogue-${scene.index}`" :value="scene.dialogue" rows="2" maxlength="600" :disabled="lockedScene(scene)"
+          placeholder="Ex.: Ana (sorrindo): ‘Hoje é a nossa vez.’" @input="patchScene(scene, { dialogue: $event.target.value })" />
+        <div v-if="modelsFor(scene).length" class="aito-remake__defaults">
+          <AitoVideoModelSelect :model-value="modelFor(scene)?.id" :models="modelsFor(scene)" :disable="lockedScene(scene)"
             @update:model-value="value => patchScene(scene, { modelId: value, resolution: '' })" />
           <label class="aito-remake__quality">Resolução da cena
             <select :value="resolutionFor(scene)" :disabled="lockedScene(scene)" @change="patchScene(scene, { resolution: $event.target.value })">
@@ -615,7 +645,7 @@ onBeforeUnmount(() => {
             </select>
           </label>
         </div>
-        <p v-else class="aito-remake__help">Aguardando os modelos disponíveis para refazer a cena.</p>
+        <p v-else class="aito-remake__help">{{ models.length ? 'Nenhum modelo disponível aceita esta duração.' : 'Aguardando os modelos disponíveis para refazer a cena.' }}</p>
         <q-expansion-item v-if="references.length" dense class="aito-remake__scene-references" icon="mdi-account-box-multiple-outline"
           :label="scene.referenceIds === null ? 'Referências do prompt master' : 'Referências específicas desta cena'">
           <q-select :model-value="scene.referenceIds ?? referenceIds" :options="references" option-value="id" option-label="title" outlined dark dense
@@ -634,7 +664,12 @@ onBeforeUnmount(() => {
           <q-btn v-if="scene.referenceIds !== null" flat dense no-caps label="Usar referências do prompt master"
             :disable="lockedScene(scene)" @click="patchScene(scene, { referenceIds: null })" />
         </q-expansion-item>
-        <q-toggle dark color="teal-4" label="Gerar com legendas" :model-value="scene.captions" :disable="lockedScene(scene)"
+        <div class="aito-remake__subtitle-tools">
+          <q-btn flat no-caps color="teal-3" icon="mdi-subtitles-outline" :disable="lockedScene(scene)"
+            :label="scene.subtitleRegion ? 'Editar área da legenda original' : 'Remover legenda gravada'" @click="subtitleScene = scene" />
+          <p class="aito-remake__help">Marque a área se o texto já fizer parte da imagem do vídeo original.</p>
+        </div>
+        <q-toggle dark color="teal-4" label="Adicionar nova legenda" :model-value="scene.captions" :disable="lockedScene(scene)"
           @update:model-value="value => patchScene(scene, { captions: value })" />
         <template v-if="scene.captions">
           <label :for="`remake-caption-${scene.index}`">Legenda da cena</label>
@@ -705,6 +740,8 @@ onBeforeUnmount(() => {
         </div>
       </article>
     </section>
+    <AitoRemakeSubtitleRegion v-if="subtitleScene" :url="subtitleScene.url" :duration="subtitleScene.duration"
+      :region="subtitleScene.subtitleRegion" @close="subtitleScene = null" @save="saveSubtitleRegion" />
   </section>
 </template>
 
@@ -720,13 +757,14 @@ onBeforeUnmount(() => {
 .aito-remake__panel header p, .aito-remake__help { color: var(--aito-ai-muted); font-size: .86rem; line-height: 1.4; }
 .aito-remake__panel header p { margin-top: 4px; }
 .aito-remake__upload, .aito-remake__defaults { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.aito-remake__upload { grid-template-columns: minmax(0, 1fr) auto auto; }
 .aito-remake__drop { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed #76aaa9; border-radius: 10px; background: #0b252a; color: var(--aito-ai-text); text-align: left; cursor: pointer; }
 .aito-remake__drop span { min-width: 0; }
 .aito-remake__drop strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aito-remake__drop small { display: block; color: var(--aito-ai-muted); }
 .aito-remake__drop .q-icon { color: var(--aito-ai-accent); }
 .aito-remake__drop:disabled { opacity: .6; cursor: default; }
-.aito-remake__upload > .q-btn { min-height: 44px; align-self: stretch; }
+.aito-remake__upload > .q-btn { min-height: 44px; }
 .aito-remake__direction, .aito-remake__prepared { display: grid; gap: 8px; }
 .aito-remake label { font-weight: 660; }
 .aito-remake label small { font-size: .76rem; font-weight: 400; color: var(--aito-ai-muted); }
@@ -745,6 +783,7 @@ onBeforeUnmount(() => {
 .aito-remake__scene-references { border: 1px solid var(--aito-ai-line); border-radius: 8px; }
 .aito-remake__scene-references :deep(.q-expansion-item__content) { display: grid; gap: 6px; padding: 0 8px 8px; }
 .aito-remake__prepared { padding: 8px; border-radius: 8px; background: var(--aito-ai-purple-soft); }
+.aito-remake__subtitle-tools .q-btn { margin-left: -9px; }
 .aito-remake__actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .aito-remake__error, .aito-remake__price { padding: 7px 9px; border: 1px solid var(--aito-ai-gold-line); border-radius: 8px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .aito-remake__error { border-color: var(--aito-ai-error-line); color: var(--aito-ai-error); background: var(--aito-ai-error-soft); }

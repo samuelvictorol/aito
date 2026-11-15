@@ -2,6 +2,8 @@ import { readAitoProjectZip, zipAitoIAFiles } from './aitoiaArchive.js'
 import { marketingFormats } from './aitoiaMarketingLocal.js'
 import { maxStudioScenes, videoFormats } from './aitoiaVideo.js'
 import { cleanSceneScript, normalizeVoiceReference, voiceComponentType } from './aitoiaVideoPlan.js'
+import { maxRemakeSceneSeconds, remakeSplitDurations } from './aitoiaVideoRemakeSplit.js'
+import { readSubtitleRegion } from './aitoiaSubtitleRemoval.js'
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp']
 const videoTypes = ['video/mp4', 'video/webm']
@@ -108,18 +110,23 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     const cutRows = rows(source.scenes, 200)
     const indexes = new Set(cutRows.map(item => item?.index))
     if (indexes.size !== cutRows.length || cutRows.some(item => !item || !Number.isSafeInteger(item.index) || item.index < 0 ||
-      !Number.isFinite(item.start) || item.start < 0 || !Number.isFinite(item.duration) || item.duration <= 0 || item.duration > 5)) throw invalid()
+      !Number.isFinite(item.start) || item.start < 0 || !Number.isFinite(item.duration) || item.duration <= 0 ||
+      item.duration > maxRemakeSceneSeconds)) throw invalid()
     const remakeResolutions = ['480p', '720p', '1080p']
     remake = { master: text(source.master, 1500), referenceIds: references(source.referenceIds),
       resolution: remakeResolutions.includes(source.resolution) ? source.resolution : '480p',
+      splitDuration: remakeSplitDurations.includes(source.splitDuration) ? source.splitDuration : remakeSplitDurations[0],
       scenes: await Promise.all(cutRows.map(async item => {
         const resultFile = await file(item.result?.media, videoTypes)
         const result = resultFile && { id: clipIds.get(item.result.id) || uuid(), file: resultFile,
           title: text(item.result.title, 80) || `Cena ${item.index + 1} refeita`, duration: item.duration,
           captions: item.result.captions === true, kind: 'scene' }
         return { index: item.index, start: item.start, duration: item.duration, file: await file(item.media, videoTypes),
+          providerDuration: Number.isFinite(item.providerDuration) && item.providerDuration >= item.duration &&
+            item.providerDuration <= maxRemakeSceneSeconds ? item.providerDuration : item.duration,
           modelId: text(item.modelId, 80), resolution: remakeResolutions.includes(item.resolution) ? item.resolution : '',
-          edit: text(item.edit, 600), caption: text(item.caption, 180), captions: item.captions === true, plan: text(item.plan, 4000),
+          edit: text(item.edit, 600), dialogue: text(item.dialogue, 600), subtitleRegion: readSubtitleRegion(item.subtitleRegion),
+          caption: text(item.caption, 180), captions: item.captions === true, plan: text(item.plan, 4000),
           transcript: text(item.transcript, 2000), referenceIds: item.referenceIds === null ? null : references(item.referenceIds), result }
       })) }
   }

@@ -11,19 +11,30 @@ test('cuts twenty seconds into four contiguous five-second scenes', () => {
   ])
 })
 
-test('moves time to the last scene to avoid unnecessary provider padding', () => {
+test('keeps five-second boundaries and preserves a shorter last scene', () => {
   assert.deepEqual(remakeSceneRanges(17.2), [
     { index: 0, start: 0, duration: 5 },
-    { index: 1, start: 5, duration: 4.2 },
-    { index: 2, start: 9.2, duration: 4 },
-    { index: 3, start: 13.2, duration: 4 },
+    { index: 1, start: 5, duration: 5 },
+    { index: 2, start: 10, duration: 5 },
+    { index: 3, start: 15, duration: 2.2 },
   ])
+})
+
+test('cuts a 43-second reference into four ten-second scenes and a three-second tail', () => {
+  assert.deepEqual(remakeSceneRanges(43, 10), [
+    { index: 0, start: 0, duration: 10 },
+    { index: 1, start: 10, duration: 10 },
+    { index: 2, start: 20, duration: 10 },
+    { index: 3, start: 30, duration: 10 },
+    { index: 4, start: 40, duration: 3 },
+  ])
+  assert.throws(() => remakeSceneRanges(43, 6), /5 ou 10 segundos/)
 })
 
 test('retains the original duration of a short scene for the editor', () => {
   assert.deepEqual(remakeSceneRanges(6.209), [
-    { index: 0, start: 0, duration: 4 },
-    { index: 1, start: 4, duration: 2.209 },
+    { index: 0, start: 0, duration: 5 },
+    { index: 1, start: 5, duration: 1.209 },
   ])
   assert.deepEqual(remakeSceneRanges(2.709), [{ index: 0, start: 0, duration: 2.709 }])
 })
