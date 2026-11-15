@@ -10,13 +10,12 @@ const promptField = ref(null)
 const feedback = ref('')
 const downloadRequested = ref(false)
 
-const setupPrompt = String.raw`Configure o plugin AitoIA da AitoSoftwares no aplicativo gráfico do Codex no Windows. Quero continuar com minha conta gratuita do Codex e usar o saldo da minha carteira AitoTokens. Estou com o ZIP oficial extraído em uma pasta que vou manter. Trabalhe a partir dessa pasta e siga CONFIGURAR-COM-CODEX.txt e LEIA-ME.txt.
+const setupPrompt = `Ajude-me a configurar o AitoIA no Codex para Windows com o ZIP oficial já extraído. Leia LEIA-ME.txt e CONFIGURAR-COM-CODEX.txt na pasta do pacote.
 
-1. Confira se o aplicativo gráfico do Codex está instalado e se a versão é compatível com o pacote. Verifique o Node.js do Windows se o instalador precisar dele. Se alguma dependência estiver faltando ou desatualizada, explique o que precisa ser instalado e me peça confirmação antes de baixar ou instalar pelo canal oficial.
-2. No PowerShell, execute & '.\Iniciar AitoIA.bat' -SetupOnly -CreateShortcut na pasta extraída. Isso prepara o atalho “AitoIA - Codex” com a logo incluída. Preserve minhas configurações existentes. Se já houver outro provedor e for necessário substituí-lo, pare e me peça para escolher.
-3. Depois de preparar o atalho, me oriente a salvar o trabalho e encerrar o Codex pelo ícone próximo ao relógio do Windows. Clique com o botão direito no ícone do Codex e escolha Exit ou Sair. Em seguida, abra o atalho AitoIA - Codex. Na primeira configuração, deixe que eu informe a AitoKey no diálogo seguro do iniciador. O Gerenciador de Credenciais do Windows deve reutilizá-la nas próximas aberturas. Nunca peça a chave no chat nem a grave em texto simples, argumentos de comandos ou logs.
-4. Mostre onde aplicar a paleta opcional em Configurações → Aparência. Se houver personalização de cores, use base escura, destaque #5EEAD4, fundo #092523 e texto #DCF9F4. Use gradiente apenas se houver uma opção oficial.
-5. Confira se o app gráfico abriu com o provedor AitoTokens. Avise antes de fazer qualquer teste que consuma meu saldo e me diga o que ficou configurado.`
+1. Confira se o Codex gráfico e o Node.js 20 ou superior estão instalados. Se faltar algo, indique o download oficial. Se este chat não conseguir abrir janelas do Windows, mostre onde encontro o executável no Explorador.
+2. Oriente-me a salvar o trabalho e escolher Sair ou Exit no ícone do Codex perto do relógio. Depois, abra Iniciar AitoIA.exe na pasta extraída. Preserve minhas configurações e deixe comigo a decisão se aparecer uma confirmação de troca de provedor.
+3. Na primeira abertura, vou inserir a AitoKey apenas no campo protegido do Configurar AitoCodex Key. Se eu regenerar a chave no painel, quero usar o atalho com a chave verde ou pedir “@AitoIA Abra Configurar AitoCodex Key”.
+4. Confirme se os dois atalhos foram criados e se uma conversa nova mostra AitoTokens como provedor. Peça minha autorização antes de um teste pago.`
 
 function startDownload() {
   feedback.value = ''
@@ -72,7 +71,7 @@ async function copyPrompt() {
           </figure>
         </div>
         <div class="codex-install__guide">
-          <p>Extraia o ZIP e abra a pasta no Codex para Windows. Cole o prompt na conversa para configurar o acesso.</p>
+          <p>Extraia o ZIP e abra <strong>Iniciar AitoIA.exe</strong>. Se quiser ajuda do Codex com a configuração, copie o prompt abaixo.</p>
           <textarea ref="promptField" :value="setupPrompt" readonly rows="7" aria-label="Prompt de instalação" />
         </div>
       </div>

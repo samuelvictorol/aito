@@ -123,8 +123,8 @@ onBeforeUnmount(() => { abort.abort(); closeKey() })
     <q-dialog :model-value="Boolean(newKey)" persistent @hide="closeKey">
       <q-card dark class="codex-key__dialog">
         <q-card-section><h3>Sua nova AitoKey</h3><p>Guarde esta chave em local seguro. Ela é exibida uma única vez.</p>
-          <p>No Windows, abra o atalho <strong>AitoIA - Codex</strong> e cole a chave na janela protegida. A versão 0.2.6 também inclui <strong>Trocar AitoKey.bat</strong> na pasta do plugin.</p>
-          <p>Se você já tem uma chave salva na versão 0.2.5, feche o Codex e execute <code>&amp; '.\Iniciar AitoIA.bat' -ReplaceKey</code> no PowerShell, dentro da pasta do plugin.</p>
+          <p>Abra <strong>AitoIA - Codex</strong> e cole a chave na janela protegida da primeira configuração.</p>
+          <p>Regenerou a chave? Abra <strong>Configurar AitoCodex Key</strong> no Windows e salve a nova chave.</p>
           <q-input :model-value="newKey" readonly dark outlined dense label="AitoKey" :type="keyVisible ? 'text' : 'password'">
             <template #append><q-btn flat round dense :icon="keyVisible ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
               :aria-label="keyVisible ? 'Ocultar chave' : 'Mostrar chave'" @click="keyVisible = !keyVisible" /></template>

@@ -1,4 +1,4 @@
-export const codexPluginVersion = '0.2.6'
+export const codexPluginVersion = '0.2.7'
 export const codexPluginFilename = `PluginCodex-${codexPluginVersion}.zip`
 export const codexPluginZipPath = '/downloads/aitoia-codex.zip'
 export const codexPluginZipUrl = `${codexPluginZipPath}?v=${codexPluginVersion}`

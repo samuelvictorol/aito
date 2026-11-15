@@ -1,16 +1,19 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 const position = ref(null)
 const dragging = ref(false)
 const shortcut = ref(null)
+const confirmationOpen = ref(false)
 const dragThreshold = 6
 const viewportMargin = 8
 const positionKey = 'aito.support-shortcut.position'
 let pointer
 let ignorePointerClick = false
+let navigateAfterConfirmation = false
 
 function moveWithinViewport(left, top) {
   if (!shortcut.value) return
@@ -40,11 +43,12 @@ function moveDrag(event) {
   moveWithinViewport(pointer.left + dx, pointer.top + dy)
 }
 
-function finishDrag(event, navigate) {
+function finishDrag(event) {
   if (pointer?.id !== event.pointerId) return
-  const touchTap = event.type === 'pointerup' && event.pointerType === 'touch' && !dragging.value
+  const touch = event.type === 'pointerup' && event.pointerType === 'touch'
+  const tap = touch && !dragging.value
   if (event.type === 'pointerup') {
-    ignorePointerClick = dragging.value || touchTap
+    ignorePointerClick = dragging.value || touch
     if (dragging.value && shortcut.value) {
       const { left, top } = shortcut.value.getBoundingClientRect()
       try { sessionStorage.setItem(positionKey, JSON.stringify({ left, top })) } catch { /* Drag still works without storage. */ }
@@ -52,26 +56,28 @@ function finishDrag(event, navigate) {
   }
   pointer = null
   dragging.value = false
-  if (touchTap) followShortcut(event, navigate)
+  if (tap) confirmationOpen.value = true
 }
 
-function activate(event, navigate) {
+function activate(event) {
   if (ignorePointerClick && event.detail > 0) {
-    event.preventDefault()
     ignorePointerClick = false
     return
   }
-  followShortcut(event, navigate)
+  confirmationOpen.value = true
 }
 
-function followShortcut(event, navigate) {
-  if (route.name === 'user-app' && route.query.tab === 'tickets' &&
-      !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
-    event.preventDefault()
-    document.getElementById('customer-support')?.focus()
-    return
-  }
-  navigate(event)
+function confirmNavigation() {
+  navigateAfterConfirmation = true
+  confirmationOpen.value = false
+}
+
+async function openSupportAfterConfirmation() {
+  if (!navigateAfterConfirmation) return
+  navigateAfterConfirmation = false
+  await router.push({ path: route.name === 'user-app' ? route.path : '/app', query: { tab: 'tickets' } })
+  await nextTick()
+  document.getElementById('customer-support')?.focus()
 }
 
 function keepInViewport() {
@@ -91,30 +97,42 @@ onBeforeUnmount(() => window.removeEventListener('resize', keepInViewport))
 </script>
 
 <template>
-  <router-link
-    v-slot="{ href, navigate }"
-    :to="{ path: route.name === 'user-app' ? route.path : '/app', query: { tab: 'tickets' } }"
-    custom
+  <button
+    ref="shortcut"
+    type="button"
+    class="support-shortcut"
+    :class="{ 'is-dragging': dragging }"
+    :style="position"
+    aria-label="Abrir suporte"
+    aria-haspopup="dialog"
+    @pointerdown="startDrag"
+    @pointermove="moveDrag"
+    @pointerup="finishDrag"
+    @pointercancel="finishDrag"
+    @lostpointercapture="finishDrag"
+    @touchend.prevent
+    @click="activate"
   >
-    <a
-      ref="shortcut"
-      class="support-shortcut"
-      :class="{ 'is-dragging': dragging }"
-      :href="href"
-      :style="position"
-      aria-label="Abrir suporte"
-      draggable="false"
-      @pointerdown="startDrag"
-      @pointermove="moveDrag"
-      @pointerup="finishDrag($event, navigate)"
-      @pointercancel="finishDrag"
-      @lostpointercapture="finishDrag"
-      @click="activate($event, navigate)"
-    >
-      <q-icon name="mdi-help-circle-outline" size="26px" aria-hidden="true" />
-      <q-tooltip v-if="!dragging && !$q.platform.has.touch">Suporte</q-tooltip>
-    </a>
-  </router-link>
+    <q-icon name="mdi-help-circle-outline" size="26px" aria-hidden="true" />
+    <q-tooltip v-if="!dragging && !$q.platform.has.touch">Suporte</q-tooltip>
+  </button>
+  <q-dialog
+    v-model="confirmationOpen"
+    aria-labelledby="support-shortcut-title"
+    aria-describedby="support-shortcut-description"
+    @hide="openSupportAfterConfirmation"
+  >
+    <q-card dark class="aito-ai-theme support-shortcut__dialog">
+      <q-card-section>
+        <h2 id="support-shortcut-title"><q-icon name="mdi-help-circle-outline" size="24px" /> Ir para o suporte?</h2>
+        <p id="support-shortcut-description">Você poderá acompanhar ou abrir um chamado de suporte.</p>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn v-close-popup flat no-caps autofocus label="Cancelar" />
+        <q-btn unelevated no-caps color="teal-8" label="Ir para o suporte" @click="confirmNavigation" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <style scoped>
@@ -126,6 +144,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', keepInViewport))
   display: grid;
   width: 46px;
   height: 46px;
+  padding: 0;
   place-items: center;
   border: 1px solid #63cdb7;
   border-radius: 100%;
@@ -140,4 +159,23 @@ onBeforeUnmount(() => window.removeEventListener('resize', keepInViewport))
 .support-shortcut:focus-visible { outline: 2px solid #a4fce4; outline-offset: 3px; }
 .support-shortcut:hover { color: white; border-color: #a4fce4; }
 .support-shortcut.is-dragging { cursor: grabbing; }
+.support-shortcut__dialog {
+  width: 390px;
+  padding: .25rem;
+  border: 1px solid var(--aito-ai-line);
+  border-radius: 14px;
+  background: var(--aito-ai-surface);
+  color: var(--aito-ai-text);
+}
+.support-shortcut__dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  margin: 0 0 .5rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.support-shortcut__dialog h2 .q-icon { color: var(--aito-ai-accent); }
+.support-shortcut__dialog p { margin: 0; color: var(--aito-ai-muted); }
 </style>
