@@ -109,13 +109,16 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     const indexes = new Set(cutRows.map(item => item?.index))
     if (indexes.size !== cutRows.length || cutRows.some(item => !item || !Number.isSafeInteger(item.index) || item.index < 0 ||
       !Number.isFinite(item.start) || item.start < 0 || !Number.isFinite(item.duration) || item.duration <= 0 || item.duration > 5)) throw invalid()
-    remake = { master: text(source.master, 1500), referenceIds: references(source.referenceIds), resolution: source.resolution === '720p' ? '720p' : '480p',
+    const remakeResolutions = ['480p', '720p', '1080p']
+    remake = { master: text(source.master, 1500), referenceIds: references(source.referenceIds),
+      resolution: remakeResolutions.includes(source.resolution) ? source.resolution : '480p',
       scenes: await Promise.all(cutRows.map(async item => {
         const resultFile = await file(item.result?.media, videoTypes)
         const result = resultFile && { id: clipIds.get(item.result.id) || uuid(), file: resultFile,
           title: text(item.result.title, 80) || `Cena ${item.index + 1} refeita`, duration: item.duration,
           captions: item.result.captions === true, kind: 'scene' }
         return { index: item.index, start: item.start, duration: item.duration, file: await file(item.media, videoTypes),
+          modelId: text(item.modelId, 80), resolution: remakeResolutions.includes(item.resolution) ? item.resolution : '',
           edit: text(item.edit, 600), caption: text(item.caption, 180), captions: item.captions === true, plan: text(item.plan, 4000),
           transcript: text(item.transcript, 2000), referenceIds: item.referenceIds === null ? null : references(item.referenceIds), result }
       })) }

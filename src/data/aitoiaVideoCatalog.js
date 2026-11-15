@@ -27,6 +27,20 @@ export const videoCatalog = [
   { id: 'grok-imagine-2.0', maker: 'xAI', name: 'Grok Imagine 2.0', summary: 'Cria e edita imagens com atenção aos detalhes.', poster: '100% 100%', type: 'image', limitation: 'Geração de imagem' },
 ]
 
+export function videoModelSpecialty(model) {
+  if (model?.specialty) return model.specialty
+  if (model?.id === 'genjutsu' && model.mode === 'genjutsu') return 'Transfere os movimentos do vídeo para os personagens ou objetos de referência.'
+  if (model?.id === 'genjutsu-light-object-swap') return 'Troca personagens ou objetos enquanto preserva movimentos do vídeo original.'
+  if (model?.mode === 'transition') return model.maxImageReferences > 2
+    ? 'Conecta o fim de um clipe ao começo do próximo e permite quadros intermediários.'
+    : 'Usa os quadros inicial e final para criar a transição em alta definição.'
+  if (model?.mode === 'continuation') return model.maxImageReferences > 1
+    ? 'Continua o movimento a partir do último quadro e aceita quadros intermediários.'
+    : 'Continua a ação a partir do último quadro em alta definição.'
+  const family = model?.familyId || model?.id
+  return videoCatalog.find(item => item.id === family)?.summary || ''
+}
+
 export function chatVideoModels(catalog, { hasVideo = false, imageCount = 0 } = {}) {
   const accepts = (model, supportsLegacyVideo = false) => (!hasVideo || (model.supportsVideo ?? supportsLegacyVideo)) &&
     (hasVideo || !model.requiresVideo) && (model.maxImageReferences ?? 0) >= imageCount

@@ -1,4 +1,5 @@
 <script setup>
+import AitoVideoModelSelect from './AitoVideoModelSelect.vue'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
@@ -10,7 +11,9 @@ import { chatVideoModels } from 'src/data/aitoiaVideoCatalog'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { saveVideoDraft } from 'src/services/aitoiaVideoDraft'
-import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
+import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
+import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
+import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 
 const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
@@ -35,6 +38,8 @@ const action = ref('')
 const error = ref('')
 let operation
 let catalogRequest
+let pollTimer
+let disposed = false
 let reference
 let imageReferences
 const models = computed(() => chatVideoModels(catalog.value, { hasVideo: Boolean(base.value), imageCount: imageBases.value.length }))
@@ -58,11 +63,19 @@ async function loadCatalog() {
   const api = access()
   catalogRequest = controller
   try {
-    const { data } = await api.get('/aitoia/video/options', { signal: controller.signal })
+    const [catalogResponse, recent] = await Promise.allSettled([
+      api.get('/aitoia/video/options', { signal: controller.signal }),
+      listVideoGenerations(api.get, { source: 'chat', signal: controller.signal }),
+    ])
     controller.signal.throwIfAborted()
     if (!api.current()) return
-    catalog.value = data.data
-    if (!job.value && !clip.value) job.value = catalog.value.recoverableGeneration || null
+    if (!job.value && !clip.value && recent.status === 'fulfilled') {
+      const jobs = recent.value
+      job.value = jobs.find(item => videoGenerationActive(item.status)) || jobs.find(item => item.status === 'completed') || null
+      if (job.value) schedulePoll(250)
+    }
+    if (catalogResponse.status === 'rejected') throw catalogResponse.reason
+    catalog.value = catalogResponse.value.data.data
   } catch (cause) {
     if (!controller.signal.aborted) error.value = cause.response?.data?.message || 'Não foi possível consultar os modelos de vídeo.'
   }
@@ -71,13 +84,14 @@ async function loadCatalog() {
 watch(accountId, (id, previous) => {
   if (previous && id !== previous) {
     operation?.abort()
+    clearTimeout(pollTimer)
     base.value = null
     imageBases.value = []
     prompt.value = ''
     reference = null
     imageReferences = null
     quote.value = null
-    clip.value = null
+    clearClip()
     job.value = null
     catalog.value = null
     analysis.value = ''
@@ -105,7 +119,7 @@ function pickImages(files) {
   } catch (cause) { error.value = cause.message }
 }
 
-async function run(label, perform, paid = true) {
+async function run(label, perform, paid = true, background = false) {
   if (busy.value) return
   if (!signedIn.value) return emit('login')
   if (!accountId.value) return
@@ -114,10 +128,10 @@ async function run(label, perform, paid = true) {
   const api = access()
   operation = controller
   action.value = label
-  error.value = ''
+  if (!background) error.value = ''
   try { await perform(controller.signal, api) }
   catch (cause) {
-    if (!controller.signal.aborted && api.current()) {
+    if (!controller.signal.aborted && api.current() && (!background || !job.value || job.value.status === 'completed')) {
       error.value = cause.response?.data?.message || cause.message || 'Não foi possível concluir esta ação.'
       if (cause.response?.status === 402) emit('wallet')
     }
@@ -167,63 +181,73 @@ function estimate() {
   })
 }
 
-function waitForPoll(delay, signal) {
-  signal.throwIfAborted()
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { signal.removeEventListener('abort', cancel); resolve() }, delay)
-    function cancel() { clearTimeout(timer); reject(signal.reason) }
-    signal.addEventListener('abort', cancel, { once: true })
-  })
+function clearClip() {
+  if (clip.value?.url) URL.revokeObjectURL(clip.value.url)
+  clip.value = null
 }
-
+function schedulePoll(delay = 9000) {
+  clearTimeout(pollTimer)
+  if (!disposed && job.value) pollTimer = setTimeout(() => {
+    if (busy.value) schedulePoll()
+    else check(false)
+  }, delay)
+}
+function check(manual = true) {
+  clearTimeout(pollTimer)
+  void run('Consultando clipe…', poll, false, !manual).finally(() => schedulePoll())
+}
 async function poll(signal, { get, current }) {
-  const started = Date.now()
-  let delay = 0
-  while (job.value && Date.now() - started < 12 * 60000) {
-    if (delay) await waitForPoll(delay, signal)
-    if (!current()) return
-    let result
-    try {
-      const { data } = await get(`/aitoia/video/generations/${encodeURIComponent(job.value.id)}`, { signal })
-      result = data.data
-    } catch (cause) {
-      signal.throwIfAborted()
-      const http = cause.response?.status
-      if ([404, 410].includes(http)) job.value = null
-      if (!http || http === 429 || cause.response?.data?.code === 'AITO_MEDIA_RETRY') {
-        delay = Math.min(Math.max(delay * 2, 4000), 20000)
-        continue
-      }
-      throw cause
-    }
+  const pending = job.value
+  if (!pending) return
+  let result
+  try {
+    if (!pending.id) {
+      const matches = await listVideoGenerations(get, { source: 'chat', requestId: pending.requestId, signal })
+      result = matches[0]
+      if (!result && Date.now() - pending.submittedAt < 120000) return
+      result ||= { status: 'failed', message: 'A fila não recebeu o pedido. Consulte o custo para enviar novamente.' }
+    } else ({ data: { data: result } } = await get(`/aitoia/video/generations/${encodeURIComponent(pending.id)}`, { signal }))
+  } catch (cause) {
     signal.throwIfAborted()
-    if (!current()) return
-    if (result.status === 'completed') { clip.value = { ...result, url: safeVideoUrl(result.url) }; job.value = null; return }
-    if (!['queued', 'in_progress'].includes(result.status)) { job.value = null; throw new Error(result.message || 'O provedor encerrou esta geração.') }
-    job.value = { ...job.value, ...result }
-    delay = 4000
+    if (current() && [404, 410].includes(cause.response?.status)) job.value = null
+    throw cause
   }
-  if (job.value) throw new Error('O clipe continua em produção. Use Verificar geração para acompanhar.')
+  signal.throwIfAborted()
+  if (!current()) return
+  quote.value = null
+  job.value = { ...pending, ...result }
+  if (videoGenerationActive(result.status)) return
+  if (result.status !== 'completed') {
+    job.value = null
+    throw new Error(result.message || 'O provedor encerrou esta geração.')
+  }
+  const file = await readGeneratedClipForJob({ ...result, remoteUrl: result.url }, signal, get)
+  signal.throwIfAborted()
+  if (!current()) return
+  clearClip()
+  clip.value = { ...result, file, url: URL.createObjectURL(file), expiresAt: videoGenerationExpiry(result.expiresAt, Date.now() + AITOIA_RETENTION_MS) }
+  job.value = null
 }
 
 function generate() {
   if (!quote.value || job.value || videoInMaintenance.value) return
   const { body, quoteToken, requestId } = quote.value
   run('Gerando clipe…', async (signal, api) => {
-    let data
+    job.value = { requestId, status: 'submitting', submittedAt: Date.now() }
     try {
-      ({ data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
-        { headers: { 'X-Aito-Request-Id': requestId }, signal }))
+      const { data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
+        { headers: { 'X-Aito-Request-Id': requestId }, signal })
+      signal.throwIfAborted()
+      if (!api.current()) return
+      if (!data?.data?.id) throw new Error('O pedido ainda não foi confirmado. Verifique a geração novamente.')
+      quote.value = null
+      job.value = { ...job.value, ...data.data }
     } catch (cause) {
-      if (['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
+      if (api.current() && !canRetryVideoSubmission(cause)) job.value = null
+      if (api.current() && ['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
       throw cause
     }
-    signal.throwIfAborted()
-    if (!api.current()) return
-    quote.value = null
-    job.value = data.data
-    await poll(signal, api)
-  })
+  }).finally(() => schedulePoll(500))
 }
 
 function analyze() {
@@ -262,7 +286,7 @@ async function saveToProject() {
   }, false)
   if (saved) await router.push({ name: 'aito-ia-video-studio', query: { draft: 'chat' } })
 }
-onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy', false) })
+onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abort(); catalogRequest?.abort(); clearClip(); emit('busy', false) })
 </script>
 
 <template>
@@ -276,12 +300,12 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <template v-if="imageBases.length"><span>{{ imageBases.map(file => file.name).join(', ') }}</span><button type="button" :disabled="busy" @click="imageBases = []; imageReferences = null">Limpar imagens</button></template>
     </div>
     <div v-if="models.length" class="chat-video__choices">
-      <label>Modelo Higgsfield<select v-model="modelId" :disabled="busy"><option v-for="item in models" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
+      <AitoVideoModelSelect v-model="modelId" :models="models" label="Modelo Higgsfield" :disable="Boolean(busy)" />
       <label>Configuração<select v-model="presetId" :disabled="busy"><option v-for="item in presets" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
     </div>
     <p v-if="imageBases.length < minImages" class="chat-video__pricing">Adicione {{ minImages === 1 ? 'uma imagem' : `pelo menos ${minImages} imagens` }} para usar este modelo.</p>
     <div class="chat-video__actions">
-      <button v-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
+      <button v-if="job" type="button" :disabled="busy" @click="check()">Verificar geração</button>
       <template v-else-if="!videoInMaintenance">
         <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
         <button v-else-if="quote" type="button" :disabled="busy" @click="generate">{{ quote.estimated ? 'Confirmar reserva e gerar' : 'Confirmar geração' }}<template v-if="quoteCost"> · Até {{ quoteCost }}</template></button>
@@ -291,7 +315,7 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <span v-if="action" role="status"><q-spinner size="16px" /> {{ action }}</span>
     </div>
     <AitoIAMaintenance v-if="videoInMaintenance" area="video" compact />
-    <AitoVideoProgress v-if="job && busy" :stage="job.status || 'queued'" />
+    <AitoVideoProgress v-if="job" :stage="job.status || 'queued'" :percent="job.progress" />
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
     <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" />

@@ -1,23 +1,26 @@
 <script setup>
 import { computed } from 'vue'
 
-const props = defineProps({ stage: { type: String, required: true } })
+const props = defineProps({ stage: { type: String, required: true }, percent: Number })
 const stages = {
-  submitting: { percent: 0, label: 'Enviando pedido' },
-  queued: { percent: 33, label: 'Na fila da Higgsfield' },
-  in_progress: { percent: 67, label: 'Gerando vídeo' },
-  completed: { percent: 100, label: 'Geração concluída' },
+  submitting: 'Confirmando envio',
+  queued: 'Na fila de geração',
+  in_progress: 'Gerando vídeo na Higgsfield',
+  uncertain: 'Confirmando a geração com a Higgsfield',
+  completed: 'Geração concluída',
 }
-const current = computed(() => stages[props.stage] || stages.submitting)
+const label = computed(() => stages[props.stage] || stages.in_progress)
+const amount = computed(() => props.stage === 'completed' ? 100 :
+  props.stage === 'in_progress' && Number.isFinite(props.percent) ? Math.min(99, Math.max(0, Math.round(props.percent))) : null)
 </script>
 
 <template>
   <div class="video-progress">
     <div class="video-progress__status" role="status">
-      <span>{{ current.label }}</span><strong>{{ current.percent }}% do fluxo</strong>
+      <span>{{ label }}</span><strong v-if="amount !== null">{{ amount }}%</strong>
     </div>
-    <q-linear-progress :value="current.percent / 100" color="teal-4" track-color="blue-grey-9" rounded
-      size="6px" aria-label="Progresso por etapas da geração de vídeo" />
+    <q-linear-progress :indeterminate="amount === null" :value="(amount ?? 0) / 100" color="teal-4" track-color="blue-grey-9" rounded
+      size="6px" aria-label="Progresso da geração de vídeo" />
   </div>
 </template>
 

@@ -18,6 +18,7 @@ export function cleanSceneScript(item) {
     title: typeof item?.title === 'string' ? item.title.slice(0, 100) : '',
     prompt: typeof item?.prompt === 'string' ? item.prompt.slice(0, 1500) : '',
     duration: sceneScriptSeconds(item?.duration),
+    modelId: typeof item?.modelId === 'string' ? item.modelId.slice(0, 80) : '',
     componentIds: Array.isArray(item?.componentIds) ? item.componentIds.filter(id => typeof id === 'string').slice(0, 12) : [],
   }
 }
@@ -32,7 +33,7 @@ export function parseVideoPlan(text, componentIds) {
   return {
     master: typeof result.master === 'string' ? result.master.trim().slice(0, 6000) : '',
     scenes: result.scenes.map(item => {
-      const scene = cleanSceneScript({ ...item, id: undefined })
+      const scene = cleanSceneScript({ ...item, id: undefined, modelId: undefined })
       return { ...scene, componentIds: scene.componentIds.filter(id => componentIds.has(id)) }
     }),
   }
