@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import { usd } from 'src/composables/useAitoIA'
 import AuthDialog from 'components/AuthDialog.vue'
+import AitoCodexInstallDialog from './AitoCodexInstallDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const open = ref(false)
 const authOpen = ref(false)
+const installGuide = ref(false)
 const offers = ref([])
 const profilePath = '/app?tab=profile'
 const promotedRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-marketing-studio'])
@@ -36,6 +38,11 @@ function openProfile() {
   else authOpen.value = true
 }
 
+function openInstallGuide() {
+  open.value = false
+  installGuide.value = true
+}
+
 watch([() => route.name, promoted], ([, visible]) => {
   window.clearInterval(timer)
   open.value = false
@@ -60,7 +67,7 @@ onBeforeUnmount(() => {
       <h2>Codex com AitoTokens</h2>
       <p>Use o GPT‑6.1 Sol no Codex com o saldo da sua conta AitoSoftwares.</p>
       <div class="codex-offer__actions">
-        <a class="codex-offer__primary" href="/downloads/aitoia-codex.zip" download><q-icon name="mdi-download" /> Baixar plugin e guia</a>
+        <q-btn unelevated no-caps icon="mdi-download" label="Baixar plugin e guia" class="codex-offer__primary" @click="openInstallGuide" />
         <a href="https://openai.com/codex/" target="_blank" rel="noopener noreferrer"><img src="/codex-app-icon.png" alt="" width="20" height="20" /> Baixar Codex</a>
       </div>
       <div class="codex-offer__footer">
@@ -71,6 +78,7 @@ onBeforeUnmount(() => {
       </div>
     </q-card>
   </q-dialog>
+  <AitoCodexInstallDialog v-model="installGuide" />
   <AuthDialog v-model="authOpen" :return-path="profilePath" :show-project-login="false" @authenticated="router.push(profilePath)" />
 </template>
 
@@ -82,7 +90,7 @@ onBeforeUnmount(() => {
 .codex-offer a { color: #f7d890; }
 .codex-offer__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .codex-offer__actions a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 7px 10px; border: 1px solid #cdaa6666; border-radius: 9px; text-decoration: none; font: inherit; font-weight: 700; }
-.codex-offer .codex-offer__primary { color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); }
+.codex-offer .codex-offer__primary { min-height: 42px; border-radius: 9px; color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); font-weight: 700; }
 .codex-offer__footer { display: flex; flex-wrap: wrap; align-items: center; column-gap: 9px; margin-top: 9px; color: #f7d890; }
 .codex-offer__footer .q-btn { padding-inline: 0; }
 .codex-offer .codex-offer__packs { font-size: .75rem; color: #bdd3cb; text-underline-offset: 3px; }

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { copyToClipboard, useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseMoney } from 'src/services/purchase-history'
+import AitoCodexInstallDialog from './AitoCodexInstallDialog.vue'
 
 const $q = useQuasar()
 const base = '/aito-tokens/account/codex-key'
@@ -14,6 +15,7 @@ const error = ref('')
 const newKey = ref('')
 const keyVisible = ref(false)
 const confirmRotation = ref(false)
+const installGuide = ref(false)
 const abort = new AbortController()
 const wallets = computed(() => (status.value?.wallets || []).map(wallet => ({ ...wallet,
   label: `${wallet.label} · ${purchaseMoney(wallet.balanceUsdCents, 'USD')}`,
@@ -102,9 +104,11 @@ onBeforeUnmount(() => { abort.abort(); closeKey() })
           :loading="saving" :disable="!selectedAvailable || !status.available" @click="confirmRotation = true" />
         <q-btn v-else unelevated no-caps color="teal-7" icon="mdi-key-plus" label="Gerar AitoKey"
           :loading="saving" :disable="!selectedAvailable || !status.available" @click="change('issue')" />
-        <a href="/downloads/aitoia-codex.zip" download><q-icon name="mdi-download" /> Baixar plugin e guia</a>
+        <q-btn flat no-caps icon="mdi-download" label="Baixar plugin e guia" class="codex-key__guide" @click="installGuide = true" />
       </div>
     </template>
+
+    <AitoCodexInstallDialog v-model="installGuide" />
 
     <q-dialog v-model="confirmRotation">
       <q-card dark class="codex-key__dialog">
@@ -141,7 +145,7 @@ onBeforeUnmount(() => { abort.abort(); closeKey() })
 .codex-key__actions { flex-wrap: wrap; }
 .codex-key__header h2, .codex-key__dialog h3 { margin: 0; font-size: 1.08rem; line-height: 1.25; font-weight: 700; }
 .codex-key__header p, .codex-key__dialog p { margin: .25rem 0 0; color: #bcd2cf; }
-.codex-key__actions a { color: #9de4d9; text-underline-offset: 3px; }
+.codex-key__guide { color: #9de4d9; }
 .codex-key__hint { margin: 0; color: #bcd2cf; }
 .codex-key__hint code { color: #e1fff8; }
 .codex-key__banner { background: #542f21; color: #ffeddd; }
