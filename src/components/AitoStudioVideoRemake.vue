@@ -5,6 +5,7 @@ import AitoVideoModelSelect from './AitoVideoModelSelect.vue'
 import { aitoTokens } from 'src/composables/useAitoIA'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
+import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { burnRemakeCaptions, maxRemakeInputBytes, remakeInputAccept, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
 import { prepareRemakePlan, quoteRemakePlan } from 'src/services/aitoiaVideoRemakePlan'
@@ -240,9 +241,17 @@ async function execute(kind, scene, operation) {
   }
 }
 function splittingProgress(value) { progress.value = Math.min(1, Math.max(0, Number(value) || 0)) }
-async function confirmSource() {
+function confirmSource() {
   const file = selectedFile.value
   if (!file || rejectUpload(file) || scenes.value.some(scene => scene.job || scene.submitted)) return
+  if (scenes.value.length) {
+    confirmStudioRemoval('Substituir cenas de origem?', 'Os cortes e as prévias deste painel serão substituídos pelo novo vídeo.', () => {
+      if (!disposed && selectedFile.value === file) void splitSource(file)
+    }, 'Substituir')
+  } else void splitSource(file)
+}
+async function splitSource(file) {
+  if (scenes.value.some(scene => scene.job || scene.submitted)) return
   await execute('split', null, async signal => {
     const clips = await splitRemakeVideo(file, { signal, onProgress: splittingProgress })
     signal.throwIfAborted()
@@ -492,14 +501,19 @@ function downloadSource(scene) {
 
 function removeScene(scene, resultOnly = false) {
   if (!scene || lockedScene(scene)) return
-  if (scene.result?.id) discardedJobs.value = [...discardedJobs.value, scene.result.id].slice(-300)
-  if (resultOnly) {
-    if (scene.result?.previewUrl) URL.revokeObjectURL(scene.result.previewUrl)
-    scene.result = null
-  } else {
-    releaseScenes([scene])
-    scenes.value = scenes.value.filter(item => item !== scene)
-  }
+  const result = scene.result
+  confirmStudioRemoval(resultOnly ? 'Remover cena refeita?' : 'Remover cena de origem?',
+    'A cena selecionada sairá deste painel.', () => {
+      if (disposed || !scenes.value.includes(scene) || lockedScene(scene) || scene.result !== result) return
+      if (result?.id) discardedJobs.value = [...discardedJobs.value, result.id].slice(-300)
+      if (resultOnly) {
+        if (result?.previewUrl) URL.revokeObjectURL(result.previewUrl)
+        scene.result = null
+      } else {
+        releaseScenes([scene])
+        scenes.value = scenes.value.filter(item => item !== scene)
+      }
+    })
 }
 
 onBeforeUnmount(() => {

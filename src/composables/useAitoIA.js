@@ -4,6 +4,7 @@ import { AITOIA_CHAT_LIMIT, createAitoIALocalStore } from 'src/services/aitoiaLo
 import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/services/aitoiaArchive'
 import { checkAttachment, checkoutLink, fileKind, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
 import { artifactReferences, fileFromArtifact, fileFromImage, prepareArtifactReferences } from 'src/services/aitoiaArtifacts'
+import { followGeneration } from 'src/services/aitoiaGenerationActivity'
 
 const clientSession = { tokenKey: 'aito_user_token', userKey: 'aito_user', kind: 'client' }
 const adminSession = { tokenKey: 'aito_admin_token', userKey: 'aito_admin_user', kind: 'admin' }
@@ -99,7 +100,10 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     return {
       current,
       get: async (path, options) => api.get(endpoint(path), authorized(options)),
-      post: async (path, body, options) => api.post(endpoint(path), body, authorized(options)),
+      post: async (path, body, options) => {
+        const target = endpoint(path)
+        return followGeneration(accountId.value, path, options, current, () => api.post(target, body, authorized(options)))
+      },
     }
   }
   const generationApi = {

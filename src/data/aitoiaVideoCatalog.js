@@ -41,6 +41,33 @@ export function videoModelSpecialty(model) {
   return videoCatalog.find(item => item.id === family)?.summary || ''
 }
 
+export function studioVideoModels(catalog, { mode, hasVideo = false, imageCount = 0, hasAudio = false, maxSeconds }) {
+  const models = mode === 'text' ? catalog?.videoModels :
+    mode === 'transition' ? catalog?.transitionModels || (catalog?.transitionModel ? [catalog.transitionModel] : []) :
+      catalog?.referenceModels?.filter(model => model.mode === mode)
+  const suitable = (models || []).flatMap(model => {
+    if (hasVideo && !model.supportsVideo || hasAudio && !model.audioReference ||
+      imageCount > (model.maxImageReferences ?? 0) ||
+      mode === 'text' && (model.requiresVideo || !imageCount && model.minImageReferences > 0) ||
+      mode === 'reference' && !hasVideo && (imageCount || hasAudio) && model.requiresVideo) return []
+    const options = model.options?.filter(option => model.sourceDuration ||
+      Number.isInteger(option.seconds) && option.seconds >= 1 && option.seconds <= maxSeconds)
+    return options?.length ? [{ ...model, options }] : []
+  })
+  if (imageCount === 1 && !hasVideo && !hasAudio) suitable.sort((left, right) => Number(Boolean(right.firstFrame)) - Number(Boolean(left.firstFrame)))
+  return suitable
+}
+
+const aspectNames = { '16:9': 'Horizontal', '9:16': 'Vertical · Reels e Shorts', '1:1': 'Quadrado', '21:9': 'Ultralargo' }
+
+export function videoAspectPreview(value) {
+  const [width, height] = String(value).split(':').map(Number)
+  const scale = width > 0 && height > 0 ? 19 / Math.max(width, height) : 0
+  return { value, label: value, description: aspectNames[value] || '', preview: scale
+    ? { width: `${Math.max(5, width * scale)}px`, height: `${Math.max(5, height * scale)}px` }
+    : { width: '17px', height: '12px' } }
+}
+
 export function chatVideoModels(catalog, { hasVideo = false, imageCount = 0 } = {}) {
   const accepts = (model, supportsLegacyVideo = false) => (!hasVideo || (model.supportsVideo ?? supportsLegacyVideo)) &&
     (hasVideo || !model.requiresVideo) && (model.maxImageReferences ?? 0) >= imageCount

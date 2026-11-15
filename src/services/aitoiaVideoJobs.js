@@ -14,5 +14,7 @@ export async function listVideoGenerations(get, { source, projectId, requestId, 
 
 export function canRetryVideoSubmission(cause) {
   const status = cause.response?.status
-  return !status || [408, 429, 500, 502, 503, 504].includes(status) || cause.response?.data?.code === 'AITO_MEDIA_RECONCILIATION'
+  const code = cause.response?.data?.code
+  return code !== 'AITO_MEDIA_ACTIVE' &&
+    (!status || [408, 429, 500, 502, 503, 504].includes(status) || code === 'AITO_MEDIA_RECONCILIATION')
 }

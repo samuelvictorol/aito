@@ -1,5 +1,6 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import { useMeta, useQuasar } from 'quasar'
 import { api as publicApi } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
@@ -415,6 +416,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="marketing__mode"><AitoIAModeSwitch mode="marketing" :busy="busy" /></div>
         <div class="marketing__account">
+          <AitoGenerationIndicator :state="wallet" />
           <button v-if="signedIn" type="button" class="marketing__balance" :title="adminMode ? 'Saldo da plataforma' : 'Minha carteira AitoTokens'" :disabled="locked" @click="showWallet"><img src="/aitotokens.svg" width="24" height="24" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-plus'" /></button>
           <button v-else type="button" class="marketing__secondary" @click="showAuth()">Entrar</button>
         </div>

@@ -1,4 +1,5 @@
 <script setup>
+import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMeta, useQuasar } from 'quasar'
@@ -233,6 +234,7 @@ onMounted(() => {
         </div>
         <AitoIAModeSwitch :busy="busy" :admin-mode="adminMode" @chat-video="openChatVideo" />
         <div class="aito-studio__header-actions">
+        <AitoGenerationIndicator :state="state" />
         <button v-if="signedIn" type="button" class="aito-studio__balance" :title="adminMode ? 'Saldo da plataforma' : 'Minha carteira AitoTokens'" :disabled="busy" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-plus'" size="17px" /></button>
           <button v-else type="button" class="aito-studio__signup" @click="showAuth()">Criar conta <q-icon name="mdi-arrow-top-right" size="17px" /></button>
         </div>
@@ -290,7 +292,6 @@ onMounted(() => {
             <button v-else type="submit" class="aito-studio__send" :aria-label="signedIn ? 'Enviar mensagem' : 'Entrar para conversar'" :disabled="signedIn && (!hasInput || sessionLoading || !accountId || (!isVideoRequest && (!currentModel || !status?.configured)))" title="Ctrl + Enter"><q-icon name="mdi-arrow-up" size="25px" /></button>
           </div>
         </form>
-        <footer class="aito-studio__privacy"><q-icon name="mdi-shield-lock-outline" size="15px" /> Histórico local. Ao enviar, o conteúdo é processado pela OpenAI.</footer>
       </div>
     </main>
 

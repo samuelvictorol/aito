@@ -162,7 +162,7 @@ export async function captureTransitionFrame(file, position, format, resolution,
       if (time > 0) await mediaEvent(media, 'seeked', signal, () => { media.currentTime = time })
     }
     const [widthRatio, heightRatio] = format.split(':').map(Number)
-    const shortSide = resolution === '1080p' ? 1080 : 720
+    const shortSide = resolution === '1080p' ? 1080 : resolution === '480p' ? 480 : 720
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(shortSide * widthRatio / Math.min(widthRatio, heightRatio))
     canvas.height = Math.round(shortSide * heightRatio / Math.min(widthRatio, heightRatio))
