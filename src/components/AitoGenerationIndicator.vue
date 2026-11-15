@@ -11,6 +11,7 @@ const props = defineProps({ state: { type: Object, required: true } })
 const { accountId, access } = props.state
 const open = ref(false)
 const remoteJobs = shallowRef([])
+const saturated = ref(false)
 const refreshing = ref(false)
 const refreshFailed = ref(false)
 const time = ref(Date.now())
@@ -74,9 +75,10 @@ async function refresh() {
   try {
     const { data } = await owner.get('/aitoia/video/generations', { signal: controller.signal })
     if (!controller.signal.aborted && owner.current() && Array.isArray(data?.data?.jobs)) {
-      const { jobs: rows, activeGeneration } = data.data
+      const { jobs: rows, activeGeneration, queue } = data.data
       remoteJobs.value = activeGeneration && !rows.some(item => item.id === activeGeneration.id)
         ? [activeGeneration, ...rows] : rows
+      saturated.value = queue?.saturated === true
       refreshFailed.value = false
     }
   } catch {
@@ -115,6 +117,7 @@ watch(accountId, id => {
   reset()
   open.value = false
   remoteJobs.value = []
+  saturated.value = false
   removedIds.value = new Set()
   refreshFailed.value = false
   if (id) queuePoll(0)
@@ -206,6 +209,9 @@ async function openClip(job) {
         <q-btn v-close-popup flat dense round icon="mdi-close" aria-label="Fechar gerações" />
       </q-card-section>
       <q-card-section class="aito-generation-dialog__list">
+        <div v-if="saturated" class="aito-generation-dialog__demand" role="status">
+          <q-icon name="mdi-alert-outline" size="17px" /> A geração pode demorar mais devido à alta demanda de vídeos no AitoIA.
+        </div>
         <p v-if="refreshFailed" role="status">Falha ao atualizar a fila. Tente novamente.</p>
         <p v-if="removalError" role="alert">{{ removalError }}</p>
         <p v-if="!jobs.length">Nenhuma geração recente.</p>
@@ -251,6 +257,8 @@ async function openClip(job) {
 .aito-generation-dialog__header h2 { flex: 1; margin: 0; font-size: 1.2rem; line-height: 1.2; }
 .aito-generation-dialog__list { display: grid; gap: 9px; max-height: min(70dvh, 540px); overflow-y: auto; }
 .aito-generation-dialog__list article { display: grid; gap: 6px; justify-items: start; padding: 11px; border: 1px solid var(--aito-ai-line); border-radius: 9px; background: var(--aito-ai-panel); }
+.aito-generation-dialog__demand { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 8px; color: #ffdbaf; background: #54321b; font-size: .82rem; }
+.aito-generation-dialog__demand .q-icon { flex: 0 0 auto; }
 .aito-generation-dialog__list :is(small, p) { margin: 0; color: var(--aito-ai-muted); }
 .aito-generation-dialog__details { display: grid; gap: 3px; width: 100%; }
 .aito-generation-dialog__details small { overflow-wrap: anywhere; }

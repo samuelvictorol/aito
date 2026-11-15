@@ -23,7 +23,25 @@
         <q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn>
       </q-toolbar>
     </q-header>
-    <q-drawer v-model="drawerOpen" show-if-above bordered :width="265" class="business-drawer"><div class="business-brand"><img src="/aito-logo-restored.png" alt="AitoSoftwares"/><strong>AitoSoftwares</strong></div><q-list class="business-nav"><q-item clickable to="/admin/comunicacao"><q-item-section avatar><q-icon name="mdi-forum-outline"/></q-item-section><q-item-section>Comunicação</q-item-section></q-item><q-item clickable :active="tab==='projects'" @click="openDetail('projects')"><q-item-section avatar><q-icon name="mdi-folder-star-outline"/></q-item-section><q-item-section>Projetos</q-item-section></q-item><q-item clickable :active="tab==='overview'" @click="openDetail('overview')"><q-item-section avatar><q-icon name="mdi-finance"/></q-item-section><q-item-section>Dashboard</q-item-section></q-item><q-expansion-item v-model="detailExpanded" icon="mdi-view-grid-outline" label="Detalhar" class="business-detail" @before-show="tab='detail'"><q-item v-for="item in sortedDetailOptions" :key="item.name" clickable :active="tab===item.name" @click="openDetail(item.name)"><q-item-section avatar><q-icon :name="item.icon" size="20px"/></q-item-section><q-item-section>{{item.label}}</q-item-section></q-item></q-expansion-item></q-list><div class="business-drawer-footer">Administração · AitoSoftwares</div></q-drawer>
+    <q-drawer v-model="drawerOpen" show-if-above bordered :width="265" class="business-drawer">
+      <div class="business-brand"><img src="/aito-logo-restored.png" alt="AitoSoftwares"/><strong>AitoSoftwares</strong></div>
+      <q-list class="business-nav">
+        <q-item clickable :active="tab === 'aito-tokens'" @click="openDetail('aito-tokens')">
+          <q-item-section avatar><img src="/aitotokens.svg" alt="" width="24" height="24" /></q-item-section>
+          <q-item-section>AitoTokens</q-item-section>
+        </q-item>
+        <q-item clickable to="/admin/comunicacao"><q-item-section avatar><q-icon name="mdi-forum-outline"/></q-item-section><q-item-section>Comunicação</q-item-section></q-item>
+        <q-item clickable :active="tab === 'projects'" @click="openDetail('projects')"><q-item-section avatar><q-icon name="mdi-folder-star-outline"/></q-item-section><q-item-section>Projetos</q-item-section></q-item>
+        <q-item clickable :active="tab === 'overview'" @click="openDetail('overview')"><q-item-section avatar><q-icon name="mdi-finance"/></q-item-section><q-item-section>Dashboard</q-item-section></q-item>
+        <q-expansion-item v-model="detailExpanded" icon="mdi-view-grid-outline" label="Detalhar" class="business-detail" @before-show="tab = 'detail'">
+          <q-item v-for="item in sortedDetailOptions" :key="item.name" clickable :active="tab === item.name" @click="openDetail(item.name)">
+            <q-item-section avatar><q-icon :name="item.icon" size="20px"/></q-item-section>
+            <q-item-section>{{ item.label }}</q-item-section>
+          </q-item>
+        </q-expansion-item>
+      </q-list>
+      <div class="business-drawer-footer">Administração · AitoSoftwares</div>
+    </q-drawer>
     <q-page-container>
       <q-page class="admin-app__page">
         <div class="admin-app__shell">
@@ -142,16 +160,18 @@ const siteLinks = [
   { route: 'user-app', label: 'Área do cliente', icon: 'mdi-account-circle-outline' },
 ]
 
+const initialTab = value => ['access-security', 'aito-tokens', 'projects'].includes(value) ? value : 'aito-tokens'
+
 export default {
   name: 'AdminPanelPage',
   components: { AdminLandingVideos, AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   watch: {
-    '$route.query.tab' (tab) { if (['access-security', 'aito-tokens', 'projects'].includes(tab)) this.openDetail(tab) },
+    '$route.query.tab' (tab) { this.openDetail(initialTab(tab)) },
   },
   data () {
     return {
       siteLinks,
-      drawerOpen:false,detailExpanded:false,licenseGrantOpen:false,licenseCustomer:null, tab: 'overview', token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
+      drawerOpen:false,detailExpanded:false,licenseGrantOpen:false,licenseCustomer:null, tab: initialTab(this.$route.query.tab), token: localStorage.getItem('aito_admin_token'), admin: {}, leads: [], users: [], customers: [], policies: [], purchaseCourseId: '', leadSearch: '', leadStatus: '', personSearch: '', leadDialog: false, personDialog: false, detailDialog: false, selectedDetail: {}, credentialsDialogOpen: false, generatedCredentials: { customer: {}, password: '' }, leadForm: this.emptyLead(), personForm: this.emptyPerson('user'), policyDraft: {},
       detailOptions: [{ name: 'email-templates', label: 'Modelos de e-mail', description: 'Prévia de e-mails do sistema e histórico de envios.', icon: 'mdi-email-multiple-outline' }, {name:'desktop-expirations',label:'Desktop · vencimentos',description:'Licenças próximas de vencer ou expiradas.',icon:'mdi-calendar-clock'},{name:'notification-generator',label:'Gerar notificações',description:'Abrir o gerador de notificações.',icon:'mdi-bell-plus-outline'},{ name: 'courses', label: 'Cursos', description: 'Trilhas, aulas, materiais e marketplace.', icon: 'mdi-school-outline' }, { name: 'leads', label: 'Leads', description: 'Captacao e acompanhamento de oportunidades.', icon: 'mdi-account-multiple-outline' }, { name: 'users', label: 'Usuarios', description: 'Acessos, perfis e contas AitoLearn.', icon: 'mdi-account-outline' }, { name: 'customers', label: 'Clientes', description: 'Cadastros e acessos de clientes.', icon: 'mdi-briefcase-outline' }, { name: 'costs', label: 'Custos', description: 'Lancamentos financeiros e anexos.', icon: 'mdi-cash-multiple' }, { name: 'tickets', label: 'Chamados e saques', description: 'Suporte e solicitações de saque.', icon: 'mdi-lifebuoy' }, { name: 'contracts', label: 'Contratos', description: 'Documentos e acordos vinculados.', icon: 'mdi-file-document-outline' }, { name: 'credentials', label: 'Credenciais', description: 'Chaves e acessos compartilhados.', icon: 'mdi-key-chain-variant' }, { name: 'invoices', label: 'Notas fiscais', description: 'Documentos fiscais e valores emitidos.', icon: 'mdi-receipt-text-outline' }, { name: 'purchases', label: 'Compras de cursos', description: 'Pagamentos e interesse por curso.', icon: 'mdi-cart-outline' }, { name: 'certificates', label: 'Certificados', description: 'Certificados gerados e verificacao.', icon: 'mdi-certificate-outline' }, { name: 'course-comments', label: 'Comentarios', description: 'Moderacao das conversas nas aulas.', icon: 'mdi-comment-text-multiple-outline' }, { name: 'affiliates', label: 'Afiliados', description: 'Parceiros, perfis e acessos.', icon: 'mdi-account-star-outline' }, { name: 'coupons', label: 'Cupons', description: 'Descontos e vínculos monitorados.', icon: 'mdi-ticket-percent-outline' }, { name: 'affiliate-purchases', label: 'Vendas afiliadas', description: 'Licenças do kit, cupons e comissões.', icon: 'mdi-chart-line' }, { name: 'notifications', label: 'Notificações', description: 'Envios manuais pelo sininho.', icon: 'mdi-bell-outline' }],
       leadStatuses: [{ label: 'Novo', value: 'new' }, { label: 'Contatado', value: 'contacted' }, { label: 'Qualificado', value: 'qualified' }, { label: 'Fechado', value: 'closed' }],
       leadColumns: [{name:'visitCount',label:'Visitas',field:r=>r.visitCount||0,sortable:true},{name:'firstSource',label:'Origem inicial',field:r=>r.firstSource||r.source},{name:'lastSource',label:'Origem recente',field:'lastSource'},{ name: 'name', label: 'Nome', field: 'name', align: 'left', sortable: true }, { name: 'email', label: 'Contato', field: row => row.email || row.phone || '-', align: 'left' }, { name: 'type', label: 'Tipo', field: 'flowType', align: 'left' }, { name: 'message', label: 'Mensagem', field: 'message', align: 'left' }, { name: 'tags', label: 'Tags', field: 'tags', align: 'left' }, { name: 'status', label: 'Status', field: 'status', align: 'left' }, { name: 'createdAt', label: 'Entrada', field: row => this.formatDate(row.createdAt), align: 'left' }, { name: 'actions', label: '', align: 'right' }],
@@ -160,8 +180,11 @@ export default {
     }
   },
   computed: {
-    sortedDetailOptions () { return [...this.detailOptions,{name:'aito-tokens',label:'AitoTokens',description:'Recargas, consumo, cotação e configuração da Aito IA.',icon:'mdi-circle-multiple-outline'},{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
-    sectionTitle () { return this.tab==='overview'?'Dashboard':this.tab==='projects'?'Projetos':this.tab==='detail'?'Detalhar':this.tab==='landing-videos'?'Site · Vídeos':this.sortedDetailOptions.find(item=>item.name===this.tab)?.label || 'Administração' },
+    sortedDetailOptions () { return [...this.detailOptions,{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
+    sectionTitle () {
+      const main = { 'aito-tokens': 'AitoTokens', overview: 'Dashboard', projects: 'Projetos', detail: 'Detalhar', 'landing-videos': 'Site · Vídeos' }
+      return main[this.tab] || this.sortedDetailOptions.find(item => item.name === this.tab)?.label || 'Administração'
+    },
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
     headers () { return { headers: { Authorization: `Bearer ${this.token}` } } },
     navigationTab: {
@@ -171,7 +194,6 @@ export default {
   },
   mounted () {
     document.body.classList.add('aito-admin-dark')
-    if (['access-security', 'aito-tokens', 'projects'].includes(this.$route.query.tab)) this.tab = this.$route.query.tab
     try { this.admin = JSON.parse(localStorage.getItem('aito_admin_user') || '{}') } catch (error) { this.admin = {} }
     this.loadAll()
   },

@@ -436,7 +436,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
 </template>
 
 <style scoped>
-.token-admin { display: grid; gap: 1rem; color: #edfff8; }
+.token-admin { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; color: #edfff8; }
 .token-admin__head { display: flex; align-items: center; gap: .9rem; }
 .token-admin__head > div { flex: 1; }
 .token-admin__head h2 { margin: 0; font-size: clamp(1.65rem, 4vw, 2.5rem); line-height: 1.2; }

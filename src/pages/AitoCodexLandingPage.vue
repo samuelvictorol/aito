@@ -1,13 +1,28 @@
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useMeta } from 'quasar'
 import AitoCodexInstallDialog from 'components/AitoCodexInstallDialog.vue'
 import AitoCodexInstallVideo from 'components/AitoCodexInstallVideo.vue'
 import AitoCodexThemeShortcut from 'components/AitoCodexThemeShortcut.vue'
 import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
+import { api } from 'boot/axios'
 import { codexOfficialUrl } from 'src/services/aitoCodexInstall'
 
 const guide = ref(false)
+const entryPrice = ref('')
+const offersRequest = new AbortController()
+const reais = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+const registration = { name: 'aito-ia', query: { auth: 'register' } }
+onMounted(async () => {
+  try {
+    const { data } = await api.get('/aitoia/packages', { signal: offersRequest.signal })
+    const plan = data?.data?.plans?.find(item => item.usdCents === 500)
+    if (data?.data?.checkoutConfigured && Number.isFinite(plan?.brlCents) && plan.brlCents > 0) {
+      entryPrice.value = reais.format(plan.brlCents / 100)
+    }
+  } catch { /* The USD package is still the price reference. */ }
+})
+onBeforeUnmount(() => offersRequest.abort())
 const steps = [
   { icon: 'mdi-download-outline', title: 'Abra o instalador no Windows', text: 'Instale o Codex oficial, extraia o ZIP e abra Iniciar AitoIA.exe. Ele cria os atalhos AitoIA - Codex e Configurar AitoCodex Key.' },
   { icon: 'mdi-key-outline', title: 'Conecte a sua AitoKey', text: 'Gere a chave em Meus dados e informe-a na janela que abre automaticamente na primeira vez. O Windows guarda a chave para as próximas sessões.' },
@@ -21,8 +36,8 @@ const actions = [
 ]
 
 useMeta({
-  title: 'AitoIA para Codex | Agente de código com AitoTokens',
-  meta: { description: { name: 'description', content: 'Use o Codex oficial para Windows com seu saldo pré-pago de AitoTokens. Instale o plugin AitoIA, configure uma AitoKey e pague conforme o uso.' } },
+  title: 'AitoIA para Codex | GPT-6.1 e Higgsfield com AitoTokens',
+  meta: { description: { name: 'description', content: 'Use GPT-6.1 no Codex oficial para Windows e crie vídeos com Higgsfield no AitoIA usando a mesma carteira. Ganhe 50.000 AitoTokens no primeiro cadastro.' } },
   link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/aitoia-codex' } },
 })
 </script>
@@ -36,22 +51,34 @@ useMeta({
     <section id="demonstracao" class="codex-hero">
       <div class="codex-copy">
         <div class="codex-identity"><img src="/codex-app-icon.png" alt="" width="25" height="25" /> AitoIA para Codex</div>
-        <h1>Do card ao código.<br /><span>Codex com AitoTokens.</span></h1>
-        <p>Abra seu repositório no Codex para Windows. Peça para investigar um bug, implementar a correção e rodar os testes. Comece com sua conta gratuita do Codex e use AitoTokens pré-pagos, sem mensalidade do plugin.</p>
+        <h1>Do código ao vídeo.<br /><span>Um saldo só.</span></h1>
+        <p>Abra seu repositório no Codex oficial para Windows e use GPT‑6.1 para investigar bugs, editar e testar. No site do AitoIA, converse com GPT‑6 e gere vídeos com Higgsfield usando a mesma carteira.</p>
         <div class="codex-actions">
           <button type="button" class="codex-primary" @click="guide = true"><q-icon name="mdi-download" /> Baixar plugin e guia</button>
-          <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Baixar Codex oficial <q-icon name="mdi-arrow-top-right" /></a>
+          <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Codex oficial para Windows <q-icon name="mdi-arrow-top-right" /></a>
         </div>
+        <router-link :to="registration" class="codex-bonus">
+          <img src="/aitotokens.svg" alt="" width="37" height="37" />
+          <span><strong>Ganhe 50.000 AitoTokens</strong><small>Grátis no primeiro cadastro</small></span>
+          <q-icon name="mdi-arrow-right" size="20px" />
+        </router-link>
+        <p class="codex-price">Recarga a partir de <strong>{{ entryPrice || 'US$ 5,00' }}</strong><template v-if="entryPrice"> · US$ 5,00 na cotação atual</template>. Pague conforme o uso.</p>
       </div>
       <LandingVideoMonitor video-slot="codex-presentation" :video="{}" title="Demonstração do AitoIA para Codex"
         eyebrow="AITOIA PARA CODEX" headline="Do card à revisão" description="Veja o fluxo de trabalho no aplicativo oficial do Codex." />
     </section>
+    <nav class="codex-products" aria-label="Use sua carteira AitoTokens">
+      <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer"><q-icon name="mdi-code-braces" /><span><strong>Codex para Windows</strong><small>GPT‑6.1 Sol com sua AitoKey</small></span><q-icon name="mdi-arrow-top-right" /></a>
+      <router-link to="/"><q-icon name="mdi-message-text-outline" /><span><strong>Chat AitoIA</strong><small>Família GPT‑6 no navegador</small></span><q-icon name="mdi-arrow-right" /></router-link>
+      <router-link to="/aitoia-video-studio"><q-icon name="mdi-movie-open-play-outline" /><span><strong>Estúdio de vídeo</strong><small>Gere e edite com Higgsfield</small></span><q-icon name="mdi-arrow-right" /></router-link>
+    </nav>
     <section id="instalacao" class="codex-setup" aria-labelledby="codex-setup-title">
       <h2 id="codex-setup-title">Da instalação à primeira tarefa</h2>
       <AitoCodexInstallVideo class="codex-setup__tutorial" />
       <ol><li v-for="step in steps" :key="step.title"><q-icon :name="step.icon" size="26px" /><strong>{{ step.title }}</strong><p>{{ step.text }}</p></li></ol>
       <h2 class="codex-actions-title">Atalhos no Codex</h2>
       <ul class="codex-command-list"><li v-for="action in actions" :key="action.title"><q-icon :name="action.icon" size="24px" /><strong>{{ action.title }}</strong><code>{{ action.prompt }}</code><p>{{ action.text }}</p></li></ul>
+      <p class="codex-plan-note">A AitoKey habilita uso da API no Codex. Benefícios da assinatura ChatGPT Pro seguem o plano da sua conta OpenAI.</p>
       <div class="codex-wallet"><img src="/aito-logo-restored.png" alt="" width="44" height="44" /><div><strong>Recarregue quando precisar</strong><p>A AitoKey usa o saldo da carteira que você escolheu no painel.</p></div><router-link to="/aitotokens">Ver recargas <q-icon name="mdi-arrow-top-right" /></router-link></div>
     </section>
     <AitoCodexInstallDialog v-model="guide" />
@@ -66,4 +93,12 @@ useMeta({
 @media(max-width:790px){.codex-hero{grid-template-columns:1fr}.codex-hero h1{max-width:17ch}.codex-setup ol{grid-template-columns:1fr}.codex-wallet{grid-template-columns:auto 1fr}.codex-wallet a{grid-column:2}}@media(prefers-reduced-motion:reduce){.codex-landing *{scroll-behavior:auto}}
 .codex-actions-title{padding-top:34px}.codex-command-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px;list-style:none;margin:0;padding:0}.codex-command-list li{background:#13232d;border-color:#3b5660}.codex-command-list code{overflow-wrap:anywhere;color:#a6e2ef;font-size:.85rem}
 .codex-setup__tutorial{width:min(32rem, 100%);margin:0 auto 1.25rem}
+.codex-hero{padding-bottom:clamp(30px,5vw,70px)}
+.codex-bonus{display:flex;align-items:center;gap:12px;width:max-content;max-width:100%;margin-top:21px;padding:9px 13px;border:1px solid #dbb867;border-radius:12px;background:linear-gradient(110deg,#fce8a9,#e9b967);color:#30210d;text-decoration:none}
+.codex-bonus span,.codex-products span{display:grid;gap:2px;flex:1}.codex-bonus small,.codex-products small{font-size:.81rem}
+.codex-copy .codex-price{margin:9px 0 0;font-size:.85rem}.codex-price strong{color:#d5faed}
+.codex-products{width:min(1320px,100%);margin:0 auto clamp(30px,6vw,68px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.codex-products a{display:flex;align-items:center;gap:11px;padding:13px 16px;border:1px solid #31534e;border-radius:12px;background:#102524;color:#effcf8;text-decoration:none}.codex-products a:hover{background:#16332f}.codex-products small{color:#a9c8c1}.codex-products .q-icon{font-size:1.22rem;color:#89edcf}
+.codex-setup .codex-plan-note{margin-top:15px}
+@media(max-width:680px){.codex-products{grid-template-columns:1fr}}
 </style>

@@ -4,10 +4,11 @@ import { useMeta } from 'quasar'
 import { useRoute } from 'vue-router'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
+import AitoAboutLink from 'components/AitoAboutLink.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
 import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
+import AitoVideoModelCarousel from 'components/AitoVideoModelCarousel.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
-import AitoVideoModelPreview from 'components/AitoVideoModelPreview.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -229,28 +230,6 @@ const canQuoteVideo = computed(() => Boolean(offer.value && (prompt.value.trim()
 const modelOptions = computed(() => selectedConfig.value?.options || [])
 const offer = computed(() => modelOptions.value.find(item => item.id === videoOption.value) || modelOptions.value[0])
 const selectedModelName = computed(() => selectedConfig.value?.label.replace(/ · Higgsfield$/, ''))
-const hoveredModel = ref('')
-const focusedModel = ref('')
-const reduceModelMotion = ref(true)
-const activeModelPreview = computed(() => tab.value === 'ai' && modelListOpen.value && !reduceModelMotion.value
-  ? hoveredModel.value || focusedModel.value : '')
-
-function previewModelOnHover(event, id) {
-  if (event.pointerType !== 'touch') hoveredModel.value = id
-}
-function previewModelOnFocus(event, id) {
-  if (event.currentTarget.matches(':focus-visible')) focusedModel.value = id
-}
-watch([tab, modelListOpen, generationMode], () => { hoveredModel.value = ''; focusedModel.value = '' })
-let motionPreference
-function readModelMotionPreference() { reduceModelMotion.value = motionPreference?.matches ?? true }
-onMounted(() => {
-  motionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-  readModelMotionPreference()
-  motionPreference?.addEventListener('change', readModelMotionPreference)
-})
-onBeforeUnmount(() => motionPreference?.removeEventListener('change', readModelMotionPreference))
-
 const selectedReferenceVariant = computed(() => {
   if (generationMode.value !== 'text') return null
   const variants = options.value?.referenceModels?.filter(model => model.familyId === selectedConfig.value?.familyId && model.mode === 'reference')
@@ -2043,6 +2022,7 @@ onBeforeUnmount(() => {
           <q-btn v-if="signedIn" flat no-caps align="left" :icon="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" :label="adminMode ? 'Aito Admin' : 'Meu perfil'"
             :to="adminMode ? '/admin' : { path: '/app', query: { tab: 'profile' } }" :disable="guarded" />
           <q-btn v-else flat no-caps align="left" icon="mdi-account-circle-outline" label="Meu perfil" @click="showAuth('login')" />
+          <AitoAboutLink />
         </footer>
       </aside>
     </q-drawer>
@@ -2099,26 +2079,8 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <q-expansion-item v-if="!remakeMode" v-model="modelListOpen" class="video-studio__catalog-models" icon="mdi-movie-open-outline" label="Modelos de vídeo" :caption="selectedModelName">
-            <div v-if="modelCards.length" class="video-studio__model-grid">
-              <article v-for="item in modelCards" :key="item.id" class="video-studio__model-card"
-                :class="{ 'video-studio__model-card--selected': selectedConfig?.id === item.id }"
-                @pointerenter="previewModelOnHover($event, item.id)" @pointerleave="hoveredModel = ''">
-              <AitoVideoModelPreview :files="item.preview" :fallback-position="item.poster" :type="item.type"
-                :animate="activeModelPreview === item.id" />
-              <div class="video-studio__model-content">
-                <div><span class="video-studio__model-maker">{{ item.maker }}</span><h3>{{ item.name }}</h3></div>
-                <p>{{ item.summary }}</p>
-                <div class="video-studio__model-meta">
-                  <span v-if="item.perSecond" class="video-studio__model-rate" title="Custo de referência do estúdio">A partir de {{ item.perSecond }}/s</span>
-                  <span class="video-studio__model-status--available">{{ item.requirement }}</span>
-                </div>
-              </div>
-              <button class="video-studio__model-hit" type="button" :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" :aria-label="`Selecionar ${item.name}`" :aria-pressed="selectedConfig?.id === item.id"
-                @focus="previewModelOnFocus($event, item.id)" @blur="focusedModel = ''" @click="selectVideoModel(item.id)">
-                <q-tooltip :delay="350">{{ item.summary }}</q-tooltip>
-                <q-icon :name="selectedConfig?.id === item.id ? 'mdi-check-circle' : 'mdi-arrow-top-right'" size="18px" aria-hidden="true" />
-              </button>
-            </article></div>
+            <AitoVideoModelCarousel v-if="modelCards.length" :cards="modelCards" :selected-id="selectedConfig?.id" :active="modelListOpen"
+              :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" @select="selectVideoModel" />
             <p v-else class="video-studio__catalog-empty">{{ optionsLoading ? 'Carregando modelos de vídeo…' : optionsError ||
               (!signedIn ? 'Entre para consultar os modelos de vídeo.' : hasReference || reference || referenceImages.length || voiceReference
                 ? 'Nenhum modelo deste modo aceita as referências anexadas.' : 'Nenhum modelo disponível para este modo.') }}</p>
@@ -2675,8 +2637,8 @@ onBeforeUnmount(() => {
 .video-studio__preview { grid-column: 1; grid-row: 2; }
 .video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 3; }
 .video-studio__grid--generate > .aito-remake { grid-column: 1 / -1; grid-row: 3; order: 3; }
-.video-studio__grid--generate .video-studio__editor { background: linear-gradient(140deg, #39305783, transparent 58%), var(--aito-ai-surface); }
-.video-studio__preview--clips { grid-column: 2; grid-row: 3; }
+.video-studio__grid--generate .video-studio__editor { border-color: #397c65; background: radial-gradient(ellipse at top left, #275e4c, transparent 72%), linear-gradient(145deg, #154036, #0b2322 80%); }
+.video-studio__preview--clips { grid-column: 2; grid-row: 3; border-color: #355a7b; background: radial-gradient(ellipse at top left, #214b75, transparent 72%), linear-gradient(145deg, #142f4c, #0c222c 80%); }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .video-studio h2 { font-size: 1.13rem; font-weight: 730; line-height: 1.2; }
 .video-studio h3 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
@@ -2698,20 +2660,7 @@ onBeforeUnmount(() => {
 .video-studio__catalog-models :deep(.q-item__section--avatar) { min-width: 36px; color: var(--aito-ai-accent); }
 .video-studio__catalog-models :deep(.q-item__label--caption) { color: var(--aito-ai-accent); }
 .video-studio__catalog-empty { padding: 12px; color: var(--aito-ai-muted); font-size: .85rem; }
-.video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 5px 10px 10px; }
-.video-studio__model-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 13px; background: var(--aito-ai-surface); }
-.video-studio__model-card--selected, .video-studio__model-card:has(.video-studio__model-hit:not(:disabled):is(:hover, :focus-visible)) { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-panel); }
-.video-studio__model-content { display: grid; flex: 1; grid-template-rows: auto 1fr auto; gap: 5px; padding: 7px 7px 5px; }
-.video-studio__model-maker { color: var(--aito-ai-muted); font-size: .76rem; }
-.video-studio__model-content h3 { margin-top: 2px; overflow-wrap: anywhere; }
-.video-studio__model-content p { color: var(--aito-ai-muted); font-size: .82rem; line-height: 1.35; }
-.video-studio__model-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; color: var(--aito-ai-muted); font-size: .73rem; }
-.video-studio__model-rate { padding: 2px 5px; border-radius: 4px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); font-weight: 650; }
-.video-studio__model-status--available, .video-studio__selected-model { color: var(--aito-ai-accent); }
-.video-studio__selected-model { font-size: .86rem; font-weight: 650; text-align: right; }
-.video-studio__model-hit { position: absolute; inset: 0; display: flex; justify-content: flex-end; align-items: flex-start; padding: 10px; border: 0; border-radius: inherit; color: var(--aito-ai-text); background: transparent; cursor: pointer; }
-.video-studio__model-hit :deep(.q-icon) { width: 27px; height: 27px; border-radius: 7px; background: #092322eb; }
-.video-studio__model-hit[aria-pressed=true] :deep(.q-icon) { color: var(--aito-ai-accent); }
+.video-studio__selected-model { color: var(--aito-ai-accent); font-size: .86rem; font-weight: 650; text-align: right; }
 .video-studio label { display: grid; min-width: 0; gap: 6px; color: var(--aito-ai-muted); font-weight: 620; font-size: .84rem; }
 .video-studio input:not([type=range], .q-field__native), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio textarea { min-height: 60px; resize: vertical; }
@@ -2788,7 +2737,6 @@ onBeforeUnmount(() => {
 .video-studio__analysis button { justify-self: start; }
 .video-studio__generated video, .video-studio__rendered, .video-studio__reference-preview { display: block; width: 100%; max-height: 420px; border-radius: 8px; background: var(--aito-ai-bg); }
 .video-studio__reference-preview { max-height: 220px; }
-@media (max-width: 960px) { .video-studio__model-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .video-studio__dialog { width: min(620px, 95vw); background: var(--aito-ai-surface); color: var(--aito-ai-text); }
 .video-studio__dialog h2 { margin: 0 0 8px; font-size: 1.15rem; }
 .video-studio__dialog-list { display: grid; gap: 10px; }
@@ -2822,7 +2770,6 @@ onBeforeUnmount(() => {
   .video-studio__preview--clips { order: 4; }
   .video-studio__screen canvas { max-height: min(42dvh, 390px); }
 }
-@media (max-width: 640px) { .video-studio__model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .video-studio__model-content { padding-inline: 5px; } }
 @media (max-width: 640px) {
   .video-studio__bar { grid-template-columns: minmax(0, 1fr) auto; padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 6px; gap: 5px; }
   .video-studio__header-start { gap: 2px; }

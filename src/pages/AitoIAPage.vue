@@ -1,5 +1,6 @@
 <script setup>
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
+import AitoAboutLink from 'components/AitoAboutLink.vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMeta, useQuasar } from 'quasar'
@@ -223,6 +224,7 @@ onMounted(() => {
         <router-link v-if="signedIn" :to="adminMode ? '/admin' : '/app'"><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" size="19px" /> {{ adminMode ? 'Aito Admin' : 'Minha conta' }} <q-icon class="aito-studio__out" name="mdi-arrow-top-right" size="15px" /></router-link>
         <button v-else type="button" @click="showAuth('login')"><q-icon name="mdi-login" size="19px" /> Entrar</button>
         <q-icon name="mdi-lock-outline" size="16px" /><span>Histórico neste dispositivo por até 7 dias.</span>
+        <AitoAboutLink />
       </div>
     </aside>
 

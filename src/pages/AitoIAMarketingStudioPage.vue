@@ -1,6 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
+import AitoAboutLink from 'components/AitoAboutLink.vue'
 import { useMeta, useQuasar } from 'quasar'
 import { api as publicApi } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
@@ -469,6 +470,7 @@ onBeforeUnmount(() => {
         <footer class="marketing__drawer-footer">
           <q-btn v-if="signedIn" flat no-caps class="full-width" :icon="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" :label="adminMode ? 'Aito Admin' : 'Meu perfil'" :to="adminMode ? '/admin' : { path: '/app', query: { tab: 'profile' } }" :disable="busy" />
           <q-btn v-else flat no-caps class="full-width" icon="mdi-account-circle-outline" label="Entrar para acessar o perfil" @click="showAuth()" />
+          <AitoAboutLink />
         </footer>
       </aside>
     </q-drawer>

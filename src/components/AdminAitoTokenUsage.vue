@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
+import AdminHiggsfieldQueue from './AdminHiggsfieldQueue.vue'
 import LoginMfaDialog from './LoginMfaDialog.vue'
 
 const emit = defineEmits(['reauthenticated'])
@@ -559,6 +560,7 @@ onBeforeUnmount(() => {
       </article>
     </section>
     <q-banner v-else-if="treasuryError" rounded class="bg-yellow-10 text-white" role="status">O saldo geral está indisponível. Atualize para tentar novamente.</q-banner>
+    <AdminHiggsfieldQueue :live="liveEnabled" />
     <q-form class="token-usage__filters" @submit.prevent="load(1, true)">
       <q-input v-model="filters.from" dark outlined dense stack-label label="De" type="date" required />
       <q-input v-model="filters.to" dark outlined dense stack-label label="Até" type="date" required />
@@ -779,7 +781,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.token-usage { display: grid; gap: 1rem; }
+.token-usage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .token-usage__header, .token-usage__provider-head { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: .65rem 1rem; }
 .token-usage__live { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0 .4rem; }
 .token-usage__live-status { flex-basis: 100%; text-align: right; color: #c2d9d3; }
