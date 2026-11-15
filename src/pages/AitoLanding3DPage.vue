@@ -28,6 +28,7 @@
 
     <div class="landing-3d__atmosphere" aria-hidden="true"></div>
     <div class="landing-3d__noise" aria-hidden="true"></div>
+    <div ref="caseLayer" class="landing-3d__case-layer" aria-hidden="true"></div>
 
     <header class="landing-3d__header">
       <button class="landing-3d__brand" type="button" aria-label="Voltar ao inicio" @click="scrollTo('inicio')">
@@ -96,7 +97,6 @@
             </article>
             <h1 v-if="index === 0" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h1>
             <h2 v-else-if="section.title && !section.id.startsWith('founder-')" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h2>
-            <p v-if="section.id === 'marcas'" class="landing-3d__hive-description">{{ section.description }}</p>
             <!-- <p v-if="section.description && !isMobile" class="landing-3d__description">{{ section.description }}</p> -->
 
             <div v-if="section.id === 'inicio'" class="landing-3d__hero-actions">
@@ -123,7 +123,7 @@
 
           <div v-if="section.id !== 'inicio'" class="landing-3d__visual">
             <template v-if="section.id === 'marcas'">
-              <AitoCaseHoneycomb :items="operationCases" :progress="caseFormation" :reduced-motion="prefersReducedMotion" @select="handleBrandSelect" />
+              <AitoCaseHoneycomb :items="operationCases" :layer="caseLayer" :intro-phase="introPhase" :reduced-motion="prefersReducedMotion" @select="handleBrandSelect" />
             </template>
 
             <template v-else-if="section.id === 'cases'">
@@ -314,6 +314,7 @@ const introRevealing = ref(cachedIntro)
 const introComplete = ref(cachedIntro)
 const introTextVisible = ref(cachedIntro)
 const introPhase = ref(cachedIntro ? 'complete' : 'loading')
+const caseLayer = ref(null)
 const brandDialogOpen = ref(false)
 const selectedBrand = ref(null)
 const authDialogOpen = ref(false)
@@ -669,6 +670,7 @@ onBeforeUnmount(() => {
 .landing-3d__account-link:focus-visible { border-color: var(--aito-teal); outline: none; box-shadow: 0 18px 52px rgba(19, 188, 157, 0.24); }
 
 .landing-3d__content { position: relative; z-index: 2; }
+.landing-3d__case-layer { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
 
 .landing-3d__section {
   position: relative;
@@ -690,7 +692,6 @@ onBeforeUnmount(() => {
 .landing-3d__section--marcas .landing-3d__section-inner { grid-template-columns: minmax(0, 1fr); gap: 0; }
 .landing-3d__section--marcas .landing-3d__copy { margin: 0 auto 1.55rem; text-align: center; }
 .landing-3d__section--marcas .landing-3d__title { font-size: clamp(1.7rem,4vw,3.25rem); }
-.landing-3d__hive-description { margin: .45rem 0 0; color: #c0ded6; line-height: 1.5; }
 .landing-3d__section--marcas .landing-3d__visual { width: 100%; max-width: none; }
 .landing-3d__section--right .landing-3d__copy { order: 2; }
 .landing-3d__section--right .landing-3d__visual { order: 1; }

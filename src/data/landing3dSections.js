@@ -22,7 +22,6 @@ export const landing3dSections = Object.freeze([
   {
     id: 'marcas',
     title: 'Clientes e operações',
-    description: 'Explore os produtos da AitoSoftwares e os projetos em que a tecnologia já faz parte da operação.',
     align: 'left'
   },
   {

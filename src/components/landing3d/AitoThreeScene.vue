@@ -967,16 +967,10 @@ function updateHexStarLayer(layer, elapsedTime, targetX, targetY) {
     const dx = targetX - x
     const dy = targetY - y
     const attraction = motion * 0.21 / (1 + Math.hypot(dx, dy) * 0.18)
-    const row = Math.floor(index / 7) % 3
-    const hiveX = (index % 7 - 3 + (row % 2) * 0.5) * camera.aspect * 0.69
-    const hiveY = (1 - row) * 0.86 + 0.2
-    position.setXYZ(index,
-      lerp(x + dx * attraction, hiveX, formation),
-      lerp(y + dy * attraction, hiveY, formation),
-      lerp(anchors[offset + 2], -0.5, formation))
+    position.setXYZ(index, x + dx * attraction, y + dy * attraction, anchors[offset + 2])
     angle[index] = Math.atan2(-dy, dx) * motion
   }
-  layer.material.opacity = opacity * (1 - formation)
+  layer.material.opacity = opacity * morph.value * (1 - formation)
   position.needsUpdate = true
   layer.geometry.getAttribute('particleAngle').needsUpdate = true
 }

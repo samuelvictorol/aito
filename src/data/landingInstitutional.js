@@ -1,12 +1,18 @@
+const starluzUrl = 'https://starluz.onrender.com/'
+const lcEletronicaUrl = 'https://lc-eletronica.onrender.com/'
+
 export const institutionalBrands = Object.freeze([
   {
     name: 'STARLUZ', imgUrl: 'starluz-logo.jpg',
     summary: 'Iluminação e projetos com uma presença digital dedicada à marca.',
-    href: 'https://starluziluminacao.com.br/'
+    href: starluzUrl,
+    direct: true
   },
   {
     name: 'LC Eletrônica', imgUrl: 'logo-lc.png',
-    summary: 'Loja digital de eletrônica com catálogo e painel de gestão.'
+    summary: 'Loja digital de eletrônica com catálogo e painel de gestão.',
+    href: lcEletronicaUrl,
+    direct: true
   },
   {
     name: 'Empregos.com.br',
@@ -98,6 +104,13 @@ export const institutionalBrands = Object.freeze([
     summary: 'Tecnologia aplicada a processos criticos, com rastreabilidade e foco em quem usa.',
     href: 'https://aghu.ebserh.gov.br'
   },
+  {
+    name: 'Elétrica Capital',
+    imgUrl: '/brands/eletrica-capital.png',
+    summary: 'Protótipo de painel para acompanhar vendas, pedidos e estoque.',
+    href: 'https://eletricacapital-prototype.onrender.com/',
+    direct: true
+  },
 ])
 
 export const institutionalServices = Object.freeze([
@@ -133,13 +146,14 @@ export const institutionalCases = Object.freeze([
     title: 'STARLUZ', subtitle: 'Iluminação e projetos em uma experiência digital.',
     text: 'Presença digital para apresentar a marca e suas soluções em iluminação.',
     tags: ['Iluminação', 'Site', 'Experiência digital'],
-    href: 'https://starluziluminacao.com.br/'
+    href: starluzUrl
   },
   {
     icon: 'mdi-chip', image: '/logo-lc.png',
     title: 'LC Eletrônica', subtitle: 'Catálogo e gestão para uma loja de eletrônica.',
     text: 'Loja responsiva com produtos organizados e painel para acompanhar a operação.',
-    tags: ['Loja', 'Catálogo', 'Gestão']
+    tags: ['Loja', 'Catálogo', 'Gestão'],
+    href: lcEletronicaUrl
   },
   {
     icon: 'mdi-account-circle-outline',
