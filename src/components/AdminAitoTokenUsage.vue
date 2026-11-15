@@ -53,6 +53,7 @@ const providerLabels = { openai: 'OpenAI', higgsfield: 'Higgsfield' }
 const providerIcons = { openai: 'mdi-message-text-outline', higgsfield: 'mdi-movie-open-play-outline' }
 const providerBalanceKeys = { openai: 'openaiBalanceUsdCents', higgsfield: 'higgsfieldBalanceUsdCents' }
 const logStates = { applied: 'Concluída', reserved: 'Em processamento', released: 'Reserva liberada', reconciliation: 'Conciliação pendente' }
+const featureLabels = { aitoia_video_remake: 'Refazer vídeos · Geração', aitoia_video_remake_plan: 'Refazer vídeos · Preparação' }
 const stateColors = { applied: 'teal-3', reserved: 'blue-3', released: 'grey-4', reconciliation: 'amber-4' }
 const optionList = labels => Object.entries(labels).map(([value, label]) => ({ label, value }))
 const sourceOptions = optionList(sourceLabels)
@@ -230,7 +231,7 @@ const selectedDetails = computed(() => {
     { label: 'Resposta no provedor', value: row.providerResponseId },
     { label: 'Geração no provedor', value: row.providerJobId },
     { label: 'Modelo', value: row.model },
-    { label: 'Recurso', value: row.feature },
+    { label: 'Recurso', value: featureLabels[row.feature] || row.feature },
     { label: 'Solicitada em', value: formatEvent(row.submittedAt || row.createdAt) },
     { label: 'Finalizada em', value: row.settledAt && formatEvent(row.settledAt) },
     { label: 'Conciliada em', value: row.reconciledAt && formatEvent(row.reconciledAt) },
@@ -663,6 +664,9 @@ onBeforeUnmount(() => {
           <q-td :props="props">
             <span class="token-usage__usd">{{ props.row.state === 'applied' ? money(props.value) : '—' }}</span>
             <small v-if="props.row.state === 'applied'" class="token-usage__brl">{{ money(props.row[column.brlField], reais) }}</small>
+            <small v-if="column.name === 'billed' && props.row.estimatedAitoTokens != null" class="token-usage__brl">
+              ≈ {{ numbers.format(props.row.estimatedAitoTokens) }} AitoTokens
+            </small>
           </q-td>
         </template>
         <template #body-cell-details="props">
@@ -728,6 +732,9 @@ onBeforeUnmount(() => {
               <div><dt>Tokens de entrada em cache</dt><dd>{{ numbers.format(selectedLog.cachedTokens || 0) }}</dd></div>
             </template>
             <div v-if="selectedLog.quantity != null"><dt>Uso do provedor</dt><dd>{{ formatProviderUsage(selectedLog) }}</dd></div>
+            <div v-if="selectedLog.estimatedAitoTokens != null">
+              <dt>AitoTokens consumidos</dt><dd>≈ {{ numbers.format(selectedLog.estimatedAitoTokens) }}</dd>
+            </div>
           </dl>
           <dl v-if="selectedLog.state === 'applied'" class="token-usage__amounts">
             <div v-for="column in costColumns" :key="column.name">

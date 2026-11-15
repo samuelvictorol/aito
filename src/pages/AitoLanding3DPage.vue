@@ -12,6 +12,7 @@
       :scroll-progress="scrollProgress"
       :reduced-motion="prefersReducedMotion"
       :section-count="landing3dSections.length"
+      :case-formation="caseFormation"
       :intro-phase="introPhase"
       @ready="handleSceneReady"
     />
@@ -85,7 +86,7 @@
             <LandingVideoMonitor video-slot="home-presentation" />
           </div>
           <div class="landing-3d__copy" :style="sectionCopyStyle(index)">
-            <p :id="`${section.id}-eyebrow`" class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
+            <p v-if="section.eyebrow" :id="`${section.id}-eyebrow`" class="landing-3d__eyebrow">{{ section.eyebrow }}</p>
             <article v-if="section.id.startsWith('founder-')" class="landing-3d__founder-profile">
               <div class="landing-3d__founder-heading"><img :src="founderForSection(section.id).image" :alt="founderForSection(section.id).name" /><div><span>{{ founderForSection(section.id).role }}</span><h2 :id="`${section.id}-title`">{{ founderForSection(section.id).name }}</h2></div></div>
               <p>{{ founderForSection(section.id).summary }}</p>
@@ -94,6 +95,7 @@
             </article>
             <h1 v-if="index === 0" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h1>
             <h2 v-else-if="section.title && !section.id.startsWith('founder-')" :id="`${section.id}-title`" class="landing-3d__title">{{ section.title }}</h2>
+            <p v-if="section.id === 'marcas'" class="landing-3d__hive-description">{{ section.description }}</p>
             <!-- <p v-if="section.description && !isMobile" class="landing-3d__description">{{ section.description }}</p> -->
 
             <div v-if="section.id === 'inicio'" class="landing-3d__hero-actions">
@@ -120,7 +122,7 @@
 
           <div v-if="section.id !== 'inicio'" class="landing-3d__visual">
             <template v-if="section.id === 'marcas'">
-              <AitoBrandCarousel :brands="institutionalBrands" :reduced-motion="prefersReducedMotion" @select="handleBrandSelect" />
+              <AitoCaseHoneycomb :items="operationCases" :progress="caseFormation" :reduced-motion="prefersReducedMotion" @select="handleBrandSelect" />
             </template>
 
             <template v-else-if="section.id === 'cases'">
@@ -259,7 +261,7 @@ import { api } from 'boot/axios'
 import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
 import AitoLoadingGate from 'components/landing3d/AitoLoadingGate.vue'
 import AitoThreeScene from 'components/landing3d/AitoThreeScene.vue'
-import AitoBrandCarousel from 'components/landing3d/AitoBrandCarousel.vue'
+import AitoCaseHoneycomb from 'components/landing3d/AitoCaseHoneycomb.vue'
 import LandingDeviceGallery from 'components/landing3d/LandingDeviceGallery.vue'
 import { landingShowcase } from 'src/data/landingShowcase'
 import IAChatComponent from 'components/IAChatComponent.vue'
@@ -292,6 +294,19 @@ function hasCachedIntro() {
 const cachedIntro = hasCachedIntro()
 
 const { activeSection, prefersReducedMotion, scrollProgress, scrollToSection: scrollTo, sectionPosition } = useLandingScroll(landing3dSections.length)
+const operationCases = [
+  { name: 'Soluções para WhatsApp', href: '/whatsapp-solucoes', imgUrl: '/brands/whatsapp.svg', product: true },
+  { name: 'AitoIA para Codex', href: '/aitoia-codex', imgUrl: '/codex-app-icon.png', product: true },
+  { name: 'AitoIA', href: '/aitoia', imgUrl: '/ia.gif', product: true },
+  { name: 'Soluções Whitelabel', href: '/whatsapp-solucoes-whitelabel', imgUrl: '/whatsapp-solutions/product-kit.webp', product: true },
+  ...institutionalBrands,
+]
+const caseSection = landing3dSections.findIndex(section => section.id === 'marcas')
+const caseFormation = computed(() => {
+  const distance = Math.abs(sectionPosition.value - caseSection)
+  const amount = Math.min(1, Math.max(0, (0.83 - distance) / 0.55))
+  return amount * amount * (3 - 2 * amount)
+})
 
 const sceneReady = ref(cachedIntro)
 const introRevealing = ref(cachedIntro)
@@ -672,7 +687,10 @@ onBeforeUnmount(() => {
 .landing-3d__section--inicio .landing-3d__copy { order: 2; }
 .landing-3d__section--inicio .landing-3d__hero-monitor { order: 1; }
 .landing-3d__section--marcas .landing-3d__section-inner { grid-template-columns: minmax(0, 1fr); gap: 0; }
-.landing-3d__section--marcas .landing-3d__copy { margin-bottom: 0.5rem; }
+.landing-3d__section--marcas .landing-3d__copy { margin: 0 auto 1.55rem; text-align: center; }
+.landing-3d__section--marcas .landing-3d__title { font-size: clamp(1.7rem,4vw,3.25rem); }
+.landing-3d__hive-description { margin: .45rem 0 0; color: #c0ded6; line-height: 1.5; }
+.landing-3d__section--marcas .landing-3d__visual { width: 100%; max-width: none; }
 .landing-3d__section--right .landing-3d__copy { order: 2; }
 .landing-3d__section--right .landing-3d__visual { order: 1; }
 .landing-3d__section--center .landing-3d__section-inner { grid-template-columns: 1fr; }

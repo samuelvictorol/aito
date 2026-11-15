@@ -28,7 +28,7 @@ test('missing, cleared and malformed overrides preserve the expected monitor beh
 
 test('each labeled landing slot is wired to a unique public monitor', async () => {
   const files = ['pages/AitoLanding3DPage.vue', 'pages/WhatsAppBotBuilderProductPage.vue', 'components/DesktopSolutionFeatures.vue',
-    'pages/WhatsAppWhitelabelProductPage.vue', 'pages/AitoTokensPage.vue', 'pages/AitoLearnLaunchPage.vue']
+    'pages/WhatsAppWhitelabelProductPage.vue', 'pages/AitoTokensPage.vue', 'pages/AitoLearnLaunchPage.vue', 'pages/AitoCodexLandingPage.vue']
   const sources = (await Promise.all(files.map(file => readFile(new URL('../src/' + file, import.meta.url), 'utf8')))).join('\n')
   const ids = landingVideoPages.flatMap(page => page.slots.map(slot => slot.id))
   assert.equal(ids.length, new Set(ids).size)

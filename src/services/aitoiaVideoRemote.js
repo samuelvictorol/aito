@@ -106,7 +106,7 @@ function mediaEvent(media, name, signal, start) {
   })
 }
 
-export async function sampleVideoFrames(file, signal) {
+export async function sampleVideoFrames(file, signal, { maxSide = 768, fractions = [0.08, 0.34, 0.62, 0.88], jpegQuality = 0.72 } = {}) {
   checkVideoReference(file)
   const url = URL.createObjectURL(file)
   const video = document.createElement('video')
@@ -117,17 +117,17 @@ export async function sampleVideoFrames(file, signal) {
     await mediaEvent(video, 'loadeddata', signal, () => { video.src = url })
     if (!Number.isFinite(video.duration) || !video.duration || !video.videoWidth || !video.videoHeight) throw new Error('O vídeo precisa ter imagem e duração válidas.')
     const canvas = document.createElement('canvas')
-    const scale = Math.min(1, 768 / Math.max(video.videoWidth, video.videoHeight))
+    const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight))
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Seu navegador não disponibilizou leitura de vídeo.')
     const frames = []
-    for (const fraction of [0.08, 0.34, 0.62, 0.88]) {
+    for (const fraction of fractions) {
       const second = video.duration * fraction
       await mediaEvent(video, 'seeked', signal, () => { video.currentTime = second })
       context.drawImage(video, 0, 0, canvas.width, canvas.height)
-      frames.push({ second: second.toFixed(1), url: canvas.toDataURL('image/jpeg', .72) })
+      frames.push({ second: second.toFixed(1), url: canvas.toDataURL('image/jpeg', jpegQuality) })
     }
     return frames
   } finally {

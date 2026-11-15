@@ -13,7 +13,7 @@ function release(state) {
   if (entry.references > 0) return
   entry.controller.abort()
   if (entry.url) URL.revokeObjectURL(entry.url)
-  entries.delete(state.path)
+  if (entries.get(state.path) === entry) entries.delete(state.path)
 }
 
 function bindSource(element, binding, attribute) {
@@ -40,6 +40,10 @@ function bindSource(element, binding, attribute) {
         if (controller.signal.aborted) return null
         entry.url = URL.createObjectURL(response.data)
         return entry.url
+      })
+      .catch((error) => {
+        if (entries.get(path) === entry) entries.delete(path)
+        throw error
       })
     entries.set(path, entry)
   }

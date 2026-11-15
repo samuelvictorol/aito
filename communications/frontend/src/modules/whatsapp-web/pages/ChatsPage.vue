@@ -12,6 +12,7 @@ import { canAction, canArea } from '../../../services/access.js'
 import { getStoredUser } from '../../../services/tokens.js'
 import ConversationSignature from '../ConversationSignature.vue'
 import { vAuthSrc, vAuthHref } from '../authenticated-media.js'
+import MessageImage from '../components/MessageImage.vue'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
@@ -76,6 +77,7 @@ function orderStage(chat){const stage=chat?.tags?.find(t=>t.startsWith('pedido-'
 function name(chat) { return chat?.displayNameOverride || chat?.displayName || chat?.phone || chat?.externalId || 'Contato' }
 function show(value) { toast.value = value; setTimeout(() => { if (toast.value === value) toast.value = '' }, 3300) }
 function bodyVisible(message) { return message.body && !/^\[(Imagem|Vídeo|Áudio|Documento|Figurinha|Localização|Contato)\]$/.test(message.body) }
+const attachmentLabels = { image: 'Imagem', sticker: 'Figurinha', video: 'Vídeo', audio: 'Áudio', ptt: 'Áudio', document: 'Documento' }
 function wazeUrl(message){const d=message.metadata||{};return `https://waze.com/ul?ll=${encodeURIComponent(d.latitude+','+d.longitude)}&navigate=yes`}
 function mapUrl(message) { const data = message.metadata || {}; return `https://www.google.com/maps?q=${encodeURIComponent(`${data.latitude},${data.longitude}`)}` }
 function ack(message) { if (message.ack >= 4) return '✓✓'; if (message.ack >= 2) return '✓✓'; return '✓' }
@@ -388,10 +390,11 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
                 <button v-can-action="['whatsapp_web.send','whatsapp_web.edit','whatsapp_web.delete']" class="message-menu-trigger" aria-label="Ações da mensagem" @click="openMessageActions(message)"><span class="material-icons" aria-hidden="true">expand_more</span></button>
                 <div v-if="message.type === 'call'" class="text-caption"><span class="material-icons">{{ message.metadata?.isVideo ? 'videocam' : 'call' }}</span> Atenda pelo WhatsApp no celular</div>
                 <div v-if="message.quotedMessageId" class="quoted">↩ Resposta a uma mensagem</div>
-                <img v-if="['image','sticker'].includes(message.media?.kind)" v-auth-src="message.media.url" alt="Imagem ou figurinha" class="message-image" :class="{'message-sticker': message.media?.kind === 'sticker'}" >
-                <video v-else-if="message.media?.kind==='video'" v-auth-src="message.media.url" controls preload="metadata" ></video>
-                <audio v-else-if="message.media?.kind==='audio'" v-auth-src="message.media.url" controls preload="metadata"></audio>
+                <MessageImage v-if="message.media?.url && ['image','sticker'].includes(message.media.kind)" :url="message.media.url" :sticker="message.media.kind === 'sticker'" />
+                <video v-else-if="message.media?.url && message.media.kind==='video'" v-auth-src="message.media.url" controls preload="metadata" ></video>
+                <audio v-else-if="message.media?.url && message.media.kind==='audio'" v-auth-src="message.media.url" controls preload="metadata"></audio>
                 <a v-else-if="message.media?.url" v-auth-href="message.media.url" target="_blank">▧ {{ message.media.filename || 'Baixar arquivo' }}<small>{{ message.media.mimeType }}</small></a>
+                <p v-else-if="attachmentLabels[message.type]" class="attachment-unavailable">{{ attachmentLabels[message.type] }} · arquivo indisponível</p>
                 <a v-if="message.type==='location'&&message.metadata" v-auth-href="mapUrl(message)" class="location-card" data-sensitive target="_blank"><span>⌖</span><div><b>{{ message.metadata.name || message.body || 'Localização' }}</b><small>{{ message.metadata.address || `${message.metadata.latitude}, ${message.metadata.longitude}` }}</small></div></a>
                 <a v-if="message.type==='location'&&message.metadata" v-auth-href="wazeUrl(message)" target="_blank" rel="noopener">Abrir no Waze</a><div v-if="message.type==='contact'" class="contact-card"><span>◉</span><div><b>{{ message.body || 'Contato compartilhado' }}</b><small>Cartão de contato do WhatsApp</small></div></div>
                 <p v-if="bodyVisible(message)" v-html="formatWhatsApp(message.body)"></p>
@@ -439,7 +442,7 @@ onBeforeUnmount(() => { if (filePreviewUrl.value) URL.revokeObjectURL(filePrevie
 .search-results { max-height: 52dvh; overflow: auto; }
 .search-result { padding: 12px; border-bottom: 1px solid #cbded9; overflow-wrap: anywhere; }
 .search-result p { white-space: pre-wrap; }
-.message-sticker { max-width: 160px; max-height: 160px; object-fit: contain; background: transparent; }
+.bubble .attachment-unavailable { color: #36564f; font-size: .875rem; }
 .voice-recording { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #b42335; }
 .reaction-custom { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .reaction-custom input { width: 100px; }

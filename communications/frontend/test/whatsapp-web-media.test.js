@@ -67,4 +67,18 @@ describe('mídias privadas do WhatsApp Web', () => {
     expect(mocks.get).not.toHaveBeenCalled()
     vAuthSrc.unmounted(image)
   })
+
+  it('permite tentar outra vez após falha mesmo com a URL ainda montada em outro elemento', async () => {
+    const unavailable = element()
+    const retry = element()
+    const binding = { value: '/api/whatsapp-web/media/message-image' }
+    mocks.get.mockRejectedValueOnce(new Error('Falha temporária de rede'))
+    vAuthSrc.mounted(unavailable, binding)
+    await vi.waitFor(() => expect(unavailable.dispatchEvent).toHaveBeenCalledOnce())
+    vAuthSrc.mounted(retry, binding)
+    vAuthSrc.unmounted(unavailable)
+    await vi.waitFor(() => expect(retry.attributes.get('src')).toBe('blob:protected-test'))
+    expect(mocks.get).toHaveBeenCalledTimes(2)
+    vAuthSrc.unmounted(retry)
+  })
 })

@@ -21,11 +21,9 @@ export const landing3dSections = Object.freeze([
   },
   {
     id: 'marcas',
-    eyebrow: '01 / CLIENTES E OPERAÇÕES',
-    title: '',
-    description: 'Projetos reais, contextos diferentes e a mesma busca: tecnologia funcionando no ritmo do negocio.',
-    align: 'left',
-    modelKey: 'logo'
+    title: 'Clientes e operações',
+    description: 'Explore os produtos da AitoSoftwares e os projetos em que a tecnologia já faz parte da operação.',
+    align: 'left'
   },
   {
     id: 'cases',

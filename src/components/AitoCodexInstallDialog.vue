@@ -1,6 +1,7 @@
 <script setup>
 import { ref, useId } from 'vue'
 import { copyToClipboard } from 'quasar'
+import { codexPluginFilename, codexPluginZipUrl } from 'src/services/aitoCodexInstall'
 
 const open = defineModel({ type: Boolean, default: false })
 const titleId = useId()
@@ -39,7 +40,7 @@ async function copyPrompt() {
       <textarea ref="promptField" :value="setupPrompt" readonly rows="9" aria-label="Prompt de instalação" />
       <div class="codex-install__actions">
         <q-btn unelevated no-caps icon="mdi-content-copy" label="Copiar prompt" class="codex-install__copy" @click="copyPrompt" />
-        <a href="/downloads/aitoia-codex.zip?v=0.2.4" download><q-icon name="mdi-download" /> Baixar ZIP do plugin</a>
+        <a :href="codexPluginZipUrl" :download="codexPluginFilename"><q-icon name="mdi-download" /> Baixar ZIP do plugin</a>
       </div>
       <span v-if="feedback" class="codex-install__feedback" role="status">{{ feedback }}</span>
     </q-card>

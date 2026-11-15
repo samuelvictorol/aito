@@ -11,9 +11,7 @@
       <main v-if="activeMenu === 'courses'" class="user-app__main user-app__wide"><UserCoursesPanel /></main>
       <main v-else-if="activeMenu === 'certificates'" class="user-app__main user-app__wide"><UserCertificatesPanel /></main>
       <main v-else-if="activeMenu === 'products'" class="user-app__main user-app__wide">
-        <div class="q-mb-md"><q-btn no-caps unelevated color="teal-8" icon="mdi-key-outline" label="Gerenciar Aito Key" @click="keyOpen = true" /></div>
         <UserProductsPanel />
-        <q-dialog v-model="keyOpen"><q-card v-if="keyOpen" class="q-pa-md" dark style="width: min(46rem, 92vw); max-width: 92vw"><div class="row justify-end"><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar gerenciamento da AitoKey" /></div><UserCodexKey /></q-card></q-dialog>
       </main>
       <main v-else-if="activeMenu === 'webhooks'" class="user-app__main user-app__wide"><UserWebhooksPanel /></main>
       <main v-else-if="activeMenu === 'wpp-colab'" class="user-app__main user-app__wide"><UserWhatsappCollaboratorsPanel /></main>
@@ -51,7 +49,6 @@ const $q = useQuasar()
 const sessionUser = ref({})
 const sessionToken = localStorage.getItem('aito_user_token')
 const saving = ref(false)
-const keyOpen = ref(false)
 const profile = reactive({ name: '', email: '', phone: '' })
 const menu = [
   { id: 'products', label: 'Meus produtos', icon: 'mdi-shield-key-outline' },

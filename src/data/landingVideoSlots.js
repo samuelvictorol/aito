@@ -11,7 +11,7 @@ export const landingVideoDefaults = {
 }
 
 export const landingVideoPages = [
-  { title: 'AitoSoftwares', path: '/', slots: [
+  { title: 'AitoSoftwares', path: '/sobre', slots: [
     { id: 'home-presentation', section: 'Seu próximo passo começa com uma ideia', anchor: 'inicio' },
   ] },
   { title: 'AitoIA Desktop', path: '/whatsapp-solucoes', slots: [
@@ -25,6 +25,9 @@ export const landingVideoPages = [
   ] },
   { title: 'AitoTokens', path: '/aitotokens', slots: [
     { id: 'aitotokens-presentation', section: 'Um saldo para criar com IA', anchor: 'apresentacao' },
+  ] },
+  { title: 'Plugin AitoIA para Codex', path: '/aitoia-codex', slots: [
+    { id: 'codex-presentation', section: 'Demonstração do plugin no Codex', anchor: 'demonstracao' },
   ] },
   { title: 'AitoLearn', path: '/aitolearn', slots: [
     { id: 'aitolearn-preview', section: 'Aula demonstrativa · A plataforma', anchor: 'metodo' },

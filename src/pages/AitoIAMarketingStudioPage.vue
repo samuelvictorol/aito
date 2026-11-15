@@ -533,7 +533,7 @@ onBeforeUnmount(() => {
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="paletteDialog" aria-labelledby="marketing-palette-editor">
+    <q-dialog v-model="paletteDialog" persistent aria-labelledby="marketing-palette-editor">
       <q-card dark class="aito-ai-theme marketing__dialog marketing__palette-dialog">
         <h2 id="marketing-palette-editor">{{ paletteIndex < 0 ? 'Adicionar cor' : 'Editar cor' }}</h2>
         <q-color v-model="paletteColor" dark flat bordered format-model="hex" class="full-width" />
@@ -541,7 +541,7 @@ onBeforeUnmount(() => {
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="componentDialog" :persistent="kitBusy">
+    <q-dialog v-model="componentDialog" persistent>
       <q-card dark class="aito-ai-theme marketing__dialog">
         <h2>Novo componente de marca</h2>
         <q-form class="marketing__form" @submit.prevent="addComponent">

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import { usd } from 'src/composables/useAitoIA'
+import { codexOfferDelay, codexOfferInterval, codexOfferStorageKey, codexOfficialUrl, codexProductPath, offersCodex } from 'src/services/aitoCodexInstall'
 import AuthDialog from 'components/AuthDialog.vue'
 import AitoCodexInstallDialog from './AitoCodexInstallDialog.vue'
 
@@ -13,15 +14,38 @@ const authOpen = ref(false)
 const installGuide = ref(false)
 const offers = ref([])
 const profilePath = '/app?tab=profile'
-const promotedRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-marketing-studio'])
-const promoted = computed(() => promotedRoutes.has(route.name) && !(route.name === 'user-app' && route.query.tab === 'profile'))
+const eligibleRoute = computed(() => offersCodex(route, false))
 let timer
 let offersRequest
+let lastShown = 0
 
-async function show() {
-  if (open.value || authOpen.value || document.visibilityState !== 'visible' ||
-      document.activeElement?.matches('input, textarea, select, [contenteditable]') || document.querySelector('.q-dialog__inner')) return
+function readStorage(key) {
+  try { return window.localStorage.getItem(key) } catch { return null }
+}
+
+function schedule(delay) {
+  window.clearTimeout(timer)
+  timer = window.setTimeout(checkOffer, delay)
+}
+
+function checkOffer() {
+  if (!eligibleRoute.value) return
+  if (readStorage('aito_admin_token')) return schedule(codexOfferInterval)
+  const now = Date.now()
+  const remaining = codexOfferDelay(now, Math.max(lastShown, Number(readStorage(codexOfferStorageKey)) || 0))
+  if (remaining) return schedule(remaining)
+  if (open.value || authOpen.value || installGuide.value || document.visibilityState !== 'visible' ||
+      document.activeElement?.matches('input, textarea, select, [contenteditable]') || document.querySelector('.q-dialog__inner')) {
+    return schedule(15_000)
+  }
+  lastShown = now
+  try { window.localStorage.setItem(codexOfferStorageKey, String(now)) } catch { /* Fall back to the in-memory timestamp. */ }
   open.value = true
+  schedule(codexOfferInterval)
+  loadOffers()
+}
+
+async function loadOffers() {
   if (offers.value.length || offersRequest) return
   const controller = new AbortController()
   offersRequest = controller
@@ -34,7 +58,7 @@ async function show() {
 
 function openProfile() {
   open.value = false
-  if (localStorage.getItem('aito_user_token')) router.push(profilePath)
+  if (readStorage('aito_user_token')) router.push(profilePath)
   else authOpen.value = true
 }
 
@@ -43,16 +67,15 @@ function openInstallGuide() {
   installGuide.value = true
 }
 
-watch([() => route.name, promoted], ([, visible]) => {
-  window.clearInterval(timer)
+watch(() => route.fullPath, () => {
+  if (typeof window === 'undefined') return
+  window.clearTimeout(timer)
   open.value = false
-  if (!visible) return
-  show()
-  timer = window.setInterval(show, 5 * 60 * 1000)
+  if (eligibleRoute.value) schedule(1500)
 }, { immediate: true })
 
 onBeforeUnmount(() => {
-  window.clearInterval(timer)
+  window.clearTimeout(timer)
   offersRequest?.abort()
 })
 </script>
@@ -61,17 +84,18 @@ onBeforeUnmount(() => {
   <q-dialog v-model="open">
     <q-card dark class="codex-offer">
       <header class="codex-offer__header">
-        <img src="/aitotokens.svg" alt="AitoTokens" width="44" height="44" />
+        <img src="/codex-app-icon.png" alt="" width="44" height="44" />
         <q-btn v-close-popup flat round icon="mdi-close" aria-label="Fechar oferta" />
       </header>
       <h2>Codex com AitoTokens</h2>
-      <p>Use o GPT‑6.1 Sol no Codex com o saldo da sua conta AitoSoftwares.</p>
+      <p>Use o app oficial do Codex para Windows com o saldo da sua conta AitoSoftwares e pague conforme o uso.</p>
       <div class="codex-offer__actions">
         <q-btn unelevated no-caps icon="mdi-download" label="Baixar plugin e guia" class="codex-offer__primary" @click="openInstallGuide" />
-        <a href="https://openai.com/codex/" target="_blank" rel="noopener noreferrer"><img src="/codex-app-icon.png" alt="" width="20" height="20" /> Baixar Codex</a>
+        <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Baixar Codex oficial <q-icon name="mdi-arrow-top-right" /></a>
       </div>
       <div class="codex-offer__footer">
         <q-btn flat no-caps icon="mdi-key-outline" label="Obter minha AitoKey" @click="openProfile" />
+        <router-link v-close-popup :to="codexProductPath" class="codex-offer__packs">Conhecer o plugin</router-link>
         <router-link v-if="offers.length" v-close-popup to="/aitotokens" class="codex-offer__packs">
           Recargas {{ offers.map(offer => usd(offer.usdCents)).join(' · ') }}
         </router-link>

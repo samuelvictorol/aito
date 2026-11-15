@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
-import AitoStudioSocialImport from 'components/AitoStudioSocialImport.vue'
+import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokens, useAitoIA, usd } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -119,6 +119,9 @@ const componentOpen = ref(false)
 const componentForm = shallowRef(null)
 const editingComponent = ref(false)
 const componentPosters = shallowRef(new Map())
+const remakeReferences = computed(() => projectComponents.value
+  .filter(item => ['Personagens', 'Cenários'].includes(item.type))
+  .map(item => ({ ...item, url: componentPosters.value.get(item.file) || '' })))
 const componentVoicePreview = ref('')
 const componentError = ref('')
 const componentLoading = ref(false)
@@ -169,10 +172,13 @@ const generationModes = [
   { id: 'continuation', label: 'Continuar cena', icon: 'mdi-movie-open-outline' },
   { id: 'genjutsu', label: 'Genjutsu', icon: 'mdi-motion-play-outline' },
   { id: 'genjutsu-light', label: 'Genjutsu Light', icon: 'mdi-motion-play-outline' },
+  { id: 'remake', label: 'Refazer vídeos', icon: 'mdi-movie-roll' },
 ]
 const clipPrompt = ref(null)
 const transitionMode = computed(() => generationMode.value === 'transition')
 const continuationMode = computed(() => generationMode.value === 'continuation')
+const remakeMode = computed(() => generationMode.value === 'remake')
+const remakeBusy = ref(false)
 const videoModelConfig = computed(() => options.value?.videoModels?.find(item => item.id === videoModel.value))
 const modelOffers = computed(() => new Map((options.value?.videoModels || []).map(item => [item.id, item.options])))
 const referenceModel = computed(() => transitionMode.value ? options.value?.transitionModel :
@@ -225,8 +231,8 @@ const resolution = ref('medium')
 const exportSize = computed(() => studioRenderSize(format.value, resolution.value))
 const subtitles = computed(() => studioSubtitles(timeline.value))
 const canRecord = computed(() => exportFormats.value.length > 0)
-const mayEdit = computed(() => (!busy.value || ['video', 'render'].includes(busy.value)) && !projectLoading.value && (!signedIn.value || Boolean(accountId.value)))
-const guarded = computed(() => Boolean(busy.value))
+const mayEdit = computed(() => !remakeBusy.value && (!busy.value || ['video', 'render'].includes(busy.value)) && !projectLoading.value && (!signedIn.value || Boolean(accountId.value)))
+const guarded = computed(() => Boolean(busy.value || remakeBusy.value))
 const blockedExit = ref(false)
 useAitoWorkGuard(guarded, () => { blockedExit.value = true })
 const durationLabel = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
@@ -742,19 +748,23 @@ function updateRecording(blob) {
 }
 async function renderVideo() {
   if (!canRecord.value || !timeline.value.duration) return
-  const segment = exportScope.value === 'scene' ? timeline.value.segments.find(item => item.scene.id === sceneId.value) : null
-  const start = segment?.start || 0
-  const duration = segment ? segment.end - segment.start : timeline.value.duration
-  const mimeType = exportFormats.value.find(item => item.extension === exportFormat.value)?.mime
   const edit = timeline.value
+  const segment = exportScope.value === 'scene' ? edit.segments.find(item => item.scene.id === sceneId.value) : null
+  const mimeType = exportFormats.value.find(item => item.extension === exportFormat.value)?.mime
+  await renderStudioEdit(edit, segment, { mimeType, narrationFile: narration.value?.file,
+    onRendered(result) { updateRecording(result); notice.value = 'Seu vídeo está pronto para baixar.' } })
+}
+
+async function renderStudioEdit(edit, segment, { mimeType, narrationFile, dimensions = exportSize.value, signal: outerSignal, onRendered }) {
+  const start = segment?.start || 0
+  const duration = segment ? segment.end - segment.start : edit.duration
   const sourceSegments = segment ? [segment] : edit.segments
-  const narrationFile = narration.value?.file
   const expired = sourceSegments.find(({ scene }) => unavailableScene(scene))
   if (expired) { error.value = `Substitua ou remova a mídia da cena “${expired.scene.heading || (edit.segments.indexOf(expired) + 1)}” antes de exportar.`; return }
-  await run('render', async signal => {
+  const render = async signal => {
     const output = document.createElement('canvas')
-    output.width = exportSize.value.width
-    output.height = exportSize.value.height
+    output.width = dimensions.width
+    output.height = dimensions.height
     const opened = new Map()
     let renderVideoElement = null
     try {
@@ -781,9 +791,11 @@ async function renderVideo() {
           drawStudioFrame(output, { ...frame.scene, media })
           progress.value = time / duration
         } })
-      if (mounted && !signal.aborted) { updateRecording(result); notice.value = 'Seu vídeo está pronto para baixar.' }
+      if (mounted && !signal.aborted) onRendered(result)
     } finally { opened.forEach(closeStudioMedia) }
-  })
+  }
+  if (outerSignal) await render(outerSignal)
+  else await run('render', render)
 }
 function downloadSubtitles() {
   if (subtitles.value) downloadAitoIAFile(new Blob([subtitles.value], { type: 'text/plain;charset=utf-8' }), 'aitoia-legendas.srt')
@@ -951,6 +963,59 @@ function storeClip(asset) {
   return clip
 }
 
+async function saveRemakeResult(asset) {
+  storeClip(asset)
+  await saveProject()
+}
+
+function appendRemakes(assets) {
+  if (!mayEdit.value) return
+  const emptyTimeline = scenes.value.length === 1 && !scenes.value[0].heading && !scenes.value[0].caption && !scenes.value[0].media && !scenes.value[0].missingMedia
+  if (scenes.value.length - Number(emptyTimeline) + assets.length > maxStudioScenes) {
+    error.value = `A linha do tempo precisa de ${assets.length} espaços livres para estas cenas.`
+    return
+  }
+  run('media', async signal => {
+    const base = emptyTimeline ? [] : scenes.value
+    const appended = []
+    let inserted = false
+    try {
+      for (const asset of assets) {
+        const media = await openStudioMedia(asset.file, projectMediaBytes([...base, ...appended]), signal)
+        appended.push(freshScene({ media, duration: Math.min(asset.duration, media.element.duration),
+          cut: true, clipId: asset.id, expiresAt: asset.expiresAt, kind: asset.kind }))
+      }
+      signal.throwIfAborted()
+      if (!mounted) return
+      replaceScenes([...base, ...appended])
+      inserted = true
+      tab.value = 'scenes'
+      selectScene(appended[0].id)
+      notice.value = appended.length === 1 ? 'Cena adicionada ao vídeo master.' : 'Cenas adicionadas ao vídeo master em ordem.'
+    } finally {
+      if (!inserted) appended.forEach(scene => closeStudioMedia(scene.media))
+    }
+  })
+}
+
+async function downloadRemakes(assets, signal) {
+  const selected = exportFormats.value[0]
+  if (!selected) throw new Error('Seu navegador não oferece a exportação de vídeo.')
+  progress.value = 0
+  pause()
+  const firstClip = await openStudioMedia(assets[0].file, 0, signal)
+  const { videoWidth, videoHeight } = firstClip.element
+  closeStudioMedia(firstClip)
+  const dimensions = { width: 2 * Math.max(1, Math.floor(videoWidth / 2)), height: 2 * Math.max(1, Math.floor(videoHeight / 2)) }
+  const edit = studioTimeline(assets.map(asset => freshScene({
+    media: { file: asset.file, isVideo: true }, offset: 0, duration: asset.duration, cut: true, expiresAt: asset.expiresAt,
+  })))
+  try {
+    await renderStudioEdit(edit, null, { mimeType: selected.mime, dimensions, signal,
+      onRendered: result => downloadAitoIAFile(result, `aitoia-video-refeito.${selected.extension}`) })
+  } finally { progress.value = 0 }
+}
+
 async function readJob(job, signal) {
   const expires = Date.now() + 12 * 60_000
   let current = job
@@ -981,7 +1046,8 @@ async function readJob(job, signal) {
   activeJob.value = current
   const previous = clipLibrary.value.find(item => item.id === current.id)
   const asset = { id: current.id, remoteUrl: current.url, expiresAt: Date.parse(current.expiresAt) || Date.now() + AITOIA_RETENTION_MS,
-    afterSceneId: job.afterSceneId, kind: job.kind || 'scene' }
+    afterSceneId: job.afterSceneId, kind: job.kind || 'scene',
+    ...(current.billingPending && { reservedUsdCents: current.reservedUsdCents }) }
   try { asset.file = previous?.file || await generatedFile(asset, signal) }
   catch { signal.throwIfAborted() }
   storeClip(asset)
@@ -1561,7 +1627,6 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
           <q-input v-if="signedIn && activeId" v-model="title" dark outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
           <q-btn outline no-caps class="video-studio__script-btn" icon="mdi-script-text-outline" label="Roteiro do projeto"
             :disable="!mayEdit || Boolean(busy)" @click="openProjectScript" />
-          <AitoStudioSocialImport />
         </div>
         <div class="video-studio__drawer-section">
           <h3>Componentes</h3>
@@ -1623,11 +1688,11 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 
         <section v-if="tab === 'ai'" class="video-studio__catalog" aria-label="Modo de geração">
           <div class="video-studio__catalog-header">
-            <div><h2>Criar com Higgsfield</h2><p>Gere um clipe a partir de um prompt e referências opcionais.</p></div>
+            <div><h2>{{ remakeMode ? 'Ferramentas de vídeo' : 'Criar com Higgsfield' }}</h2><p v-if="!remakeMode">Gere um clipe a partir de um prompt e referências opcionais.</p></div>
             <button v-if="signedIn" class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
           </div>
           <div class="video-studio__generation-modes" role="group" aria-label="Como criar o clipe">
-            <button v-for="item in generationModes.filter(mode => mode.id !== 'continuation' || generationMode === mode.id)" :key="item.id" class="video-studio__secondary" type="button" :aria-pressed="generationMode === item.id" :disabled="!mayEdit" @click="changeGenerationMode(item.id)">
+            <button v-for="item in generationModes.filter(mode => mode.id !== 'continuation' || generationMode === mode.id)" :key="item.id" class="video-studio__secondary" :class="{ 'video-studio__remake-button': item.id === 'remake' }" type="button" :aria-pressed="generationMode === item.id" :disabled="!mayEdit" @click="changeGenerationMode(item.id)">
               <q-icon :name="item.icon" size="19px" /> {{ item.label }}
             </button>
           </div>
@@ -1650,6 +1715,16 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
             </article></div>
           </q-expansion-item>
         </section>
+
+        <AitoStudioVideoRemake v-show="tab === 'ai' && remakeMode" :key="`${accountId || ''}:${activeId || ''}`"
+          :project-scope="accountId && activeId ? `${accountId}:${activeId}` : ''"
+          :project-expires-at="activeProject?.expiresAt"
+          :references="remakeReferences" :wallet-id="walletId" :blocked="Boolean(busy) || projectLoading"
+          :allow-credits="useCredits" :authorize="authorization" :save-result="saveRemakeResult"
+          :export-results="downloadRemakes" :export-progress="progress"
+          @busy="remakeBusy = $event; if (!$event) blockedExit = false"
+          @recover="generationMode = 'remake'; tab = 'ai'"
+          @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" />
 
         <section class="video-studio__panel video-studio__timeline" :class="{ 'is-expanded': masterOpen }" aria-label="Vídeo master">
           <div class="video-studio__scene-heading video-studio__master-desktop">
@@ -1685,7 +1760,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
           </div>
         </section>
 
-        <section class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
+        <section v-if="tab !== 'ai' || !remakeMode" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
 
           <div v-if="tab === 'scenes'" class="video-studio__section">
             <template v-if="selectedScene">
@@ -1822,21 +1897,27 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
             <p v-if="scriptTarget && offer && offer.seconds !== scriptTarget.duration" class="video-studio__hint">
               O modelo gera {{ offer.seconds }} s. A cena terá {{ scriptTarget.duration }} s no vídeo master.
             </p>
+            <p v-if="videoQuote?.estimated" class="video-studio__estimate" role="status"><q-icon name="mdi-information-outline" size="18px" />
+              Sem cotação direta da Higgsfield. A reserva estimada de até {{ usd(videoQuote.billedUsdCents) }} será ajustada quando o custo for confirmado.
+            </p>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
               <button v-else-if="activeJob && !busy" class="video-studio__primary" type="button" @click="checkJob"><q-icon name="mdi-refresh" size="20px" /> Verificar geração</button>
-              <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || Boolean(busy) || !canQuoteVideo" @click="makeVideo"><q-spinner v-if="busy === 'video' || busy === 'quote'" size="19px" /><q-icon v-else :name="videoQuote ? 'mdi-movie-open-play-outline' : 'mdi-calculator-variant-outline'" size="19px" /> {{ busy === 'video' ? 'Gerando clipe…' : busy === 'quote' ? 'Consultando preço…' : videoQuote ? 'Gerar clipe' : 'Consultar preço' }}<span v-if="videoQuote && !busy"> · Até {{ usd(videoQuote.billedUsdCents) }}</span></button>
+              <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || Boolean(busy) || !canQuoteVideo" @click="makeVideo"><q-spinner v-if="busy === 'video' || busy === 'quote'" size="19px" /><q-icon v-else :name="videoQuote ? 'mdi-movie-open-play-outline' : 'mdi-calculator-variant-outline'" size="19px" /> {{ busy === 'video' ? 'Gerando clipe…' : busy === 'quote' ? 'Consultando preço…' : videoQuote?.estimated ? 'Confirmar reserva e gerar' : videoQuote ? 'Confirmar geração' : 'Consultar preço' }}<span v-if="videoQuote && !busy"> · Até {{ usd(videoQuote.billedUsdCents) }}</span></button>
             </div>
           </div>
         </section>
 
-        <section v-if="tab === 'ai'" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
+        <section v-if="tab === 'ai' && !remakeMode" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
             <header><h2>Clipes do projeto</h2><span v-if="clipLibrary.length">{{ clipLibrary.length }} {{ clipLibrary.length === 1 ? 'clipe' : 'clipes' }}</span></header>
             <div v-if="generated" class="video-studio__generated">
               <div class="video-studio__clip-list" role="group" aria-label="Clipes gerados"><button v-for="clip in clipLibrary" :key="clip.id" class="video-studio__secondary" type="button" :aria-pressed="clip.id === generated.id" :disabled="!mayEdit" @click="selectGenerated(clip)">Clipe {{ clip.number }}</button></div>
               <p v-if="generated.expired" class="video-studio__hint">Este clipe expirou. Baixe os demais clipes ou gere uma nova cena.</p>
               <video v-else :src="generated.url" controls playsinline preload="metadata" referrerpolicy="no-referrer" aria-label="Clipe gerado com IA" @loadedmetadata="generatedDuration = $event.target.duration" />
               <small v-if="!generated.expired" class="video-studio__hint">Disponível até {{ displayDate.format(generated.expiresAt) }}</small>
+              <p v-if="!generated.expired && generated.reservedUsdCents !== undefined" class="video-studio__estimate">
+                Reserva inicial de {{ usd(generated.reservedUsdCents) }}. Consulte o histórico da carteira para conferir o custo.
+              </p>
               <div class="video-studio__actions">
                 <button v-if="!generated.expired" class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="downloadGenerated"><q-icon name="mdi-download-outline" size="18px" /> Baixar original</button>
                 <button v-if="!generated.expired" class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="addGenerated"><q-icon name="mdi-swap-horizontal" size="18px" /> Usar na cena atual</button>
@@ -1855,7 +1936,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
             </div>
         </section>
 
-        <section v-else class="video-studio__panel video-studio__preview" aria-labelledby="video-studio-preview">
+        <section v-else-if="tab !== 'ai'" class="video-studio__panel video-studio__preview" aria-labelledby="video-studio-preview">
           <header><h2 id="video-studio-preview">Prévia</h2><span>{{ format.label }} · {{ durationLabel(timeline.duration) }}</span></header>
           <div class="video-studio__screen"><canvas ref="canvas" :width="format.width" :height="format.height" aria-label="Prévia da composição do vídeo" /></div>
           <div class="video-studio__actions" role="group" aria-label="Reproduzir">
@@ -1884,7 +1965,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
       </div>
     </main>
     </q-page-container>
-    <q-dialog v-model="inventoryOpen">
+    <q-dialog v-model="inventoryOpen" persistent>
       <q-card class="aito-ai-theme video-studio__dialog">
         <q-card-section class="video-studio__scene-heading"><h2>Adicionar do projeto</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar lista de clipes" /></q-card-section>
         <q-card-section class="video-studio__dialog-list">
@@ -1959,7 +2040,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
         </q-card-section>
       </q-card>
     </q-dialog>
-    <q-dialog v-model="componentOpen">
+    <q-dialog v-model="componentOpen" persistent>
       <q-card class="aito-ai-theme video-studio__dialog">
         <q-card-section class="video-studio__scene-heading"><h2>{{ componentForm ? `${editingComponent ? 'Editar' : 'Adicionar'} ${componentName}` : componentType }}</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar componentes" /></q-card-section>
         <q-card-section class="video-studio__dialog-list">
@@ -2088,6 +2169,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
 .video-studio__preview { grid-column: 1; grid-row: 2; }
 .video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 3; }
+.video-studio__grid--generate > .aito-remake { grid-column: 1 / -1; grid-row: 3; order: 3; }
 .video-studio__grid--generate .video-studio__editor { background: linear-gradient(140deg, #39305783, transparent 58%), var(--aito-ai-surface); }
 .video-studio__preview--clips { grid-column: 2; grid-row: 3; }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
@@ -2169,6 +2251,9 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__generation-modes, .video-studio__clip-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .video-studio__generation-modes { margin: 0 0 10px; }
 .video-studio__generation-modes [aria-pressed=true], .video-studio__clip-list [aria-pressed=true] { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); }
+.video-studio__generation-modes .video-studio__remake-button { border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); }
+.video-studio__generation-modes .video-studio__remake-button[aria-pressed=true] { background: var(--aito-ai-purple-soft); }
+.video-studio__estimate { color: var(--aito-ai-gold); font-size: .85rem; }
 .video-studio__reference, .video-studio__analysis { display: grid; gap: 8px; min-width: 0; }
 .video-studio__reference-images { display: flex; flex-wrap: wrap; gap: 6px; }
 .video-studio__reference-images div { position: relative; }

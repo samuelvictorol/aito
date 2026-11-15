@@ -9,6 +9,7 @@
   </router-view>
   <CosmicScene v-if="screenLoading"/>
   <AitoInstallDialog v-if="canPromoteInstall || installOpen" v-model="installOpen" :platform="platform" :native-prompt="!!installEvent" :installing="installing" @install="installAitoIA" />
+  <AitoCodexOffer v-if="!screenLoading && !maintenance && !checkingAvailability && route.meta.requiresAuth !== 'admin'" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
   <button v-if="canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
 </template>
@@ -29,6 +30,7 @@ const router = useRouter()
 const route = useRoute()
 const { maintenance, checkingAvailability, refreshAvailability } = useAitoAvailabilityBoundary(route, router)
 const AitoInstallDialog = defineAsyncComponent(() => import('./components/AitoInstallDialog.vue'))
+const AitoCodexOffer = defineAsyncComponent(() => import('./components/AitoCodexOffer.vue'))
 const AdminProviderAlert = defineAsyncComponent(() => import('./components/AdminProviderAlert.vue'))
 const installEvent = shallowRef(null)
 const installOpen = ref(false)

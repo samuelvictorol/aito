@@ -29,6 +29,7 @@ const props = defineProps({
     type: Number,
     default: 9
   },
+  caseFormation: { type: Number, default: 0 },
   danceActive: {
     type: Boolean,
     default: false
@@ -95,8 +96,8 @@ const BRAND_NAVY = 0x0b1220
 const STAR_COLORS = [0x1fb694, 0x23917d, 0x50dcc4, 0x8fffee]
 const MODEL_LOAD_TIMEOUT_MS = 9000
 const MODEL_LOAD_CONCURRENCY = 2
-const LANDING_MODEL_KEYS = ['logo', 'obj2', 'obj3', 'obj4', 'samuel', 'dion']
-const MOBILE_MODEL_BY_SECTION = [null, 'logo', null, 'obj2', 'obj3', 'samuel', 'dion', 'obj4']
+const LANDING_MODEL_KEYS = ['obj2', 'obj3', 'obj4', 'samuel', 'dion']
+const MOBILE_MODEL_BY_SECTION = [null, null, null, 'obj2', 'obj3', 'samuel', 'dion', 'obj4']
 const SURPRISE_MODEL_KEYS = ['obj4', 'obj4Dance', 'samuelDance', 'dionDance']
 const COURSE_MODEL_KEYS = ['obj4']
 
@@ -115,11 +116,6 @@ const MODEL_KEYFRAMES = {
   intro: [
     { section: 0, x: 2.35, y: 0.05, ry: -0.35, rz: -0.08, scale: 1, opacity: 1 },
     { section: 1, x: 4.2, y: 0, scale: 0.42, opacity: 0 }
-  ],
-  logo: [
-    { section: 0, x: 4.2, y: 0, scale: 0.42, opacity: 0 },
-    { section: 1, x: 2.35, y: 0.05, ry: -0.35, rz: -0.08, scale: 1, opacity: 1 },
-    { section: 2, x: -4.2, y: -1.7, rx: 0.65, ry: 1.7, scale: 0.62, opacity: 0 }
   ],
   obj2: [
     { section: 0, x: 4.3, y: 0.3, ry: -0.8, scale: 0.48, opacity: 0 },
@@ -913,15 +909,19 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
 
   const positions = layer.geometry.getAttribute('position').array
   const { basePositions, lengths, phases } = stars
+  const formation = props.reducedMotion ? 0 : props.caseFormation
 
   for (let index = 0; index < lengths.length; index += 1) {
     const baseStride = index * 3
     const lineStride = index * 6
     const driftX = Math.sin(elapsedTime * 0.2 + phases[index]) * 0.012
     const driftY = Math.cos(elapsedTime * 0.17 + phases[index]) * 0.009
-    const baseX = basePositions[baseStride] + driftX
-    const baseY = basePositions[baseStride + 1] + driftY
-    const baseZ = basePositions[baseStride + 2]
+    const row = Math.floor(index / 7) % 3
+    const hiveX = (index % 7 - 3 + (row % 2) * 0.5) * camera.aspect * 0.69
+    const hiveY = (1 - row) * 0.86 + 0.2
+    const baseX = lerp(basePositions[baseStride] + driftX, hiveX, formation)
+    const baseY = lerp(basePositions[baseStride + 1] + driftY, hiveY, formation)
+    const baseZ = lerp(basePositions[baseStride + 2], -0.5, formation)
     let directionX = targetX - baseX
     let directionY = targetY - baseY
     const directionLength = Math.hypot(directionX, directionY)
@@ -934,7 +934,7 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
       directionY /= directionLength
     }
 
-    const halfLength = lengths[index] * 0.5 * easeInOut(introTransitionMix)
+    const halfLength = lengths[index] * 0.5 * easeInOut(introTransitionMix) * (1 - formation)
     positions[lineStride] = baseX - directionX * halfLength
     positions[lineStride + 1] = baseY - directionY * halfLength
     positions[lineStride + 2] = baseZ
@@ -943,7 +943,7 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
     positions[lineStride + 5] = baseZ
   }
 
-  layer.material.opacity = stars.opacity * introTransitionMix
+  layer.material.opacity = stars.opacity * introTransitionMix * (1 - formation)
   stars.dots.material.opacity = stars.opacity * (1 - introTransitionMix)
   layer.geometry.getAttribute('position').needsUpdate = true
 }

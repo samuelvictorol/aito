@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import routes from '../src/router/routes.js'
 import { siteManifest } from '../src/services/siteManifest.js'
 import { installPlatform, isInstalledAito, offersAitoInstall } from '../src/services/aitoInstall.js'
+import { codexOfferDelay, codexOfferInterval, offersCodex } from '../src/services/aitoCodexInstall.js'
 import { requestsVideoGeneration, readVideoDraft, saveVideoDraft, clearVideoDraft } from '../src/services/aitoiaVideoDraft.js'
 import { loadMarketingReferenceUrl } from '../src/services/aitoiaMarketingLocal.js'
 
@@ -30,10 +31,11 @@ test('the home route opens AitoIA and historical routes keep their destinations'
   assert.equal(router.resolve('/sobre').name, 'landing-3d')
   assert.equal(router.resolve('/quem-somos').name, 'landing-3d')
   assert.equal(router.resolve('/links').name, 'bio-links')
+  assert.equal(router.resolve('/aitoia-codex').name, 'aito-codex-product')
   assert.equal(router.resolve({ name: 'aito-ia' }).href, '/')
 })
 
-test('the installation offer replaces the Codex popup and adapts to the current device', async () => {
+test('the app installation offer adapts to the current device', () => {
   assert.equal(installPlatform({ userAgent: 'Mozilla iPhone' }), 'ios')
   assert.equal(installPlatform({ platform: 'MacIntel', maxTouchPoints: 5 }), 'ios')
   assert.equal(installPlatform({ userAgentData: { platform: 'Android' } }), 'android')
@@ -44,9 +46,19 @@ test('the installation offer replaces the Codex popup and adapts to the current 
   assert.equal(offersAitoInstall({ name: 'aito-ia' }), true)
   assert.equal(offersAitoInstall({ name: 'user-app', query: { tab: 'profile' } }), false)
   assert.equal(offersAitoInstall({ name: 'communication-admin' }), false)
-  const root = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8')
-  assert.doesNotMatch(root, /AitoCodexOffer/)
-  assert.match(await readFile(new URL('../src/components/AitoCodexOffer.vue', import.meta.url), 'utf8'), /Codex com AitoTokens/)
+})
+
+test('the Codex offer is available to clients and visitors at ten-minute intervals', () => {
+  assert.equal(offersCodex({ name: 'aito-ia' }, false), true)
+  assert.equal(offersCodex({ name: 'user-app', query: { tab: 'products' } }, false), true)
+  assert.equal(offersCodex({ name: 'communication-admin' }, false), false)
+  assert.equal(offersCodex({ name: 'aito-ia' }, true), false)
+  assert.equal(offersCodex({ name: 'aito-ia', query: { auth: 'login' } }, false), false)
+  const now = 990_000
+  assert.equal(codexOfferDelay(now, null), 0)
+  assert.equal(codexOfferDelay(now, now - 10_000), codexOfferInterval - 10_000)
+  assert.equal(codexOfferDelay(now, now - codexOfferInterval), 0)
+  assert.equal(codexOfferDelay(now, now + 10_000), 0)
 })
 
 test('hands off direct generation requests while keeping instructional prompts in chat', async () => {

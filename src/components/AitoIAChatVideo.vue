@@ -36,9 +36,10 @@ let catalogRequest
 let reference
 let imageReferences
 const models = computed(() => base.value || imageBases.value.length ? (catalog.value?.referenceModels || [])
-  .filter(item => (base.value || !item.requiresVideo) && (item.maxImageReferences ?? 0) >= imageBases.value.length) : catalog.value?.videoModels || [])
+  .filter(item => item.mode !== 'continuation' && (base.value || !item.requiresVideo) &&
+    (!item.sourceDuration || imageBases.value.length > 0) && (item.maxImageReferences ?? 0) >= imageBases.value.length) : catalog.value?.videoModels || [])
 const maxImages = computed(() => Math.max(0, ...(catalog.value?.referenceModels || [])
-  .filter(item => base.value || !item.requiresVideo).map(item => item.maxImageReferences || 0)))
+  .filter(item => item.mode !== 'continuation' && (base.value || !item.requiresVideo)).map(item => item.maxImageReferences || 0)))
 const presets = computed(() => models.value.find(item => item.id === modelId.value)?.options || [])
 const busy = computed(() => Boolean(action.value))
 watch(busy, value => emit('busy', value), { flush: 'sync' })
@@ -154,7 +155,7 @@ function estimate() {
     }
     const { data } = await api.post('/aitoia/video/generations/quote', body, { headers: auth(), signal })
     signal.throwIfAborted()
-    if (walletId.value === body.walletId) quote.value = { ...data.data, body }
+    if (walletId.value === body.walletId) quote.value = { ...data.data, body, requestId: crypto.randomUUID() }
   })
 }
 
@@ -197,13 +198,13 @@ async function poll(signal) {
 }
 
 function generate() {
-  if (!quote.value || videoInMaintenance.value) return
-  const { body, quoteToken } = quote.value
+  if (!quote.value || job.value || videoInMaintenance.value) return
+  const { body, quoteToken, requestId } = quote.value
   run('Gerando clipe…', async signal => {
     let data
     try {
       ({ data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
-        { headers: auth({ 'X-Aito-Request-Id': crypto.randomUUID() }), signal }))
+        { headers: auth({ 'X-Aito-Request-Id': requestId }), signal }))
     } catch (cause) {
       if (['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
       throw cause
@@ -266,11 +267,12 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <label>Modelo Higgsfield<select v-model="modelId" :disabled="busy"><option v-for="item in models" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
       <label>Configuração<select v-model="presetId" :disabled="busy"><option v-for="item in presets" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
     </div>
+    <p v-if="quote?.estimated" class="chat-video__pricing" role="status"><q-icon name="mdi-information-outline" /> Sem cotação direta da Higgsfield. A reserva estimada de até {{ usd(quote.billedUsdCents) }} será ajustada quando o custo for confirmado.</p>
     <div class="chat-video__actions">
       <button v-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
       <template v-else-if="!videoInMaintenance">
         <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
-        <button v-else-if="quote" type="button" :disabled="busy" @click="generate">Gerar por até {{ usd(quote.billedUsdCents) }}</button>
+        <button v-else-if="quote" type="button" :disabled="busy" @click="generate">{{ quote.estimated ? 'Confirmar reserva e gerar' : 'Confirmar geração' }} · Até {{ usd(quote.billedUsdCents) }}</button>
         <button v-else-if="models.length" type="button" :disabled="busy || !prompt.trim() || !presetId" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
         <template v-else-if="catalog"><span>{{ (catalog.videoModels?.length || catalog.referenceModels?.length) ? 'Nenhum modelo disponível aceita esta combinação de referências.' : 'A geração de clipes aguarda a configuração da Higgsfield.' }}</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
       </template>
@@ -280,7 +282,10 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
     <AitoVideoProgress v-if="job && busy" :stage="job.status || 'queued'" />
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
-    <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" /><div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><button type="button" :disabled="busy" @click="saveToProject">Salvar em projeto</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a></div></div>
+    <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" />
+      <p v-if="clip.billingPending" class="chat-video__pricing">Reserva de {{ usd(clip.reservedUsdCents) }}. Aguardando confirmação do custo.</p>
+      <div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><button type="button" :disabled="busy" @click="saveToProject">Salvar em projeto</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a></div>
+    </div>
   </section>
 </template>
 
@@ -297,5 +302,6 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
 .chat-video__choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .chat-video__actions span { color: var(--aito-ai-muted); font-size: .76rem; overflow-wrap: anywhere; }
 .chat-video__error { margin: 0; color: var(--aito-ai-error); font-size: .8rem; }
+.chat-video__pricing { margin: 0; color: var(--aito-ai-gold); font-size: .8rem; }
 .chat-video__result video { display: block; width: 100%; max-height: 290px; margin-bottom: 6px; border-radius: 7px; background: var(--aito-ai-bg); }
 </style>

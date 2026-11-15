@@ -9,9 +9,3 @@
   for = "/aitoia.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json; charset=utf-8"
-
-[[headers]]
-  for = "/downloads/aitoia-codex.zip"
-  [headers.values]
-    Cache-Control = "public, no-cache"
-    Content-Disposition = 'attachment; filename="AitoIA-by-AitoSoftwares.zip"'

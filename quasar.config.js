@@ -3,6 +3,7 @@
 
 import { defineConfig } from '#q-app/wrappers'
 import localizationPlugin from './build/localization-plugin.mjs'
+import { codexPluginFilename, codexPluginZipPath } from './src/services/aitoCodexInstall.js'
 
 export default defineConfig((/* ctx */) => {
   return {
@@ -59,7 +60,18 @@ export default defineConfig((/* ctx */) => {
       // polyfillModulePreload: true,
       // distDir
 
-      extendViteConf (viteConf) { viteConf.plugins.push(localizationPlugin({include:file=>file.endsWith('/src/pages/CommunicationSystemPage.vue')||file.endsWith('/src/components/CommunicationEventsConsole.vue')})) },
+      extendViteConf (viteConf) {
+        viteConf.plugins.push(localizationPlugin({ include: file => file.endsWith('/src/pages/CommunicationSystemPage.vue') || file.endsWith('/src/components/CommunicationEventsConsole.vue') }), {
+          name: 'codex-download-headers',
+          apply: 'build',
+          generateBundle () {
+            this.emitFile({
+              type: 'asset', fileName: '_headers',
+              source: `${codexPluginZipPath}\n  Cache-Control: public, no-cache\n  Content-Disposition: attachment; filename="${codexPluginFilename}"\n`,
+            })
+          },
+        })
+      },
       // viteVuePluginOptions: {},
       
       // vitePlugins: [

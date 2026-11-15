@@ -32,6 +32,7 @@ const routes = [
   },
   { path: '/whatsapp-solucoes', name: 'whatsapp-solutions-product', component: () => import('pages/WhatsAppBotBuilderProductPage.vue') },
   { path: '/aitotokens', name: 'aito-tokens-product', component: () => import('pages/AitoTokensPage.vue') },
+  { path: '/aitoia-codex', name: 'aito-codex-product', component: () => import('pages/AitoCodexLandingPage.vue') },
   { path: '/', alias: '/aitoia', name: 'aito-ia', component: () => import('pages/AitoIAPage.vue') },
   { path: '/links', name: 'bio-links', component: () => import('pages/AitoLinksPage.vue') },
   { path: '/aitoia-video-studio', name: 'aito-ia-video-studio', component: () => import('pages/AitoIAVideoStudioPage.vue') },
