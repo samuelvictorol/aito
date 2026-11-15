@@ -28,10 +28,8 @@ async function retry() {
   <section class="aito-ai-theme aito-maintenance" :class="{ 'aito-maintenance--compact': compact }" aria-label="Disponibilidade da AitoIA">
     <div class="aito-maintenance__panel" role="status">
       <img src="/ia.gif" alt="AitoIA" width="68" height="68" />
-      <template v-if="checking">
-        <h1>Verificando disponibilidade…</h1>
-        <q-spinner size="24px" />
-      </template>
+      <q-linear-progress v-if="checking" indeterminate rounded color="teal-4" size="4px"
+        class="aito-maintenance__progress" aria-label="Verificando disponibilidade" />
       <template v-else>
         <component :is="compact ? 'h2' : 'h1'">{{ title }}</component>
         <p>Desculpe o transtorno. Estamos trazendo novas funcionalidades.</p>
@@ -52,6 +50,7 @@ async function retry() {
 .aito-maintenance__panel { width: min(100%, 520px); padding: clamp(20px, 7vw, 40px); border: 1px solid var(--aito-ai-line); border-radius: 20px; text-align: center; background: var(--aito-ai-panel); }
 .aito-maintenance--compact .aito-maintenance__panel { border: 0; background: transparent; }
 .aito-maintenance img { object-fit: contain; }
+.aito-maintenance__progress { width: min(100%, 160px); margin: 16px auto 0; }
 .aito-maintenance :is(h1, h2) { margin: 12px 0; font-size: clamp(1.4rem, 4vw, 2rem); font-weight: 750; line-height: 1.2; }
 .aito-maintenance p { margin: 0; color: var(--aito-ai-muted); }
 .aito-maintenance__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
