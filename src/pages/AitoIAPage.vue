@@ -9,6 +9,7 @@ import AitoIAMaintenance from 'components/AitoIAMaintenance.vue'
 import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
+import { chatVideoModels } from 'src/data/aitoiaVideoCatalog'
 import { fileKind, MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
 import { requestsVideoGeneration, saveVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { AITOIA_CHAT_LIMIT } from 'src/services/aitoiaLocal'
@@ -115,11 +116,8 @@ async function chooseVideoMode() {
   selectVideoReference()
   try {
     const { data } = await state.generationApi.get('/aitoia/video/options')
-    const value = data.data
     const images = attachments.value.filter(file => /^image\/(jpeg|png|webp)$/.test(file.type || file.blob?.type)).length
-    const models = videoFile.value || images ? value?.referenceModels?.filter(item =>
-      (videoFile.value || !item.requiresVideo) && (item.maxImageReferences || 0) >= images) : value?.videoModels
-    videoAvailability.value = Boolean(models?.length)
+    videoAvailability.value = chatVideoModels(data.data, { hasVideo: Boolean(videoFile.value), imageCount: images }).length > 0
   } catch { videoAvailability.value = undefined }
 }
 watch(videoInMaintenance, blocked => {

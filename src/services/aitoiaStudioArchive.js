@@ -125,10 +125,11 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     masterScript: text(manifest.plan?.master, 6000), sceneScripts,
     prompt: text(manifest.configuration?.prompt, 2000), scriptPrompt: text(manifest.configuration?.scriptPrompt, 2000),
     generationMode: text(manifest.configuration?.mode, 30), videoModel: text(manifest.configuration?.model, 80),
+    referenceModelId: text(manifest.configuration?.referenceModel, 80),
     narrationText: text(manifest.narration?.text, 12000), narration: await file(manifest.narration?.media, audioTypes),
     recording: await file(recordingName, videoTypes, true), reference: await file(manifest.references?.video, videoTypes),
     transitionClips: await Promise.all(rows(manifest.references?.transition, 2).map(name => file(name, videoTypes))),
-    referenceImages: (await frames(manifest.references?.images, 6)).filter(Boolean), sourceFrames: (await frames(manifest.references?.keyframes, 8)).filter(Boolean) }
+    referenceImages: (await frames(manifest.references?.images, 10)).filter(Boolean), sourceFrames: (await frames(manifest.references?.keyframes, 8)).filter(Boolean) }
 }
 
 export function exportMarketingProject(project, components = []) {

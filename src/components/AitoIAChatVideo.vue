@@ -6,6 +6,7 @@ import AitoIAMaintenance from 'components/AitoIAMaintenance.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokenCost } from 'src/composables/useAitoIA'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
+import { chatVideoModels } from 'src/data/aitoiaVideoCatalog'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { saveVideoDraft } from 'src/services/aitoiaVideoDraft'
@@ -36,12 +37,14 @@ let operation
 let catalogRequest
 let reference
 let imageReferences
-const models = computed(() => base.value || imageBases.value.length ? (catalog.value?.referenceModels || [])
-  .filter(item => item.mode !== 'continuation' && (base.value || !item.requiresVideo) &&
-    (!item.sourceDuration || imageBases.value.length > 0) && (item.maxImageReferences ?? 0) >= imageBases.value.length) : catalog.value?.videoModels || [])
-const maxImages = computed(() => Math.max(0, ...(catalog.value?.referenceModels || [])
-  .filter(item => item.mode !== 'continuation' && (base.value || !item.requiresVideo)).map(item => item.maxImageReferences || 0)))
-const presets = computed(() => models.value.find(item => item.id === modelId.value)?.options || [])
+const models = computed(() => chatVideoModels(catalog.value, { hasVideo: Boolean(base.value), imageCount: imageBases.value.length }))
+const maxImages = computed(() => Math.max(0, ...chatVideoModels(catalog.value, { hasVideo: Boolean(base.value) })
+  .map(item => item.maxImageReferences || 0)))
+const selectedModel = computed(() => models.value.find(item => item.id === modelId.value))
+const presets = computed(() => selectedModel.value?.options || [])
+const minImages = computed(() => selectedModel.value?.minImageReferences ?? (selectedModel.value?.sourceDuration ? 1 : 0))
+const canEstimate = computed(() => Boolean(presetId.value && (prompt.value.trim() || selectedModel.value?.sourceDuration) &&
+  imageBases.value.length >= minImages.value))
 const busy = computed(() => Boolean(action.value))
 watch(busy, value => emit('busy', value), { flush: 'sync' })
 watch(models, list => { if (!list.some(item => item.id === modelId.value)) modelId.value = list[0]?.id || '' })
@@ -129,7 +132,7 @@ function payload() {
 }
 
 function estimate() {
-  if (videoInMaintenance.value) return
+  if (videoInMaintenance.value || !canEstimate.value) return
   run('Cotando clipe…', async (signal, api) => {
     const body = payload()
     if (base.value) {
@@ -276,12 +279,13 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <label>Modelo Higgsfield<select v-model="modelId" :disabled="busy"><option v-for="item in models" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
       <label>Configuração<select v-model="presetId" :disabled="busy"><option v-for="item in presets" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
     </div>
+    <p v-if="imageBases.length < minImages" class="chat-video__pricing">Adicione {{ minImages === 1 ? 'uma imagem' : `pelo menos ${minImages} imagens` }} para usar este modelo.</p>
     <div class="chat-video__actions">
       <button v-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
       <template v-else-if="!videoInMaintenance">
         <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
         <button v-else-if="quote" type="button" :disabled="busy" @click="generate">{{ quote.estimated ? 'Confirmar reserva e gerar' : 'Confirmar geração' }}<template v-if="quoteCost"> · Até {{ quoteCost }}</template></button>
-        <button v-else-if="models.length" type="button" :disabled="busy || !prompt.trim() || !presetId" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
+        <button v-else-if="models.length" type="button" :disabled="busy || !canEstimate" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
         <template v-else-if="catalog"><span>{{ (catalog.videoModels?.length || catalog.referenceModels?.length) ? 'Nenhum modelo disponível aceita esta combinação de referências.' : 'A geração de clipes aguarda a configuração da Higgsfield.' }}</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
       </template>
       <span v-if="action" role="status"><q-spinner size="16px" /> {{ action }}</span>

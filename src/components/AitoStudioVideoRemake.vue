@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import AitoVideoProgress from './AitoVideoProgress.vue'
 import { aitoTokens } from 'src/composables/useAitoIA'
+import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { burnRemakeCaptions, maxRemakeInputBytes, remakeInputAccept, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
@@ -50,6 +51,20 @@ const canQuote = scene => Boolean(scene.file && (scene.edit.trim() || master.val
 const lockedScene = scene => locked.value || Boolean(scene.job || scene.submitted)
 const approximateCharge = (total, estimateCents, estimateTokens) =>
   estimateCents > 0 && Number.isFinite(total) ? Math.round(total * estimateTokens / estimateCents) : 0
+
+function addProjectReference(id) {
+  if (locked.value || !props.projectScope || !props.references.some(item => item.id === id)) return false
+  const selected = selectedReferences(referenceIds.value).map(item => item.id)
+  if (selected.includes(id)) return true
+  if (selected.length >= maxReferences) {
+    inputError.value = `Escolha até ${maxReferences} personagens ou cenários. Remova uma referência para adicionar outra.`
+    return false
+  }
+  referenceIds.value = [...selected, id]
+  inputError.value = ''
+  return true
+}
+defineExpose({ addProjectReference })
 
 function draftSnapshot() {
   return { master: master.value, referenceIds: [...referenceIds.value], resolution: resolution.value,
@@ -343,6 +358,19 @@ function downloadCombined() {
   return execute('export', null, signal => props.exportResults(results.value, signal))
 }
 
+function downloadSource(scene) {
+  if (!scene.file || locked.value) return
+  if (!(scene.providerDuration > scene.duration + .04)) {
+    downloadAitoIAFile(scene.file, scene.file.name)
+    return
+  }
+  return execute('download', scene, async signal => {
+    const result = await burnRemakeCaptions(scene.file, [], { duration: scene.duration, signal })
+    signal.throwIfAborted()
+    downloadAitoIAFile(result, scene.file.name)
+  })
+}
+
 function removeScene(scene, resultOnly = false) {
   if (!scene || lockedScene(scene)) return
   if (resultOnly) {
@@ -423,6 +451,8 @@ onBeforeUnmount(() => {
       <header><q-icon name="mdi-filmstrip" size="23px" /><div><h2 id="remake-source">Cenas de origem</h2><p>{{ scenes.length }} {{ scenes.length === 1 ? 'trecho' : 'trechos' }} de até 5 s</p></div></header>
       <article v-for="scene in scenes" :key="scene.url || scene.result?.id || scene.index" class="aito-remake__scene">
         <div class="aito-remake__scene-title"><h3>Cena {{ scene.index + 1 }}</h3><span>{{ seconds(scene.start) }}–{{ seconds(scene.start + scene.duration) }} s</span>
+          <q-btn v-if="scene.file" flat round dense icon="mdi-download-outline" :aria-label="`Baixar cena de origem ${scene.index + 1}`"
+            :disable="locked" :loading="isWorking(scene, 'download')" @click="downloadSource(scene)"><q-tooltip>Baixar cena de origem</q-tooltip></q-btn>
           <q-btn flat round dense icon="mdi-delete-outline" :aria-label="`Remover cena de origem ${scene.index + 1}`" :disable="lockedScene(scene)" @click="removeScene(scene)">
             <q-tooltip>Remover cena de origem</q-tooltip>
           </q-btn>
@@ -511,9 +541,10 @@ onBeforeUnmount(() => {
         <video :src="asset.previewUrl" controls playsinline preload="none" :aria-label="asset.title" />
         <p class="aito-remake__help">{{ asset.captions ? 'Com legendas' : 'Sem legendas adicionadas' }} · {{ asset.billingPending ? 'Reserva de' : 'Uso de' }} ≈ {{ aitoTokens(asset.approximateAitoTokens) }} AitoTokens<span v-if="asset.billingPending"> · Aguardando confirmação do custo</span></p>
         <div class="aito-remake__actions">
-          <q-btn flat no-caps icon="mdi-download-outline" label="Baixar" :href="asset.previewUrl" :download="asset.file.name" />
           <q-btn outline no-caps color="teal-3" icon="mdi-folder-plus-outline" label="Salvar em Componentes" :disable="locked" @click="emit('component', asset)" />
           <q-btn outline no-caps color="teal-3" icon="mdi-playlist-plus" label="Usar no vídeo master" :disable="locked" @click="emit('append', [asset])" />
+          <q-btn flat round dense icon="mdi-download-outline" :aria-label="`Baixar ${asset.title}`" :href="asset.previewUrl"
+            :download="asset.file.name"><q-tooltip>Baixar cena refeita</q-tooltip></q-btn>
           <q-btn flat round dense icon="mdi-delete-outline" :aria-label="`Remover ${asset.title}`" :disable="locked"
             @click="removeScene(scenes.find(scene => scene.result === asset), true)"><q-tooltip>Remover resultado</q-tooltip></q-btn>
         </div>
