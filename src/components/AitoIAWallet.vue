@@ -5,7 +5,7 @@ import { checkoutLink } from 'src/services/aitoiaChat'
 
 const props = defineProps({ modelValue: Boolean, state: { type: Object, required: true }, initialPackage: Number })
 defineEmits(['update:modelValue'])
-const { status, walletId, walletLoading, walletError, pending, history, historyLoading, historyOffset, historyLimit,
+const { adminMode, status, walletId, walletLoading, walletError, pending, history, historyLoading, historyOffset, historyLimit,
   historyTotal, checkoutBusy, paymentBusy, paymentNotice } = props.state
 const plans = computed(() => status.value?.plans || [])
 const defaultPackage = () => props.initialPackage || 1500
@@ -27,10 +27,15 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
         <img src="/aitotokens.svg" alt="" width="42" height="42" />
         <h2>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</h2>
         <button type="button" class="aito-wallet__icon" aria-label="Atualizar saldo" :disabled="walletLoading" @click="state.refreshStatus(); state.loadHistory(historyOffset)"><q-icon name="mdi-refresh" size="22px" /></button>
-        <button v-close-popup type="button" class="aito-wallet__icon" aria-label="Fechar recarga"><q-icon name="mdi-close" size="22px" /></button>
+        <button v-close-popup type="button" class="aito-wallet__icon" aria-label="Fechar saldo"><q-icon name="mdi-close" size="22px" /></button>
       </header>
       <div v-if="walletError" class="aito-wallet__notice aito-wallet__notice--error" role="alert">{{ walletError }}</div>
       <div v-if="paymentNotice" class="aito-wallet__notice" role="status">{{ paymentNotice }}</div>
+      <section v-if="adminMode" class="aito-wallet__summary" aria-label="Saldo da plataforma">
+        <div><strong>Saldo da plataforma</strong><span>Uso administrativo cobrado pelo custo do provedor.</span></div>
+        <router-link class="aito-wallet__action" to="/admin"><q-icon name="mdi-shield-account-outline" size="18px" /> Aito Admin</router-link>
+      </section>
+      <template v-else>
       <section class="aito-wallet__summary" aria-label="Saldo disponível">
         <div><span>Saldo convertido</span><strong>{{ status ? usd(status.balanceUsdCents) : '—' }}<small v-if="status?.exchangeRate?.rate"> · {{ brl(status.balanceUsdCents * status.exchangeRate.rate) }}</small></strong>
           <small v-if="status?.reconcilingUsdCents > 0">{{ usd(status.reconcilingUsdCents) }} em conciliação</small></div>
@@ -64,6 +69,7 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
         </ul>
         <div v-if="historyTotal > historyLimit" class="aito-wallet__pager"><button type="button" :disabled="!historyOffset || historyLoading" @click="state.loadHistory(Math.max(0, historyOffset - historyLimit))">Anteriores</button><button type="button" :disabled="historyOffset + historyLimit >= historyTotal || historyLoading" @click="state.loadHistory(historyOffset + historyLimit)">Próximas</button></div>
       </section>
+      </template>
     </q-card>
   </q-dialog>
 </template>

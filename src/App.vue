@@ -11,6 +11,7 @@
   <AitoInstallDialog v-if="canPromoteInstall || installOpen" v-model="installOpen" :platform="platform" :native-prompt="!!installEvent" :installing="installing" @install="installAitoIA" />
   <AitoCodexOffer v-if="!screenLoading && !maintenance && !checkingAvailability && route.meta.requiresAuth !== 'admin'" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
+  <AitoSupportShortcut v-if="showSupportShortcut" />
   <button v-if="canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
 </template>
 
@@ -32,6 +33,7 @@ const { maintenance, checkingAvailability, refreshAvailability } = useAitoAvaila
 const AitoInstallDialog = defineAsyncComponent(() => import('./components/AitoInstallDialog.vue'))
 const AitoCodexOffer = defineAsyncComponent(() => import('./components/AitoCodexOffer.vue'))
 const AdminProviderAlert = defineAsyncComponent(() => import('./components/AdminProviderAlert.vue'))
+const AitoSupportShortcut = defineAsyncComponent(() => import('./components/AitoSupportShortcut.vue'))
 const installEvent = shallowRef(null)
 const installOpen = ref(false)
 const installing = ref(false)
@@ -42,8 +44,18 @@ const hasInstallShortcut = computed(() => route.name === 'landing-3d' || offersA
   (route.name !== 'aito-ia-video-studio' && Boolean(installEvent.value)))
 const canPromoteInstall = computed(() => isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
 const installOfferKey = 'aito.install-offer.v1'
+const customerSession = ref(false)
+const showSupportShortcut = computed(() => customerSession.value && !screenLoading.value &&
+  route.meta.requiresAuth !== 'admin' && route.meta.requiresAuth !== 'affiliate' &&
+  route.name !== 'admin-login' && route.name !== 'affiliate-login')
 let offerShown = false
 let offerTimer
+
+function refreshCustomerSession() {
+  if (typeof window === 'undefined') return
+  try { customerSession.value = Boolean(localStorage.getItem('aito_user_token') && !localStorage.getItem('aito_admin_token')) }
+  catch { customerSession.value = false }
+}
 
 function captureInstall(event) {
   if (document.querySelector('link[rel="manifest"]')?.getAttribute('href') !== '/aitoia.webmanifest') return
@@ -69,6 +81,7 @@ async function installAitoIA() {
 }
 
 watch(() => route.fullPath, () => { installOpen.value = false })
+watch(() => route.fullPath, refreshCustomerSession, { immediate: true })
 watch(isAitoManifest, active => { if (!active) installEvent.value = null })
 watch([() => route.fullPath, screenLoading], ([, loading]) => {
   if (typeof window === 'undefined') return
@@ -85,6 +98,7 @@ watch([() => route.fullPath, screenLoading], ([, loading]) => {
 }, { immediate: true })
 
 function handleSessionExpired(event) {
+  refreshCustomerSession()
   const loginPath = event.detail?.loginPath || '/?auth=login'
   $q.notify({
     type: 'warning',
@@ -98,11 +112,15 @@ function handleSessionExpired(event) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('aito:session-expired', handleSessionExpired)
+  window.addEventListener('aito:session-changed', refreshCustomerSession)
+  window.addEventListener('storage', refreshCustomerSession)
   window.addEventListener('beforeinstallprompt', captureInstall)
   window.addEventListener('appinstalled', markInstalled)
 }
 onBeforeUnmount(() => {
   window.removeEventListener('aito:session-expired', handleSessionExpired)
+  window.removeEventListener('aito:session-changed', refreshCustomerSession)
+  window.removeEventListener('storage', refreshCustomerSession)
   window.removeEventListener('beforeinstallprompt', captureInstall)
   window.removeEventListener('appinstalled', markInstalled)
   window.clearTimeout(offerTimer)

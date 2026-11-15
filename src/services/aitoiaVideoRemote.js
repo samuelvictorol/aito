@@ -138,21 +138,28 @@ export async function sampleVideoFrames(file, signal, { maxSide = 768, fractions
 }
 
 export async function captureTransitionFrame(file, position, format, resolution, signal, at = null) {
+  const image = at !== null && /^image\/(?:png|jpeg|webp|gif|avif)$/.test(file?.type || '')
   if (at === null) checkVideoReference(file)
-  else if (!file?.type.startsWith('video/') || file.size > MAX_CLIP_BYTES) throw new Error('Escolha uma cena de vídeo válida.')
+  else if (!file?.size || file.size > MAX_CLIP_BYTES || (!image && !file.type.startsWith('video/'))) {
+    throw new Error('Escolha uma cena com imagem ou vídeo válido.')
+  }
   const url = URL.createObjectURL(file)
-  const video = document.createElement('video')
-  video.muted = true
-  video.preload = 'auto'
-  video.playsInline = true
+  const media = image ? new Image() : document.createElement('video')
+  if (!image) {
+    media.muted = true
+    media.preload = 'auto'
+    media.playsInline = true
+  }
   try {
-    await mediaEvent(video, 'loadeddata', signal, () => { video.src = url })
-    if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
-      throw new Error('Cada clipe precisa ter imagem e duração válidas.')
-    }
-    const time = Math.max(0, Math.min(video.duration - .04, at === null ? (position === 'end' ? video.duration - .04 : 0) : at))
-    if (time > 0) {
-      await mediaEvent(video, 'seeked', signal, () => { video.currentTime = time })
+    await mediaEvent(media, image ? 'load' : 'loadeddata', signal, () => { media.src = url })
+    const sourceWidth = image ? media.naturalWidth : media.videoWidth
+    const sourceHeight = image ? media.naturalHeight : media.videoHeight
+    if (!sourceWidth || !sourceHeight) throw new Error('A cena precisa ter uma imagem válida.')
+    if (!image) {
+      if (!Number.isFinite(media.duration) || media.duration <= 0) throw new Error('O clipe precisa ter uma duração válida.')
+      const requestedTime = at ?? (position === 'end' ? media.duration - .04 : 0)
+      const time = Math.max(0, Math.min(media.duration - .04, requestedTime))
+      if (time > 0) await mediaEvent(media, 'seeked', signal, () => { media.currentTime = time })
     }
     const [widthRatio, heightRatio] = format.split(':').map(Number)
     const shortSide = resolution === '1080p' ? 1080 : 720
@@ -161,17 +168,17 @@ export async function captureTransitionFrame(file, position, format, resolution,
     canvas.height = Math.round(shortSide * heightRatio / Math.min(widthRatio, heightRatio))
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Seu navegador não disponibilizou leitura de vídeo.')
-    const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight)
-    const width = video.videoWidth * scale
-    const height = video.videoHeight * scale
-    context.drawImage(video, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+    const scale = Math.max(canvas.width / sourceWidth, canvas.height / sourceHeight)
+    const width = sourceWidth * scale
+    const height = sourceHeight * scale
+    context.drawImage(media, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .86))
     signal.throwIfAborted()
     if (!blob) throw new Error('O navegador não conseguiu extrair o quadro do clipe.')
     return new File([blob], position === 'end' ? 'fim-clipe-1.jpg' : 'inicio-clipe-2.jpg', { type: 'image/jpeg' })
   } finally {
-    video.removeAttribute('src')
-    video.load()
+    media.removeAttribute('src')
+    if (!image) media.load()
     URL.revokeObjectURL(url)
   }
 }

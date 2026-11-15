@@ -1,8 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
-import { api } from 'boot/axios'
 import AitoVideoProgress from './AitoVideoProgress.vue'
-import { aitoTokens, usd } from 'src/composables/useAitoIA'
+import { aitoTokens } from 'src/composables/useAitoIA'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { burnRemakeCaptions, maxRemakeInputBytes, remakeInputAccept, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
@@ -12,15 +11,16 @@ const props = defineProps({
   references: { type: Array, default: () => [] },
   projectScope: String,
   projectExpiresAt: Number,
+  draft: Object,
   walletId: String,
   blocked: Boolean,
   allowCredits: { type: Function, required: true },
-  authorize: { type: Function, required: true },
+  access: { type: Function, required: true },
   saveResult: { type: Function, required: true },
   exportResults: { type: Function, required: true },
   exportProgress: { type: Number, default: 0 },
 })
-const emit = defineEmits(['busy', 'balance', 'wallet', 'login', 'append', 'recover'])
+const emit = defineEmits(['busy', 'balance', 'wallet', 'login', 'append', 'recover', 'draft', 'component'])
 const root = '/aitoia/video/studio/remakes'
 const activeStates = new Set(['queued', 'in_progress', 'pending', 'processing', 'running'])
 const blockedErrors = new Set(['AITO_MAINTENANCE', 'AITO_MEDIA_EXPIRED', 'AITO_MEDIA_UNAVAILABLE'])
@@ -32,15 +32,13 @@ const input = ref(null)
 const inputError = ref('')
 const action = shallowRef(null)
 const progress = ref(0)
-const scenes = shallowRef(readPending().map(item => reactive({
-  index: item.index, duration: item.duration, start: item.start, providerDuration: item.providerDuration,
-  captions: Boolean(item.caption), quote: { caption: item.caption, billedUsdCents: item.billedUsdCents, estimatedAitoTokens: item.tokens, estimated: item.estimated },
-  job: { id: item.id, status: 'in_progress' }, submitted: true, recovered: true, error: '',
-})))
+const scenes = shallowRef([])
 const master = ref('')
 const referenceIds = ref([])
 const resolution = ref('480p')
 let controller
+let restoreDraft = false
+let draftLoaded = false
 
 const locked = computed(() => Boolean(action.value || props.blocked))
 const results = computed(() => scenes.value.filter(scene => scene.result).map(scene => scene.result))
@@ -48,22 +46,55 @@ const formatSeconds = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 
 const seconds = value => formatSeconds.format(Math.max(0, Number(value) || 0))
 const selectedReferences = ids => ids.map(id => props.references.find(item => item.id === id)).filter(Boolean)
 const referencesFor = scene => selectedReferences(scene.referenceIds ?? referenceIds.value)
-const canQuote = scene => Boolean(scene.edit.trim() || master.value.trim() || scene.plan || referencesFor(scene).length || scene.captions)
+const canQuote = scene => Boolean(scene.file && (scene.edit.trim() || master.value.trim() || scene.plan || referencesFor(scene).length || scene.captions))
 const lockedScene = scene => locked.value || Boolean(scene.job || scene.submitted)
 const approximateCharge = (total, estimateCents, estimateTokens) =>
   estimateCents > 0 && Number.isFinite(total) ? Math.round(total * estimateTokens / estimateCents) : 0
 
-function authorizedGet(path, options = {}) {
-  return api.get(path, { ...options, headers: props.authorize(options.headers) })
+function draftSnapshot() {
+  return { master: master.value, referenceIds: [...referenceIds.value], resolution: resolution.value,
+    scenes: scenes.value.map(scene => ({ index: scene.index, start: scene.start, duration: scene.duration,
+      providerDuration: scene.providerDuration, file: scene.file, edit: scene.edit, referenceIds: scene.referenceIds,
+      captions: scene.captions, caption: scene.caption, plan: scene.plan, transcript: scene.transcript, planSpend: scene.planSpend,
+      ...(scene.result && { result: { ...scene.result, previewUrl: undefined, expiresAt: undefined } }),
+      ...(scene.job?.id && { pending: { id: scene.job.id, caption: scene.quote?.caption, billedUsdCents: scene.quote?.billedUsdCents,
+        tokens: scene.quote?.estimatedAitoTokens, estimated: scene.quote?.estimated } }),
+    })) }
 }
-function authorizedPost(path, body, options = {}) {
-  return api.post(path, body, { ...options, headers: props.authorize(options.headers) })
+
+function loadDraft(draft) {
+  const pending = readPending()
+  const saved = draft?.scenes || []
+  const known = new Set(saved.map(item => item.index))
+  restoreDraft = true
+  releaseScenes(scenes.value)
+  scenes.value = []
+  master.value = draft?.master || ''
+  referenceIds.value = draft?.referenceIds || []
+  resolution.value = draft?.resolution || '480p'
+  scenes.value = [...saved, ...pending.filter(item => !known.has(item.index))].map(item => {
+    const job = !item.result && (item.pending || pending.find(row => row.index === item.index))
+    const result = item.result?.file && props.projectExpiresAt > Date.now()
+      ? { ...item.result, expiresAt: props.projectExpiresAt, previewUrl: URL.createObjectURL(item.result.file) } : null
+    return reactive({ ...item, edit: item.edit || '', referenceIds: item.referenceIds ?? null, captions: Boolean(item.captions || job?.caption),
+      caption: item.caption || job?.caption || '', plan: item.plan || '', planSpend: item.planSpend || 0, result, error: '',
+      url: item.file ? URL.createObjectURL(item.file) : '', recovered: !item.file, job: job ? { id: job.id, status: 'in_progress' } : null,
+      submitted: Boolean(job), quote: job ? { caption: job.caption, billedUsdCents: job.billedUsdCents,
+        estimatedAitoTokens: job.tokens, estimated: job.estimated } : null })
+  }).sort((left, right) => left.index - right.index)
+  restoreDraft = false
+  draftLoaded = true
 }
+
+watch([scenes, master, referenceIds, resolution], () => {
+  if (!restoreDraft && props.projectScope) emit('draft', draftSnapshot())
+}, { deep: true, flush: 'sync' })
 function clearQuote(scene) {
   if (!scene.job && !scene.submitted) scene.quote = null
   scene.planQuote = null
 }
 watch([master, referenceIds, () => props.references], () => {
+  if (restoreDraft) return
   scenes.value.forEach(scene => {
     if (!scene.job && !scene.submitted) scene.plan = ''
     clearQuote(scene)
@@ -72,8 +103,11 @@ watch([master, referenceIds, () => props.references], () => {
 watch([resolution, () => props.walletId], () => {
   scenes.value.forEach(clearQuote)
 }, { flush: 'sync' })
-watch(() => props.blocked, blocked => {
-  if (!blocked && scenes.value.some(scene => scene.recovered && scene.job)) emit('recover')
+watch([() => props.blocked, () => props.projectScope], ([blocked, scope]) => {
+  if (!blocked && scope && !draftLoaded) {
+    loadDraft(props.draft)
+    if (scenes.value.some(scene => scene.job)) emit('recover')
+  }
 }, { immediate: true })
 
 function patchScene(scene, patch) {
@@ -147,7 +181,7 @@ async function execute(kind, scene, operation) {
   if (scene) scene.error = ''
   else inputError.value = ''
   try {
-    await operation(operationController.signal)
+    await operation(operationController.signal, props.access())
   } catch (cause) {
     if (!operationController.signal.aborted && cause?.code !== 'ERR_CANCELED') {
       if (scene) scene.error = problem(cause)
@@ -179,13 +213,13 @@ async function confirmSource() {
 async function planScene(scene) {
   if (lockedScene(scene) || !props.allowCredits()) return
   const offer = scene.planQuote
-  if (!offer) return execute('plan-price', scene, async signal => {
-    scene.planQuote = await quoteRemakePlan({ apiGet: authorizedGet, signal })
+  if (!offer) return execute('plan-price', scene, async (signal, { get }) => {
+    scene.planQuote = await quoteRemakePlan({ apiGet: get, signal })
   })
-  await execute('prepare', scene, async signal => {
+  await execute('prepare', scene, async (signal, { post }) => {
     const prepared = await prepareRemakePlan({ file: scene.file, master: master.value.trim(), scenePrompt: scene.edit.trim(),
       captions: scene.captions, characterNames: referencesFor(scene).map(item => item.title), walletId: props.walletId,
-      maxBilledUsdCents: offer.maxBilledUsdCents, apiPost: authorizedPost, signal })
+      maxBilledUsdCents: offer.maxBilledUsdCents, apiPost: post, signal })
     signal.throwIfAborted()
     scene.planQuote = null
     scene.quote = null
@@ -212,21 +246,21 @@ function promptFor(scene, references, files) {
     master.value.trim() && `Direção geral: ${master.value.trim().slice(0, plan ? 550 : 1500)}`,
   ].filter(Boolean).join('\n\n').slice(0, 3500)
 }
-async function upload(file, type, put, signal, walletId) {
-  const { data } = await authorizedPost('/aitoia/video/references', { contentType: type, sizeBytes: file.size, walletId }, { signal })
+async function upload(post, file, type, put, signal, walletId) {
+  const { data } = await post('/aitoia/video/references', { contentType: type, sizeBytes: file.size, walletId }, { signal })
   return put(file, data.data, signal)
 }
 async function quoteScene(scene) {
   if (lockedScene(scene) || !canQuote(scene) || (scene.captions && !scene.caption.trim()) || !props.allowCredits()) return
-  await execute('quote', scene, async signal => {
+  await execute('quote', scene, async (signal, { post }) => {
     const walletId = props.walletId
     const references = referencesFor(scene)
     const files = [...new Set(references.map(item => item.file).filter(Boolean))].slice(0, maxReferences)
-    const referenceToken = await upload(scene.file, 'video/mp4', putVideoReference, signal, walletId)
+    const referenceToken = await upload(post, scene.file, 'video/mp4', putVideoReference, signal, walletId)
     const imageReferenceTokens = []
-    for (const file of files) imageReferenceTokens.push(await upload(file, checkImageReference(file), putImageReference, signal, walletId))
+    for (const file of files) imageReferenceTokens.push(await upload(post, file, checkImageReference(file), putImageReference, signal, walletId))
     const body = { walletId, referenceToken, imageReferenceTokens, prompt: promptFor(scene, references, files), subtitles: scene.captions, resolution: resolution.value }
-    const { data } = await authorizedPost(root + '/quote', body, { signal })
+    const { data } = await post(root + '/quote', body, { signal })
     signal.throwIfAborted()
     if (props.walletId === walletId) {
       scene.quote = { ...data.data, body, requestId: crypto.randomUUID(), caption: scene.captions ? scene.caption.trim() : '' }
@@ -241,14 +275,14 @@ function delay(ms, signal) {
     signal.addEventListener('abort', cancel, { once: true })
   })
 }
-async function poll(scene, signal) {
+async function poll(scene, signal, get) {
   const deadline = Date.now() + 10 * 60_000
   let failures = 0
   while (activeStates.has(scene.job.status)) {
     if (Date.now() > deadline) throw new Error('O provedor ainda está gerando. Use Verificar cena para acompanhar.')
     await delay(3000, signal)
     try {
-      const { data } = await authorizedGet(`/aitoia/video/generations/${encodeURIComponent(scene.job.id)}`, { signal })
+      const { data } = await get(`/aitoia/video/generations/${encodeURIComponent(scene.job.id)}`, { signal })
       scene.job = { ...scene.job, ...data.data }
       failures = 0
     } catch (cause) {
@@ -264,15 +298,13 @@ async function poll(scene, signal) {
     throw new Error(job.message || 'O provedor não conseguiu refazer este trecho.')
   }
   const { quote } = scene
-  const original = await readGeneratedClipForJob({ id: job.id, remoteUrl: job.url }, signal, authorizedGet)
+  const original = await readGeneratedClipForJob({ id: job.id, remoteUrl: job.url }, signal, get)
   const cues = quote.caption ? [{ start: 0, end: scene.duration, text: quote.caption }] : []
   action.value = { kind: 'finish', index: scene.index }
   const file = await burnRemakeCaptions(original, cues, { duration: scene.duration, signal, onProgress: splittingProgress })
   signal.throwIfAborted()
   const asset = { id: job.id, file, title: `Cena ${scene.index + 1} refeita`, kind: 'scene',
     expiresAt: props.projectExpiresAt || Date.now() + AITOIA_RETENTION_MS }
-  await props.saveResult(asset)
-  signal.throwIfAborted()
   if (scene.result?.previewUrl) URL.revokeObjectURL(scene.result.previewUrl)
   const reserved = job.billingPending === true
   const charged = Number((reserved ? job.reservedUsdCents : job.billedUsdCents) ?? quote.billedUsdCents)
@@ -280,15 +312,16 @@ async function poll(scene, signal) {
     approximateAitoTokens: approximateCharge(charged, quote.billedUsdCents, Number(quote.estimatedAitoTokens) || 0),
     captions: Boolean(cues.length), duration: scene.duration }
   clearJob(scene)
+  await props.saveResult(asset)
 }
 async function renderScene(scene) {
   if (!scene.quote || (!scene.job && !scene.submitted && !props.allowCredits())) return
-  await execute('generate', scene, async signal => {
+  await execute('generate', scene, async (signal, { get, post }) => {
     if (!scene.job) {
       scene.submitted = true
       try {
         const { quote } = scene
-        const { data } = await authorizedPost(root, { ...quote.body, quoteToken: quote.quoteToken },
+        const { data } = await post(root, { ...quote.body, quoteToken: quote.quoteToken },
           { headers: { 'X-Aito-Request-Id': quote.requestId }, signal })
         if (!data?.data?.id) throw new Error('A geração ainda não foi confirmada. Verifique a cena novamente.')
         scene.job = data.data
@@ -301,13 +334,24 @@ async function renderScene(scene) {
         throw cause
       }
     }
-    await poll(scene, signal)
+    await poll(scene, signal, get)
   })
 }
 function isWorking(scene, kind) { return action.value?.index === scene.index && action.value?.kind === kind }
 function downloadCombined() {
   if (!results.value.length) return
   return execute('export', null, signal => props.exportResults(results.value, signal))
+}
+
+function removeScene(scene, resultOnly = false) {
+  if (!scene || lockedScene(scene)) return
+  if (resultOnly) {
+    if (scene.result?.previewUrl) URL.revokeObjectURL(scene.result.previewUrl)
+    scene.result = null
+  } else {
+    releaseScenes([scene])
+    scenes.value = scenes.value.filter(item => item !== scene)
+  }
 }
 
 onBeforeUnmount(() => {
@@ -378,7 +422,11 @@ onBeforeUnmount(() => {
     <section v-if="scenes.length" class="aito-remake__panel aito-remake__column" aria-labelledby="remake-source">
       <header><q-icon name="mdi-filmstrip" size="23px" /><div><h2 id="remake-source">Cenas de origem</h2><p>{{ scenes.length }} {{ scenes.length === 1 ? 'trecho' : 'trechos' }} de até 5 s</p></div></header>
       <article v-for="scene in scenes" :key="scene.url || scene.result?.id || scene.index" class="aito-remake__scene">
-        <div class="aito-remake__scene-title"><h3>Cena {{ scene.index + 1 }}</h3><span>{{ seconds(scene.start) }}–{{ seconds(scene.start + scene.duration) }} s</span></div>
+        <div class="aito-remake__scene-title"><h3>Cena {{ scene.index + 1 }}</h3><span>{{ seconds(scene.start) }}–{{ seconds(scene.start + scene.duration) }} s</span>
+          <q-btn flat round dense icon="mdi-delete-outline" :aria-label="`Remover cena de origem ${scene.index + 1}`" :disable="lockedScene(scene)" @click="removeScene(scene)">
+            <q-tooltip>Remover cena de origem</q-tooltip>
+          </q-btn>
+        </div>
         <template v-if="!scene.recovered">
         <video :src="scene.url" controls playsinline preload="none" :aria-label="`Trecho original da cena ${scene.index + 1}`" />
         <label :for="`remake-scene-${scene.index}`">Prompt da cena <small>opcional</small></label>
@@ -423,8 +471,7 @@ onBeforeUnmount(() => {
         </template>
         <p v-else class="aito-remake__help">{{ scene.result ? 'O resultado foi recuperado.' : scene.job ? 'Já existe uma geração para esta cena. Verifique para recuperar o resultado.' : 'A geração anterior está indisponível. Selecione o vídeo de origem para tentar novamente.' }}</p>
         <p v-if="scene.quote" class="aito-remake__price" role="status">
-          {{ scene.quote.modelLabel || 'Seedance 2.5' }} · Até ≈ {{ aitoTokens(scene.quote.estimatedAitoTokens) }} AitoTokens · {{ usd(scene.quote.billedUsdCents) }}
-          <span v-if="scene.quote.estimated">. A Higgsfield não informou a cotação. O valor fica reservado até o custo ser confirmado.</span>
+          {{ scene.quote.modelLabel || 'Seedance 2.5 · Higgsfield' }} · Até ≈ {{ aitoTokens(scene.quote.estimatedAitoTokens) }} AitoTokens
         </p>
         <p v-if="scene.error" class="aito-remake__error" role="alert">{{ scene.error }}</p>
         <AitoVideoProgress v-if="isWorking(scene, 'generate')" :stage="scene.job?.status || 'submitting'" />
@@ -465,7 +512,10 @@ onBeforeUnmount(() => {
         <p class="aito-remake__help">{{ asset.captions ? 'Com legendas' : 'Sem legendas adicionadas' }} · {{ asset.billingPending ? 'Reserva de' : 'Uso de' }} ≈ {{ aitoTokens(asset.approximateAitoTokens) }} AitoTokens<span v-if="asset.billingPending"> · Aguardando confirmação do custo</span></p>
         <div class="aito-remake__actions">
           <q-btn flat no-caps icon="mdi-download-outline" label="Baixar" :href="asset.previewUrl" :download="asset.file.name" />
+          <q-btn outline no-caps color="teal-3" icon="mdi-folder-plus-outline" label="Salvar em Componentes" :disable="locked" @click="emit('component', asset)" />
           <q-btn outline no-caps color="teal-3" icon="mdi-playlist-plus" label="Usar no vídeo master" :disable="locked" @click="emit('append', [asset])" />
+          <q-btn flat round dense icon="mdi-delete-outline" :aria-label="`Remover ${asset.title}`" :disable="locked"
+            @click="removeScene(scenes.find(scene => scene.result === asset), true)"><q-tooltip>Remover resultado</q-tooltip></q-btn>
         </div>
       </article>
     </section>

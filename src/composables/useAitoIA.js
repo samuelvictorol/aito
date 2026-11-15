@@ -5,7 +5,8 @@ import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/servi
 import { checkAttachment, checkoutLink, fileKind, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
 import { artifactReferences, fileFromArtifact, fileFromImage, prepareArtifactReferences } from 'src/services/aitoiaArtifacts'
 
-const sessionKey = 'aito_user_token'
+const clientSession = { tokenKey: 'aito_user_token', userKey: 'aito_user', kind: 'client' }
+const adminSession = { tokenKey: 'aito_admin_token', userKey: 'aito_admin_user', kind: 'admin' }
 const DAY = 24 * 60 * 60 * 1000
 const LOCAL_LIFETIME = 7 * DAY
 const shortTitle = (text, attachments) => (text || attachments[0]?.name || 'Nova conversa').replace(/\s+/g, ' ').trim().slice(0, 65)
@@ -16,6 +17,10 @@ export const usd = cents => usDollar.format((Number(cents) || 0) / 100)
 export const brl = cents => real.format((Number(cents) || 0) / 100)
 const tokenCount = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 })
 export const aitoTokens = value => tokenCount.format(Math.max(0, Number(value) || 0))
+export function aitoTokenCost(usdCents, tokensPerUsd) {
+  if (!Number.isFinite(usdCents) || usdCents < 0 || !Number.isFinite(tokensPerUsd) || tokensPerUsd <= 0) return ''
+  return `≈ ${aitoTokens(usdCents * tokensPerUsd / 100)} AitoTokens`
+}
 const walletPreference = account => `aitoia:wallet:${account}`
 function preferredWallet(status) {
   const wallets = status?.wallets || []
@@ -28,8 +33,8 @@ const paidOrders = new Set(['paid', 'approved', 'applied'])
 const statusOf = error => error.response?.status
 const errorMessage = (error, fallback) => error.response?.data?.message || fallback
 
-export function useAitoIA({ chatHistory = true } = {}) {
-  const token = ref('')
+export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
+  const session = shallowRef(null)
   const sessionLoading = ref(false)
   const status = ref(null)
   const walletId = ref('web')
@@ -71,7 +76,8 @@ export function useAitoIA({ chatHistory = true } = {}) {
   let mounted = false
   let walletResolved = false
 
-  const signedIn = computed(() => Boolean(token.value))
+  const signedIn = computed(() => Boolean(session.value))
+  const adminMode = computed(() => session.value?.kind === 'admin')
   const active = computed(() => chats.value.find(chat => chat.id === activeId.value) || null)
   const chatLimitReached = computed(() => chats.value.length >= AITOIA_CHAT_LIMIT)
   const chatLimitMessage = 'Você já tem cinco conversas. Exclua uma para começar outra.'
@@ -81,8 +87,24 @@ export function useAitoIA({ chatHistory = true } = {}) {
   const loadingConversation = computed(() => request.value?.chatId === activeId.value)
   const hasInput = computed(() => Boolean(draft.value.trim() || attachments.value.length))
 
-  function config(extra = {}) {
-    return { headers: { Authorization: 'Bearer ' + token.value, ...extra } }
+  function access() {
+    const owner = session.value
+    const current = () => Boolean(owner && session.value === owner && localStorage.getItem(owner.tokenKey) === owner.token)
+    function endpoint(path) {
+      if (!current()) throw new DOMException('Sua sessão mudou.', 'AbortError')
+      if (!path.startsWith('/aitoia/')) throw new TypeError('Rota AitoIA inválida.')
+      return owner.kind === 'admin' ? `/admin${path}` : path
+    }
+    const authorized = options => ({ ...options, headers: { ...options?.headers, Authorization: `Bearer ${owner.token}` } })
+    return {
+      current,
+      get: async (path, options) => api.get(endpoint(path), authorized(options)),
+      post: async (path, body, options) => api.post(endpoint(path), body, authorized(options)),
+    }
+  }
+  const generationApi = {
+    get: (path, options) => access().get(path, options),
+    post: (path, body, options) => access().post(path, body, options),
   }
 
   function pruneLocal() {
@@ -132,7 +154,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     activeId.value = ''
     accountId.value = ''
     status.value = null
-    walletId.value = 'web'
+    walletId.value = adminMode.value ? 'platform' : 'web'
     walletResolved = false
     models.value = []
     model.value = ''
@@ -154,12 +176,13 @@ export function useAitoIA({ chatHistory = true } = {}) {
   }
 
   function forgetSession() {
-    if (localStorage.getItem(sessionKey) === token.value) {
-      localStorage.removeItem(sessionKey)
-      localStorage.removeItem('aito_user')
+    const owner = session.value
+    if (owner && localStorage.getItem(owner.tokenKey) === owner.token) {
+      localStorage.removeItem(owner.tokenKey)
+      localStorage.removeItem(owner.userKey)
     }
+    session.value = null
     resetSession()
-    token.value = ''
     draft.value = ''
     sessionLoading.value = false
     error.value = 'Sua sessão terminou. Entre novamente para acessar o chat.'
@@ -171,9 +194,9 @@ export function useAitoIA({ chatHistory = true } = {}) {
     const order = ++statusEpoch
     if (!silent) { walletLoading.value = true; walletError.value = '' }
     try {
-      const { data } = await api.get('/aitoia/status', { ...config(), params: { walletId: walletId.value } })
+      const { data } = await generationApi.get('/aitoia/status', { params: adminMode.value ? undefined : { walletId: walletId.value } })
       if (sessionEpoch !== epoch || statusEpoch !== order) return
-      if (!walletResolved && data.data?.accountId) {
+      if (!adminMode.value && !walletResolved && data.data?.accountId) {
         walletResolved = true
         const preferred = preferredWallet(data.data)
         if (preferred !== walletId.value) {
@@ -186,8 +209,8 @@ export function useAitoIA({ chatHistory = true } = {}) {
       else accountId.value = data.data?.accountId || ''
     } catch (cause) {
       if (sessionEpoch !== epoch || statusEpoch !== order) return
-      if (statusOf(cause) === 401) { forgetSession(); return }
-      if ([403, 404].includes(statusOf(cause)) && walletId.value !== 'web') {
+      if (statusOf(cause) === 401 || (adminMode.value && statusOf(cause) === 403)) { forgetSession(); return }
+      if (!adminMode.value && [403, 404].includes(statusOf(cause)) && walletId.value !== 'web') {
         walletId.value = 'web'
         return refreshStatus({ silent })
       }
@@ -203,7 +226,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     modelLoading.value = true
     settingsError.value = ''
     try {
-      const { data } = await api.get('/aitoia/models', { ...config(), params: refresh ? { refresh: 1 } : undefined })
+      const { data } = await generationApi.get('/aitoia/models', { params: refresh ? { refresh: 1 } : undefined })
       if (sessionEpoch !== epoch) return
       models.value = data.data?.models || []
       if (!currentModel.value) model.value = data.data?.defaultModel || models.value[0]?.id || ''
@@ -222,10 +245,12 @@ export function useAitoIA({ chatHistory = true } = {}) {
   })
 
   async function syncSession({ keepDraft = false } = {}) {
-    const next = localStorage.getItem(sessionKey) || ''
-    if (next === token.value) return
+    const nextAdmin = allowAdmin && localStorage.getItem(adminSession.tokenKey)
+    const type = nextAdmin ? adminSession : clientSession
+    const next = nextAdmin || localStorage.getItem(clientSession.tokenKey)
+    if ((!next && !session.value) || (next === session.value?.token && type.kind === session.value.kind)) return
+    session.value = next ? { ...type, token: next } : null
     resetSession()
-    token.value = next
     if (!keepDraft) draft.value = ''
     error.value = ''
     if (!next) { sessionLoading.value = false; return }
@@ -236,7 +261,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   }
 
   function accountChange(event) {
-    if (event.type === 'storage' && event.key && event.key !== sessionKey) return
+    if (event.type === 'storage' && event.key && event.key !== clientSession.tokenKey && (!allowAdmin || event.key !== adminSession.tokenKey)) return
     syncSession()
   }
 
@@ -287,13 +312,13 @@ export function useAitoIA({ chatHistory = true } = {}) {
   async function exportChats(format, chat = null) {
     pruneLocal()
     const epoch = sessionEpoch
-    const exportToken = token.value
+    const owner = access()
     try {
       const rows = chat ? chats.value.filter(item => item.id === chat.id) : chats.value
-      if (!exportToken || !rows.length) return
+      if (!owner.current() || !rows.length) return
       const json = format === 'json'
       const file = json ? exportAitoIAJson(rows) : await exportAitoIAZip(rows)
-      if (epoch !== sessionEpoch || localStorage.getItem(sessionKey) !== exportToken) return
+      if (epoch !== sessionEpoch || !owner.current()) return
       downloadAitoIAFile(file, json ? 'aitoia-conversas.json' : 'aitoia-conversas.zip')
     } catch {
       if (epoch === sessionEpoch) storageError.value = 'Não foi possível baixar as conversas.'
@@ -326,6 +351,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     pruneLocal()
     if (!active.value && chatLimitReached.value) { error.value = chatLimitMessage; return }
     const epoch = sessionEpoch
+    const owner = access()
     const at = Date.now()
     const text = draft.value.trim()
     const files = attachments.value
@@ -359,12 +385,12 @@ export function useAitoIA({ chatHistory = true } = {}) {
       }
       scrollToEnd()
       const { input, shortened } = await requestMessages(messages, { signal: controller.signal })
-      if (controller.signal.aborted || sessionEpoch !== epoch) return
+      if (controller.signal.aborted || sessionEpoch !== epoch || !owner.current()) return
       contextShortened.value = shortened
       const body = { input, ...parameters, artifacts: true }
       if (new Blob([JSON.stringify(body)]).size > 8 * 1024 * 1024) throw new Error('A conversa ultrapassou o limite de envio. Inicie uma nova conversa com menos anexos.')
-      const { data } = await api.post('/aitoia/responses', body, { ...config({ 'X-Aito-Request-Id': id }), signal: controller.signal })
-      if (sessionEpoch !== epoch) return
+      const { data } = await owner.post('/aitoia/responses', body, { headers: { 'X-Aito-Request-Id': id }, signal: controller.signal })
+      if (sessionEpoch !== epoch || !owner.current()) return
       const response = data?.data ?? data
       const artifact = response.artifact
       let answer = readAnswer(response)
@@ -381,7 +407,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
         }
         answer ||= 'Seu arquivo está pronto para baixar.'
       }
-      if (controller.signal.aborted || sessionEpoch !== epoch) return
+      if (controller.signal.aborted || sessionEpoch !== epoch || !owner.current()) return
       if (!answer) throw new Error('O modelo não retornou uma resposta de texto.')
       const current = chats.value.find(item => item.id === chat.id)
       const now = Date.now()
@@ -393,7 +419,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
         if (imagePlan) imageMessage = reply
       }
     } catch (cause) {
-      if (controller.signal.aborted || sessionEpoch !== epoch) return
+      if (controller.signal.aborted || sessionEpoch !== epoch || !owner.current()) return
       if (statusOf(cause) === 401) { forgetSession(); return }
       if (activeId.value === chat.id) {
         error.value = errorMessage(cause, statusOf(cause) === 402 ? 'Saldo insuficiente para esta mensagem. Recarregue ou reduza a potência.' : cause.response ? 'Não foi possível obter uma resposta.' : cause.message || 'Não foi possível conectar.')
@@ -417,8 +443,10 @@ export function useAitoIA({ chatHistory = true } = {}) {
       if (sessionEpoch === epoch && request.value?.id === id) {
         request.value = null
         if (activeId.value === chat.id) scrollToEnd()
-        refreshStatus({ silent: true })
-        if (imageMessage && activeId.value === chat.id && !controller.signal.aborted) void processImage(imageMessage)
+        if (owner.current()) {
+          refreshStatus({ silent: true })
+          if (imageMessage && activeId.value === chat.id && !controller.signal.aborted) void processImage(imageMessage)
+        }
       }
     }
   }
@@ -432,19 +460,20 @@ export function useAitoIA({ chatHistory = true } = {}) {
     const id = crypto.randomUUID()
     const epoch = sessionEpoch
     const wallet = walletId.value
-    const stillActive = () => !controller.signal.aborted && epoch === sessionEpoch
+    const owner = access()
+    const stillActive = () => !controller.signal.aborted && epoch === sessionEpoch && owner.current()
     const sameChat = () => stillActive() && activeId.value === chat.id
     request.value = { chatId: chat.id, controller, id, kind: confirmed ? 'image' : 'quote' }
     imageQuote.value = null
     error.value = ''
     try {
       const { format, prompt } = plan
-      const options = { ...config({ 'X-Aito-Request-Id': id }), signal: controller.signal }
+      const options = { headers: { 'X-Aito-Request-Id': id }, signal: controller.signal }
       if (confirmed) {
         if (wallet !== confirmed.walletId) throw new Error('A carteira mudou. Confira o valor novamente.')
         const images = await prepareArtifactReferences(references)
         if (!stillActive()) return
-        const { data } = await api.post('/aitoia/images/generations', {
+        const { data } = await owner.post('/aitoia/images/generations', {
           walletId: wallet, format, prompt, references: images, maxBilledUsdCents: confirmed.maxBilledUsdCents,
         }, options)
         const file = fileFromImage(data.data?.image)
@@ -455,7 +484,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
           billedUsdCents: (item.billedUsdCents || 0) + (data.data.billedUsdCents || 0),
         }) })
       } else {
-        const { data } = await api.post('/aitoia/marketing/quote', { walletId: wallet, format, referenceCount: references.length }, options)
+        const { data } = await owner.post('/aitoia/marketing/quote', { walletId: wallet, format, referenceCount: references.length }, options)
         if (!Number.isFinite(data.data?.maxBilledUsdCents)) throw new Error('Não foi possível calcular o valor da imagem.')
         if (sameChat()) imageQuote.value = { chatId: chat.id, messageId: message.id, walletId: wallet, maxBilledUsdCents: data.data.maxBilledUsdCents }
       }
@@ -467,7 +496,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
       if (request.value?.id === id) {
         request.value = null
         if (sameChat()) scrollToEnd()
-        if (confirmed) refreshStatus({ silent: true })
+        if (confirmed && owner.current()) refreshStatus({ silent: true })
       }
     }
   }
@@ -479,12 +508,12 @@ export function useAitoIA({ chatHistory = true } = {}) {
   }
 
   async function loadHistory(offset = 0) {
-    if (!signedIn.value) return
+    if (!signedIn.value || adminMode.value) return
     const epoch = sessionEpoch
     const order = ++historyEpoch
     historyLoading.value = true
     try {
-      const { data } = await api.get('/aitoia/history', { ...config(), params: { walletId: walletId.value, offset } })
+      const { data } = await generationApi.get('/aitoia/history', { params: { walletId: walletId.value, offset } })
       if (sessionEpoch !== epoch || historyEpoch !== order) return
       const rows = data.data || {}
       history.value = rows.rows || rows.history || rows.items || []
@@ -499,7 +528,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
   }
 
   async function selectWallet(id) {
-    if (id === walletId.value) return
+    if (adminMode.value || id === walletId.value) return
     walletId.value = id
     walletResolved = true
     if (accountId.value) {
@@ -513,14 +542,14 @@ export function useAitoIA({ chatHistory = true } = {}) {
   }
 
   async function checkout(plan) {
-    if (checkoutBusy.value) return
+    if (adminMode.value || checkoutBusy.value) return
     const epoch = sessionEpoch
     const id = walletId.value
     checkoutBusy.value = true
     walletError.value = ''
     paymentNotice.value = ''
     try {
-      const { data } = await api.post('/aitoia/checkout', { usdCents: plan.usdCents, walletId: id }, config())
+      const { data } = await generationApi.post('/aitoia/checkout', { usdCents: plan.usdCents, walletId: id })
       if (sessionEpoch !== epoch || walletId.value !== id) return
       const url = checkoutLink(data.data?.url)
       if (!url || !data.data?.orderNsu) throw new Error('Checkout indisponível.')
@@ -534,13 +563,13 @@ export function useAitoIA({ chatHistory = true } = {}) {
   }
 
   async function checkPayment(order, { silent = false } = {}) {
-    if (paymentBusy.value || !order?.orderNsu) return
+    if (adminMode.value || paymentBusy.value || !order?.orderNsu) return
     const epoch = sessionEpoch
     const id = walletId.value
     paymentBusy.value = order.orderNsu
     if (!silent) walletError.value = ''
     try {
-      const { data } = await api.post('/aitoia/confirm', { orderNsu: order.orderNsu, walletId: id }, config())
+      const { data } = await generationApi.post('/aitoia/confirm', { orderNsu: order.orderNsu, walletId: id })
       if (sessionEpoch !== epoch || walletId.value !== id) return
       const state = data.data?.status
       if (paidOrders.has(state)) {
@@ -563,6 +592,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
     syncSession()
     window.addEventListener('storage', accountChange)
     window.addEventListener('aito:session-expired', accountChange)
+    window.addEventListener('aito:session-changed', accountChange)
     document.addEventListener('visibilitychange', onVisible)
     if (chatHistory) expirationTimer = window.setInterval(pruneLocal, 60000)
   })
@@ -573,10 +603,11 @@ export function useAitoIA({ chatHistory = true } = {}) {
     clearInterval(expirationTimer)
     window.removeEventListener('storage', accountChange)
     window.removeEventListener('aito:session-expired', accountChange)
+    window.removeEventListener('aito:session-changed', accountChange)
     document.removeEventListener('visibilitychange', onVisible)
   })
 
-  return { accountId, signedIn, sessionLoading, status, walletId, models, model, currentModel, effort, efforts,
+  return { accountId, signedIn, adminMode, access, generationApi, sessionLoading, status, walletId, models, model, currentModel, effort, efforts,
     speed, speeds, webSearch, modelLoading, settingsError, walletError, error, contextShortened,
     draft, attachments, chats, activeId, active, chatLimitReached, chatLimitMessage, request, pending, history, historyLoading, historyTotal,
     historyOffset, historyLimit, walletLoading, checkoutBusy, paymentBusy, paymentNotice, chatList, storageError,

@@ -6,12 +6,11 @@ import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoIAMaintenance from 'components/AitoIAMaintenance.vue'
-import { aitoTokens, useAitoIA, usd } from 'src/composables/useAitoIA'
+import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { fileKind, MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
 import { requestsVideoGeneration, saveVideoDraft } from 'src/services/aitoiaVideoDraft'
-import { api } from 'boot/axios'
 import { AITOIA_CHAT_LIMIT } from 'src/services/aitoiaLocal'
 import 'src/css/aitoia-theme.css'
 
@@ -26,9 +25,9 @@ useMeta({
 const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
-const state = useAitoIA()
+const state = useAitoIA({ allowAdmin: true })
 const { videoInMaintenance } = useAitoAvailability()
-const { signedIn, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
+const { signedIn, adminMode, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
   modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
   activeId, active, chatLimitReached, chatLimitMessage, request, chatList, storageError, loadingConversation, hasInput, walletLoading, imageQuote } = state
 const composer = ref(null)
@@ -54,6 +53,7 @@ const draftSending = ref(false)
 const isVideoRequest = computed(() => requestsVideoGeneration(draft.value))
 const attachedVideo = computed(() => attachments.value.find(file => fileKind(file) === 'video'))
 const busy = computed(() => Boolean(request.value || videoBusy.value))
+const tokenCost = cents => aitoTokenCost(cents, status.value?.aitoTokensPerUsd)
 useAitoWorkGuard(busy, () => $q.notify({ type: 'warning', message: 'Aguarde a operação em andamento para sair desta tela.' }))
 const effortLabels = { none: 'Direta', minimal: 'Mínima', low: 'Baixa', medium: 'Equilibrada', high: 'Alta', xhigh: 'Muito alta', max: 'Ultra' }
 const effortIndex = computed({ get: () => Math.max(0, efforts.value.indexOf(effort.value)), set: value => { effort.value = efforts.value[Number(value)] || effort.value } })
@@ -114,7 +114,7 @@ async function chooseVideoMode() {
   if (videoInMaintenance.value) return
   selectVideoReference()
   try {
-    const { data } = await api.get('/aitoia/video/options', { headers: { Authorization: `Bearer ${localStorage.getItem('aito_user_token') || ''}` } })
+    const { data } = await state.generationApi.get('/aitoia/video/options')
     const value = data.data
     const images = attachments.value.filter(file => /^image\/(jpeg|png|webp)$/.test(file.type || file.blob?.type)).length
     const models = videoFile.value || images ? value?.referenceModels?.filter(item =>
@@ -127,12 +127,16 @@ watch(videoInMaintenance, blocked => {
 })
 async function openStudioWithDraft() {
   if (draftSending.value || videoInMaintenance.value) return
+  const owner = accountId.value
+  const access = state.access()
+  if (!owner || !access.current()) return
   draftSending.value = true
   try {
     const files = attachments.value.filter(file => file !== attachedVideo.value)
       .map(file => ({ id: file.id, name: file.name, mime: file.type || file.blob.type, blob: file.blob }))
     if (videoFile.value) files.push({ id: crypto.randomUUID(), name: videoFile.value.name, mime: 'video/mp4', blob: videoFile.value })
-    await saveVideoDraft(accountId.value, { prompt: draft.value.trim(), attachments: files })
+    await saveVideoDraft(owner, { prompt: draft.value.trim(), attachments: files })
+    if (!access.current()) return
     videoChoice.value = false
     await router.push({ name: 'aito-ia-video-studio', query: { tab: 'ai', draft: 'chat' } })
   } catch { videoChoiceError.value = 'Não foi possível salvar o rascunho neste navegador.' }
@@ -217,7 +221,7 @@ onMounted(() => {
         <div v-if="!chats.length" class="aito-studio__empty-list">{{ sessionLoading ? 'Carregando conversas…' : 'Nenhuma conversa salva' }}</div>
       </div>
       <div class="aito-studio__sidebar-foot">
-        <router-link v-if="signedIn" to="/app"><q-icon name="mdi-account-circle-outline" size="19px" /> Minha conta <q-icon class="aito-studio__out" name="mdi-arrow-top-right" size="15px" /></router-link>
+        <router-link v-if="signedIn" :to="adminMode ? '/admin' : '/app'"><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" size="19px" /> {{ adminMode ? 'Aito Admin' : 'Minha conta' }} <q-icon class="aito-studio__out" name="mdi-arrow-top-right" size="15px" /></router-link>
         <button v-else type="button" @click="showAuth('login')"><q-icon name="mdi-login" size="19px" /> Entrar</button>
         <q-icon name="mdi-lock-outline" size="16px" /><span>Histórico neste dispositivo por até 7 dias.</span>
       </div>
@@ -229,9 +233,9 @@ onMounted(() => {
           <button type="button" class="aito-studio__icon aito-studio__mobile-toggle" aria-label="Abrir conversas" :aria-expanded="sidebarOpen" @click="sidebarOpen = true"><q-icon name="mdi-menu" size="23px" /></button>
           <button type="button" class="aito-studio__top-model-button" aria-label="Configurar modelo" @click="showSettings"><q-icon name="mdi-auto-fix" size="18px" /><span>{{ currentModel?.label || (modelLoading ? 'Carregando modelos…' : 'Modelos OpenAI') }}</span><q-icon name="mdi-chevron-down" size="18px" /></button>
         </div>
-        <AitoIAModeSwitch :busy="busy" @chat-video="openChatVideo" />
+        <AitoIAModeSwitch :busy="busy" :admin-mode="adminMode" @chat-video="openChatVideo" />
         <div class="aito-studio__header-actions">
-        <button v-if="signedIn" type="button" class="aito-studio__balance" :disabled="busy" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" size="17px" /></button>
+        <button v-if="signedIn" type="button" class="aito-studio__balance" :title="adminMode ? 'Saldo da plataforma' : 'Minha carteira AitoTokens'" :disabled="busy" @click="showWallet"><img src="/aitotokens.svg" alt="" width="25" height="25" /><span>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-plus'" size="17px" /></button>
           <button v-else type="button" class="aito-studio__signup" @click="showAuth()">Criar conta <q-icon name="mdi-arrow-top-right" size="17px" /></button>
         </div>
       </header>
@@ -242,7 +246,7 @@ onMounted(() => {
         <div class="aito-studio__message-list">
           <p class="aito-studio__conversation-title">{{ active.title }}</p>
           <article v-for="message in active.messages" :key="message.id" class="aito-studio__message" :class="'aito-studio__message--' + message.role">
-            <div v-if="message.role === 'assistant'" class="aito-studio__speaker"><img src="/ia.gif" alt="" width="27" height="27" /><strong>AitoIA</strong><small>{{ message.model }}<template v-if="Number.isFinite(message.billedUsdCents)"> · {{ usd(message.billedUsdCents) }}</template></small></div>
+            <div v-if="message.role === 'assistant'" class="aito-studio__speaker"><img src="/ia.gif" alt="" width="27" height="27" /><strong>AitoIA</strong><small>{{ message.model }}<template v-if="tokenCost(message.billedUsdCents)"> · {{ tokenCost(message.billedUsdCents) }}</template></small></div>
             <div v-if="message.attachments?.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in message.attachments" :key="file.id" :attachment="file" :preview="message.role === 'assistant'" /></div>
             <p v-if="message.role === 'user' && message.text" class="aito-studio__user-text">{{ message.text }}</p>
             <AitoIAResponse v-else-if="message.text" :text="message.text" />
@@ -267,7 +271,7 @@ onMounted(() => {
         <div v-if="error || storageError || settingsError || (walletError && !walletOpen)" class="aito-studio__notice aito-studio__notice--error" role="alert">
           <q-icon name="mdi-alert-circle-outline" size="19px" />
           <span>{{ error || storageError || settingsError || walletError }}</span>
-          <button v-if="signedIn && status?.balanceUsdCents <= 0" type="button" @click="showWallet">Recarregar</button>
+          <button v-if="signedIn && status?.balanceUsdCents <= 0" type="button" @click="showWallet">{{ adminMode ? 'Ver saldo da plataforma' : 'Recarregar' }}</button>
           <button v-else type="button" aria-label="Fechar aviso" @click="error = ''; storageError = ''; settingsError = ''; walletError = ''"><q-icon name="mdi-close" size="17px" /></button>
         </div>
         <div v-else-if="contextShortened" class="aito-studio__notice" role="status"><q-icon name="mdi-information-outline" size="17px" /><span>Parte do histórico ficou fora desta solicitação para respeitar o limite de contexto.</span></div>
@@ -317,7 +321,7 @@ onMounted(() => {
       <q-card v-if="imageQuote" dark class="aito-ai-theme aito-studio__dialog">
         <div class="aito-studio__dialog-head"><q-icon name="mdi-image-plus-outline" size="22px" /><h2>Gerar imagem</h2></div>
         <div class="aito-studio__settings">
-          <p>Limite de débito <strong>{{ usd(imageQuote.maxBilledUsdCents) }}</strong> do seu saldo de AitoTokens.</p>
+          <p v-if="tokenCost(imageQuote.maxBilledUsdCents)">Limite de débito de <strong>{{ tokenCost(imageQuote.maxBilledUsdCents) }}</strong>.</p>
           <div class="aito-studio__select-row"><q-btn v-close-popup flat no-caps label="Voltar" /><q-btn unelevated no-caps color="teal-8" label="Confirmar geração" @click="state.confirmImage()" /></div>
         </div>
       </q-card>

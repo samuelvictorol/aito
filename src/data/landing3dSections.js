@@ -21,7 +21,7 @@ export const landing3dSections = Object.freeze([
   },
   {
     id: 'marcas',
-    title: 'Clientes e operações',
+    title: 'Alguns Clientes e operações',
     align: 'left'
   },
   {

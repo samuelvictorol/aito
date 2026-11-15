@@ -6,6 +6,7 @@ import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 defineProps({
   mode: { type: String, default: 'chat' },
   busy: Boolean,
+  adminMode: Boolean,
 })
 const emit = defineEmits(['chat-video'])
 const open = ref(false)
@@ -34,7 +35,7 @@ const { videoInMaintenance } = useAitoAvailability()
       <div v-else class="aito-mode-dialog__actions">
         <button v-close-popup type="button" @click="emit('chat-video')">
           <span class="aito-mode-dialog__option-icon" aria-hidden="true"><q-icon name="mdi-message-text-outline" size="23px" /></span>
-          <span><strong>Gerar no chat</strong><small>Descreva o clipe, anexe referências e confirme o preço da Higgsfield.</small></span>
+          <span><strong>Gerar no chat</strong><small>Descreva o clipe, anexe referências e confirme o custo em AitoTokens.</small></span>
           <q-icon class="aito-mode-dialog__arrow" name="mdi-chevron-right" size="20px" aria-hidden="true" />
         </button>
         <router-link v-close-popup :to="{ name: 'aito-ia-video-studio' }">
@@ -43,7 +44,7 @@ const { videoInMaintenance } = useAitoAvailability()
           <q-icon class="aito-mode-dialog__arrow" name="mdi-chevron-right" size="20px" aria-hidden="true" />
         </router-link>
       </div>
-      <footer v-if="!videoInMaintenance"><img src="/aitotokens.svg" alt="" width="18" height="18" /> As duas opções usam sua carteira AitoTokens.</footer>
+      <footer v-if="!videoInMaintenance"><img src="/aitotokens.svg" alt="" width="18" height="18" /> {{ adminMode ? 'As duas opções usam o saldo AitoTokens da plataforma.' : 'As duas opções usam sua carteira AitoTokens.' }}</footer>
     </q-card>
   </q-dialog>
 </template>
@@ -67,5 +68,9 @@ const { videoInMaintenance } = useAitoAvailability()
 .aito-mode-dialog__option-icon--studio { background: var(--aito-ai-gold-soft); color: var(--aito-ai-gold); }
 .aito-mode-dialog__arrow { color: var(--aito-ai-muted); }
 .aito-mode-dialog footer { display: flex; align-items: center; gap: 6px; color: var(--aito-ai-muted); font-size: .8rem; }
+@media (min-width: 768px) {
+  .aito-mode-dialog { width: min(740px, 100%); max-width: 100%; }
+  .aito-mode-dialog__actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 520px) { .aito-mode :is(a, span, button) { gap: 4px; padding-inline: 4px; font-size: .69rem; } .aito-mode :deep(.q-icon) { font-size: 14px; } }
 </style>

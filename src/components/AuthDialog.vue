@@ -88,6 +88,7 @@ function persistSession(data) {
   const userKey = role === 'affiliate' ? 'aito_affiliate_user' : 'aito_user'
   localStorage.setItem(tokenKey, data.token)
   localStorage.setItem(userKey, JSON.stringify({ ...data.user, role }))
+  window.dispatchEvent(new Event('aito:session-changed'))
   return { ...data, user: { ...data.user, role } }
 }
 

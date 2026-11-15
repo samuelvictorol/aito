@@ -1,10 +1,10 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useMeta, useQuasar } from 'quasar'
-import { api } from 'boot/axios'
+import { api as publicApi } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
-import { aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
+import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
@@ -22,8 +22,8 @@ const drawerButton = ref(null)
 const drawerCloseButton = ref(null)
 const mobileDrawer = computed(() => $q.screen.width > 0 && $q.screen.width <= drawerBreakpoint)
 const drawerWidth = computed(() => mobileDrawer.value ? Math.min(320, Math.round($q.screen.width * .9)) : 304)
-const wallet = useAitoIA({ chatHistory: false })
-const { accountId, signedIn, status, walletId } = wallet
+const wallet = useAitoIA({ chatHistory: false, allowAdmin: true })
+const { accountId, signedIn, adminMode, status, walletId } = wallet
 const catalog = ref(null)
 const catalogLoading = ref(false)
 const catalogError = ref(false)
@@ -50,6 +50,7 @@ const blockedExit = ref(false)
 const error = ref('')
 const kitError = ref('')
 const quote = ref(null)
+const quoteCost = computed(() => aitoTokenCost(quote.value?.maxBilledUsdCents, status.value?.aitoTokensPerUsd))
 const images = shallowRef([])
 const imageId = ref('')
 const projectTitle = ref('')
@@ -117,9 +118,6 @@ async function previewComponent() {
 }
 function clearProjectMedia() { [...images.value, ...references.value, ...projectKit.value].forEach(disposeAsset) }
 function resetKit() { kit.value.forEach(disposeAsset); kit.value = [] }
-function token() { return localStorage.getItem('aito_user_token') || '' }
-const config = (access, signal, headers = {}) => ({ signal, headers: { Authorization: `Bearer ${access}`, ...headers } })
-
 watch(accountId, async (id, previous) => {
   const epoch = ++kitEpoch
   kitLoading.value = Boolean(id)
@@ -141,7 +139,7 @@ watch(accountId, async (id, previous) => {
 
 const stripUrl = ({ url: _url, ...asset }) => asset
 const project = useAitoStudioProjects({
-  studio: 'marketing', accountId, busy: locked, defaultName: 'Projeto de marketing',
+  studio: 'marketing', accountId, localOnly: adminMode, busy: locked, defaultName: 'Projeto de marketing',
   watch: [projectTitle, formatId, prompt, references, selectedKit, projectKit, palette, images, imageId],
   snapshot: () => ({ title: projectTitle.value, formatId: formatId.value, prompt: prompt.value,
     references: references.value.map(stripUrl), selectedKit: [...selectedKit.value], projectKit: projectKit.value.map(stripUrl), palette: [...palette.value],
@@ -226,13 +224,21 @@ function removeImage(image) {
   void saveProject()
 }
 
+let catalogRequest
 async function loadCatalog() {
+  catalogRequest?.abort()
+  const controller = new AbortController()
+  catalogRequest = controller
   catalogLoading.value = true
   catalogError.value = false
-  try { catalog.value = (await api.get('/aitoia/marketing/catalog')).data.data }
-  catch { catalogError.value = true }
-  finally { catalogLoading.value = false }
+  const api = adminMode.value ? wallet.access() : publicApi
+  try {
+    const { data } = await api.get('/aitoia/marketing/catalog', { signal: controller.signal })
+    if (!controller.signal.aborted) catalog.value = data.data
+  } catch { if (!controller.signal.aborted) catalogError.value = true }
+  finally { if (catalogRequest === controller) catalogLoading.value = false }
 }
+watch(adminMode, loadCatalog)
 
 function showAuth(mode = 'login') { authMode.value = mode; authOpen.value = true }
 function showWallet() { walletOpen.value = true; wallet.refreshStatus(); wallet.loadHistory() }
@@ -340,13 +346,13 @@ async function quoteGeneration() {
   if (locked.value || projectLoading.value || !prompt.value.trim() || !catalog.value?.available || !accountId.value) return
   busy.value = true
   error.value = ''
-  const access = token()
+  const access = wallet.access()
   const controller = new AbortController()
   operation = controller
   const input = { walletId: walletId.value, format: format.value.id, referenceCount: referenceCount.value }
   try {
-    const { data } = await api.post('/aitoia/marketing/quote', input, config(access, controller.signal))
-    if (access === token() && !controller.signal.aborted) quote.value = { ...input, ...data.data }
+    const { data } = await access.post('/aitoia/marketing/quote', input, { signal: controller.signal })
+    if (access.current() && !controller.signal.aborted) quote.value = { ...input, ...data.data }
   } catch (cause) {
     if (!controller.signal.aborted) error.value = cause.response?.data?.message || 'Não foi possível calcular o valor da geração.'
   } finally { busy.value = false; operation = null }
@@ -355,7 +361,7 @@ async function quoteGeneration() {
 async function generate() {
   const confirmed = quote.value
   if (!confirmed || busy.value) return
-  const access = token()
+  const access = wallet.access()
   const imageFormat = format.value
   const selectedReferences = [...references.value, ...activeKit.value.filter(item => item.blob)]
   const components = activeKit.value.map(item => item.text).filter(Boolean)
@@ -366,12 +372,12 @@ async function generate() {
   error.value = ''
   try {
     const encoded = await Promise.all(selectedReferences.map(item => readMarketingImage(item.blob)))
-    const { data } = await api.post('/aitoia/marketing/generations', {
+    const { data } = await access.post('/aitoia/marketing/generations', {
       walletId: confirmed.walletId, format: confirmed.format, maxBilledUsdCents: confirmed.maxBilledUsdCents,
       prompt: prompt.value.trim(), references: encoded, components, palette: palette.value,
-    }, config(access, controller.signal, { 'X-Aito-Request-Id': crypto.randomUUID() }))
+    }, { signal: controller.signal, headers: { 'X-Aito-Request-Id': crypto.randomUUID() } })
     const blob = await exportMarketingImage(data.data.image, imageFormat)
-    if (access !== token() || controller.signal.aborted) return
+    if (!access.current() || controller.signal.aborted) return
     const id = crypto.randomUUID()
     const label = prompt.value.trim().replace(/\s+/g, ' ').slice(0, 60)
     if (!projectTitle.value || projectTitle.value === 'Projeto de marketing') projectTitle.value = label
@@ -390,6 +396,7 @@ async function generate() {
 onMounted(loadCatalog)
 onBeforeUnmount(() => {
   kitEpoch++
+  catalogRequest?.abort()
   operation?.abort()
   clearProjectMedia()
   resetKit()
@@ -408,7 +415,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="marketing__mode"><AitoIAModeSwitch mode="marketing" :busy="busy" /></div>
         <div class="marketing__account">
-          <button v-if="signedIn" type="button" class="marketing__balance" :disabled="locked" @click="showWallet"><img src="/aitotokens.svg" width="24" height="24" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon name="mdi-plus" /></button>
+          <button v-if="signedIn" type="button" class="marketing__balance" :title="adminMode ? 'Saldo da plataforma' : 'Minha carteira AitoTokens'" :disabled="locked" @click="showWallet"><img src="/aitotokens.svg" width="24" height="24" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-plus'" /></button>
           <button v-else type="button" class="marketing__secondary" @click="showAuth()">Entrar</button>
         </div>
       </div>
@@ -458,7 +465,7 @@ onBeforeUnmount(() => {
           </ul>
         </section>
         <footer class="marketing__drawer-footer">
-          <q-btn v-if="signedIn" flat no-caps class="full-width" icon="mdi-account-circle-outline" label="Meu perfil" :to="{ path: '/app', query: { tab: 'profile' } }" :disable="busy" />
+          <q-btn v-if="signedIn" flat no-caps class="full-width" :icon="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" :label="adminMode ? 'Aito Admin' : 'Meu perfil'" :to="adminMode ? '/admin' : { path: '/app', query: { tab: 'profile' } }" :disable="busy" />
           <q-btn v-else flat no-caps class="full-width" icon="mdi-account-circle-outline" label="Entrar para acessar o perfil" @click="showAuth()" />
         </footer>
       </aside>
@@ -527,7 +534,7 @@ onBeforeUnmount(() => {
       <q-card v-if="quote" dark class="aito-ai-theme marketing__dialog">
         <h2>Confirmar geração</h2>
         <p>{{ format.label }} · {{ format.width }} × {{ format.height }}</p>
-        <p>Limite de débito <strong>{{ usd(quote.maxBilledUsdCents) }}</strong> do saldo AitoTokens.</p>
+        <p v-if="quoteCost">Limite de débito de <strong>{{ quoteCost }}</strong>.</p>
         <p>A descrição, as referências e as cores escolhidas são enviadas à OpenAI para gerar a imagem.</p>
         <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Voltar" /><q-btn unelevated no-caps class="marketing__primary" label="Gerar imagem" @click="generate" /></div>
       </q-card>

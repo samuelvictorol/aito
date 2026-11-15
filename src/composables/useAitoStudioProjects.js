@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { AITOIA_RETENTION_MS, AITOIA_STUDIO_LIMIT, canRenewStudio, createAitoIALocalStore, renewStudioMedia } from 'src/services/aitoiaLocal'
 import { createStudioCloud } from 'src/services/aitoiaStudioCloud'
 
-export function useAitoStudioProjects({ studio, accountId, busy, defaultName, snapshot, restore, watch: fields }) {
+export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defaultName, snapshot, restore, watch: fields }) {
   const activeId = ref('')
   const loading = ref(false)
   const storageError = ref('')
@@ -266,10 +266,10 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
       replaceExpiredProject()
     } })
     store = target
-    const remote = createStudioCloud(studio)
+    const remote = localOnly?.value ? null : createStudioCloud(studio)
     cloud = remote
     try {
-      const [local, uploaded] = await Promise.all([target.list(), remote.list().catch(() => null)])
+      const [local, uploaded] = await Promise.all([target.list(), remote?.list().catch(() => null) ?? null])
       if (store !== target) return
       const deleted = new Set(uploaded?.deletedIds)
       await Promise.all(local.filter(item => deleted.has(item.id)).map(item => target.remove(item.id))).catch(() => {})

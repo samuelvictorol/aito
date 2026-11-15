@@ -4,7 +4,7 @@
       <div>
         <span class="portal-module__eyebrow">{{ admin ? 'Chamados' : 'Suporte' }}</span>
       </div>
-      <q-btn unelevated no-caps class="portal-module__primary" icon="mdi-plus" :label="admin ? 'Novo chamado' : 'Abrir chamado'" :disable="!admin && activeCount >= 2" @click="openCreate" />
+      <q-btn unelevated no-caps class="portal-module__primary" icon="mdi-plus" :label="admin ? 'Novo chamado' : 'Abrir chamado'" :disable="!admin && (loading || activeCount >= 2)" @click="openCreate" />
     </div>
 
     <div v-if="!admin" class="tickets-panel__notice">
@@ -75,6 +75,7 @@ const $q = useQuasar()
 const token = localStorage.getItem(props.admin ? 'aito_admin_token' : props.affiliate ? 'aito_affiliate_token' : 'aito_user_token')
 const headers = { headers: { Authorization: `Bearer ${token}` } }
 const tickets = ref([])
+const serverActiveCount = ref(null)
 const notifications = ref([])
 const targets = ref([])
 const projects = ref([])
@@ -116,7 +117,7 @@ const projectOptions = computed(() => projects.value.filter((item) => {
   const target = form.value.targetUserId
   return !target || [item.client, ...(item.clients || [])].some(client => (client?.id || client?._id || client) === target)
 }).map((item) => ({ label: item.title, value: item._id })))
-const activeCount = computed(() => tickets.value.filter((item) => ['open', 'in_progress'].includes(item.status)).length)
+const activeCount = computed(() => serverActiveCount.value ?? tickets.value.filter((item) => ['open', 'in_progress'].includes(item.status)).length)
 const columns = computed(() => props.admin
   ? [
       { name: 'title', label: 'Titulo', field: 'title', align: 'left', sortable: true },
@@ -154,6 +155,7 @@ async function load() {
   try {
     const response = await api.get(props.admin ? '/admin/tickets' : '/tickets', { ...headers, params: { ...(props.admin ? { q: search.value, status: filterStatus.value, type: filterType.value } : {}), projectId: projectId || undefined } })
     tickets.value = response.data.data || []
+    serverActiveCount.value = Number.isInteger(response.data.activeCount) ? response.data.activeCount : null
     if (props.admin) {
       const [users, customers, projectResponse, affiliates] = await Promise.all([api.get('/admin/users', headers), api.get('/admin/customers', headers), api.get('/admin/projects', headers),api.get('/admin/affiliates',headers)])
       targets.value = [...(users.data.data || []), ...(customers.data.data || []),...(affiliates.data.data||[]).map(a=>({...a,role:'affiliate'}))]
@@ -175,6 +177,7 @@ async function markRead(notification) {
   }
 }
 async function save() {
+  if (saving.value) return
   saving.value = true
   try {
     const endpoint = props.admin ? '/admin/tickets' : '/tickets'
@@ -182,7 +185,10 @@ async function save() {
       ? await api.put(`${endpoint}/${form.value._id}`, {title:form.value.title,description:form.value.description,type:form.value.type,...(props.admin?{status:form.value.status}:{})}, headers)
       : await api.post(endpoint, props.admin ? {title:form.value.title,description:form.value.description,type:form.value.type,status:form.value.status,...(selectedTarget.value?.role==='affiliate'?{targetAffiliateId:form.value.targetUserId}:{targetUserId:form.value.targetUserId,projectId:form.value.projectId})} : { title: form.value.title, type: form.value.type, description: form.value.description, projectId: form.value.projectId }, headers)
     if (form.value._id) tickets.value = tickets.value.map((item) => item._id === form.value._id ? response.data.data : item)
-    else tickets.value.unshift(response.data.data)
+    else {
+      tickets.value.unshift(response.data.data)
+      if (!props.admin && serverActiveCount.value !== null) serverActiveCount.value += 1
+    }
     if (props.admin && proofFile.value && response.data.data?._id) {
       const body = new FormData()
       body.append('attachment', proofFile.value)
@@ -191,7 +197,13 @@ async function save() {
     proofFile.value = null
     dialog.value = false
     $q.notify({ type: 'positive', message: 'Chamado salvo.' })
-  } catch (error) { notifyError(error) } finally { saving.value = false }
+  } catch (error) {
+    notifyError(error)
+    if (!props.admin && error.response?.data?.code === 'AITO_TICKET_LIMIT') {
+      await load()
+      if (activeCount.value >= 2) dialog.value = false
+    }
+  } finally { saving.value = false }
 }
 function remove(ticket) {
   $q.dialog({ title: 'Excluir chamado', message: `Remover ${ticket.title}?`, cancel: true, persistent: true }).onOk(async () => {

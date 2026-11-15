@@ -29,7 +29,6 @@ const props = defineProps({
     type: Number,
     default: 9
   },
-  caseFormation: { type: Number, default: 0 },
   hexagonField: { type: Boolean, default: false },
   danceActive: {
     type: Boolean,
@@ -957,7 +956,6 @@ function updateHexStarLayer(layer, elapsedTime, targetX, targetY) {
   const { anchors, angle, morph, opacity } = layer.userData.hexStars
   const position = layer.geometry.getAttribute('position')
   const motion = props.reducedMotion ? 0 : easeInOut(introTransitionMix)
-  const formation = props.caseFormation * motion
   morph.value = easeInOut(introTransitionMix)
   for (let index = 0; index < position.count; index += 1) {
     const offset = index * 3
@@ -970,7 +968,7 @@ function updateHexStarLayer(layer, elapsedTime, targetX, targetY) {
     position.setXYZ(index, x + dx * attraction, y + dy * attraction, anchors[offset + 2])
     angle[index] = Math.atan2(-dy, dx) * motion
   }
-  layer.material.opacity = opacity * morph.value * (1 - formation)
+  layer.material.opacity = opacity * morph.value
   position.needsUpdate = true
   layer.geometry.getAttribute('particleAngle').needsUpdate = true
 }
@@ -981,19 +979,15 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
 
   const positions = layer.geometry.getAttribute('position').array
   const { basePositions, lengths, phases } = stars
-  const formation = props.reducedMotion ? 0 : props.caseFormation
 
   for (let index = 0; index < lengths.length; index += 1) {
     const baseStride = index * 3
     const lineStride = index * 6
     const driftX = Math.sin(elapsedTime * 0.2 + phases[index]) * 0.012
     const driftY = Math.cos(elapsedTime * 0.17 + phases[index]) * 0.009
-    const row = Math.floor(index / 7) % 3
-    const hiveX = (index % 7 - 3 + (row % 2) * 0.5) * camera.aspect * 0.69
-    const hiveY = (1 - row) * 0.86 + 0.2
-    const baseX = lerp(basePositions[baseStride] + driftX, hiveX, formation)
-    const baseY = lerp(basePositions[baseStride + 1] + driftY, hiveY, formation)
-    const baseZ = lerp(basePositions[baseStride + 2], -0.5, formation)
+    const baseX = basePositions[baseStride] + driftX
+    const baseY = basePositions[baseStride + 1] + driftY
+    const baseZ = basePositions[baseStride + 2]
     let directionX = targetX - baseX
     let directionY = targetY - baseY
     const directionLength = Math.hypot(directionX, directionY)
@@ -1006,7 +1000,7 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
       directionY /= directionLength
     }
 
-    const halfLength = lengths[index] * 0.5 * easeInOut(introTransitionMix) * (1 - formation)
+    const halfLength = lengths[index] * 0.5 * easeInOut(introTransitionMix)
     positions[lineStride] = baseX - directionX * halfLength
     positions[lineStride + 1] = baseY - directionY * halfLength
     positions[lineStride + 2] = baseZ
@@ -1015,7 +1009,7 @@ function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
     positions[lineStride + 5] = baseZ
   }
 
-  layer.material.opacity = stars.opacity * introTransitionMix * (1 - formation)
+  layer.material.opacity = stars.opacity * introTransitionMix
   stars.dots.material.opacity = stars.opacity * (1 - introTransitionMix)
   layer.geometry.getAttribute('position').needsUpdate = true
 }

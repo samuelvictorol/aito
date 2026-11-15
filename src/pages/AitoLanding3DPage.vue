@@ -13,7 +13,6 @@
       :scroll-progress="scrollProgress"
       :reduced-motion="prefersReducedMotion"
       :section-count="landing3dSections.length"
-      :case-formation="caseFormation"
       :intro-phase="introPhase"
       @ready="handleSceneReady"
     />
@@ -302,12 +301,6 @@ const operationCases = [
   { name: 'Soluções Whitelabel', href: '/whatsapp-solucoes-whitelabel', imgUrl: '/whatsapp-solutions/product-kit.webp', product: true },
   ...institutionalBrands,
 ]
-const caseSection = landing3dSections.findIndex(section => section.id === 'marcas')
-const caseFormation = computed(() => {
-  const distance = Math.abs(sectionPosition.value - caseSection)
-  const amount = Math.min(1, Math.max(0, (0.83 - distance) / 0.55))
-  return amount * amount * (3 - 2 * amount)
-})
 
 const sceneReady = ref(cachedIntro)
 const introRevealing = ref(cachedIntro)
@@ -691,7 +684,7 @@ onBeforeUnmount(() => {
 .landing-3d__section--inicio .landing-3d__hero-monitor { order: 1; }
 .landing-3d__section--marcas .landing-3d__section-inner { grid-template-columns: minmax(0, 1fr); gap: 0; }
 .landing-3d__section--marcas .landing-3d__copy { margin: 0 auto 1.55rem; text-align: center; }
-.landing-3d__section--marcas .landing-3d__title { font-size: clamp(1.7rem,4vw,3.25rem); }
+.landing-3d__section--marcas .landing-3d__title { max-width: 20ch; margin-inline: auto; font-size: clamp(1.7rem,4vw,3.25rem); text-wrap: balance; }
 .landing-3d__section--marcas .landing-3d__visual { width: 100%; max-width: none; }
 .landing-3d__section--right .landing-3d__copy { order: 2; }
 .landing-3d__section--right .landing-3d__visual { order: 1; }

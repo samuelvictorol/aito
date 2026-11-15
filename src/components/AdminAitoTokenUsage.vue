@@ -38,6 +38,7 @@ const scopes = [
   { label: 'Produtos', value: 'product' },
   { label: 'Carteiras AitoIA Web', value: 'web' },
   { label: 'Aito Comunicação', value: 'embedded' },
+  { label: 'Uso administrativo', value: 'admin' },
 ]
 const products = [
   { label: 'Desktop', value: 'desktop' },
@@ -47,6 +48,7 @@ const products = [
 const sourceLabels = {
   desktop: 'Desktop (.exe)', whitelabel: 'Whitelabel', communication: 'Aito Comunicação', web: 'AitoIA Web',
   project: 'Integração de projeto', codex_openai: 'Codex · OpenAI', codex_higgsfield: 'Codex · Higgsfield',
+  admin_aitoia: 'AitoIA · Admin',
   unknown: 'Origem não identificada',
 }
 const providerLabels = { openai: 'OpenAI', higgsfield: 'Higgsfield' }
@@ -90,6 +92,7 @@ const grant = ref(null)
 const balanceAction = ref('grant')
 const reclaimAll = ref(false)
 const reclaiming = computed(() => balanceAction.value === 'reclaim')
+const supportsClientFilter = computed(() => !['embedded', 'admin'].includes(filters.scope))
 const grantTargets = ref([])
 const grantTarget = ref(null)
 const grantAmount = ref('')
@@ -128,12 +131,13 @@ const productName = value => products.find(product => product.value === value)?.
 const providerName = value => providerLabels[value] || '—'
 const sourceName = value => sourceLabels[value] || sourceLabels.unknown
 const pricingBasis = { token_usage: 'Uso medido em tokens', fixed_rate: 'Tarifa por unidade', quote: 'Cotação do provedor', reconciled: 'Conciliação confirmada', estimate: 'Estimativa' }
-const subject = row => row.title || (row.scope === 'embedded' ? 'Aito Comunicação' : row.scope === 'project' ? 'Projeto' : productName(row.productType))
+const adminUsage = row => row.source === 'admin_aitoia' || row.scope === 'admin'
+const subject = row => row.title || (adminUsage(row) ? 'Plataforma AitoSoftwares' : row.scope === 'embedded' ? 'Aito Comunicação' : row.scope === 'project' ? 'Projeto' : productName(row.productType))
 const requestReference = row => row.requestId || row.operation || row._id || '—'
 const combinedColumns = [
   { name: 'source', label: 'Origem', field: row => sourceName(row.source), align: 'left' },
   { name: 'subject', label: 'Conta ou projeto', field: subject, align: 'left' },
-  { name: 'client', label: 'Titular / cliente', field: row => row.clientName || '—', align: 'left' },
+  { name: 'client', label: 'Titular', field: row => (adminUsage(row) ? row.actorName || row.actorId : row.clientName) || '—', align: 'left' },
   { name: 'model', label: 'Provedor / modelo', field: row => [providerName(row.provider), row.model].filter(Boolean).join(' · '), align: 'left' },
 ]
 const costColumns = [
@@ -156,6 +160,8 @@ const metrics = computed(() => {
   return [
     { label: 'Consumo AitoTokens', usd: data.billedUsdCents, brl: data.billedBrlCents, icon: 'mdi-circle-multiple-outline' },
     { label: 'Custo dos provedores', usd: data.providerUsdCents, brl: data.providerBrlCents, icon: 'mdi-server-outline' },
+    ...(data.internalProviderUsdCents == null ? [] : [{ label: 'Custo administrativo', usd: data.internalProviderUsdCents,
+      brl: data.internalProviderBrlCents, icon: 'mdi-shield-account-outline', internal: true }]),
     { label: 'Margem bruta', usd: data.marginUsdCents, brl: data.marginBrlCents, icon: 'mdi-chart-line' },
     { label: 'Recargas confirmadas', usd: data.paidRechargeUsdCents, brl: data.paidRechargeBrlCents, icon: 'mdi-wallet-plus-outline' },
   ]
@@ -197,8 +203,8 @@ const grantOptions = computed(() => grantTargets.value.filter(target => reclaimi
   displayLabel: `${grantLabels[target.kind]} · ${target.label} · ${money(target.balanceUsdCents)}`,
 })))
 const providerShare = computed(() => {
-  const { providerUsdCents, billedUsdCents, marginUsdCents } = summary.value || {}
-  return billedUsdCents > 0 && marginUsdCents >= 0 ? 100 * providerUsdCents / billedUsdCents : null
+  const { providerUsdCents, internalProviderUsdCents = 0, billedUsdCents, marginUsdCents } = summary.value || {}
+  return billedUsdCents > 0 && marginUsdCents >= 0 ? 100 * (providerUsdCents - internalProviderUsdCents) / billedUsdCents : null
 })
 const simulatedCents = computed(() => {
   const cents = usdCents(simulatedCost.value)
@@ -249,7 +255,7 @@ function currentParams() {
     projectId: scope === 'project' ? projectId || undefined : undefined,
     productType: scope === 'product' ? productType || undefined : undefined,
     licenseId: scope === 'product' ? licenseId?.trim() || undefined : undefined,
-    clientId: scope === 'embedded' ? undefined : clientId || undefined,
+    clientId: supportsClientFilter.value ? clientId || undefined : undefined,
     model: model?.trim() || undefined,
     feature: feature?.trim() || undefined,
     source: source || undefined,
@@ -390,7 +396,7 @@ async function saveProviderBalance(row) {
 
 async function openClientGrant(mode = 'grant') {
   const client = clients.value.find(item => item.value === filters.clientId)
-  if (!client || filters.scope === 'embedded' || grantLoading.value) return
+  if (!client || !supportsClientFilter.value || grantLoading.value) return
   const preferredId = filters.scope === 'project' ? filters.projectId : filters.scope === 'product' ? filters.licenseId : client.value
   grant.value = client
   balanceAction.value = mode
@@ -563,20 +569,20 @@ onBeforeUnmount(() => {
       <q-select v-if="filters.scope === 'project'" v-model="filters.projectId" dark outlined dense emit-value map-options clearable :options="projects" label="Projeto" />
       <q-select v-if="filters.scope === 'product'" v-model="filters.productType" dark outlined dense emit-value map-options clearable :options="products" label="Produto" />
       <q-input v-if="filters.scope === 'product'" v-model.trim="filters.licenseId" dark outlined dense clearable label="ID da licença" />
-      <q-select v-if="filters.scope !== 'embedded'" v-model="filters.clientId" dark outlined dense emit-value map-options clearable :options="clients" label="Cliente" />
+      <q-select v-if="supportsClientFilter" v-model="filters.clientId" dark outlined dense emit-value map-options clearable :options="clients" label="Cliente" />
       <q-input v-model.trim="filters.model" dark outlined dense clearable label="Modelo exato" />
       <q-input v-model.trim="filters.feature" dark outlined dense clearable label="Recurso" />
       <q-input v-model.trim="filters.requestId" dark outlined dense clearable maxlength="160" label="ID da requisição ou do provedor" />
       <q-btn unelevated no-caps type="submit" color="teal-7" icon="mdi-filter-variant" label="Aplicar filtros" :loading="loading" />
       <q-btn outline no-caps type="button" color="teal-3" icon="mdi-wallet-plus-outline" label="Adicionar saldo"
-        :disable="!filters.clientId || filters.scope === 'embedded'" @click="openClientGrant()" />
+        :disable="!filters.clientId || !supportsClientFilter" @click="openClientGrant()" />
       <q-btn outline no-caps type="button" color="amber-4" icon="mdi-wallet-minus-outline" label="Devolver saldo"
-        :disable="!filters.clientId || filters.scope === 'embedded'" @click="openClientGrant('reclaim')" />
+        :disable="!filters.clientId || !supportsClientFilter" @click="openClientGrant('reclaim')" />
     </q-form>
     <q-banner v-if="error" rounded class="bg-red-10 text-white" role="alert">{{ error }}</q-banner>
     <template v-if="summary">
       <div class="token-usage__metrics">
-        <article v-for="metric in metrics" :key="metric.label" class="token-usage__metric">
+        <article v-for="metric in metrics" :key="metric.label" class="token-usage__metric" :class="{ 'token-usage__metric--internal': metric.internal }">
           <q-icon :name="metric.icon" size="22px" aria-hidden="true" />
           <span>{{ metric.label }}</span>
           <strong>{{ money(metric.usd) }}</strong>
@@ -599,6 +605,7 @@ onBeforeUnmount(() => {
               <dd>{{ money(row[column.field]) }}</dd>
               <dd>{{ money(row[column.brlField], reais) }}</dd>
             </div>
+            <div v-if="row.internalProviderUsdCents > 0"><dt>Custo administrativo</dt><dd>{{ money(row.internalProviderUsdCents) }}</dd><dd>{{ money(row.internalProviderBrlCents, reais) }}</dd></div>
           </dl>
           <small v-if="row.provider === 'openai'">{{ numbers.format(row.inputTokens || 0) }} tokens de entrada · {{ numbers.format(row.outputTokens || 0) }} de saída · {{ numbers.format(row.cachedTokens || 0) }} de entrada em cache</small>
           <small v-if="row.provider === 'higgsfield'">{{ numbers.format(row.videoRequests || 0) }} gerações de vídeo · {{ numbers.format(row.videoSeconds || 0) }} segundos de vídeo</small>
@@ -657,6 +664,9 @@ onBeforeUnmount(() => {
         :rows-per-page-options="[pagination.rowsPerPage]" :loading="loading" class="token-usage__table" title="Logs por requisição"
         no-data-label="Nenhuma chamada encontrada." @request="load($event.pagination.page)"
       >
+        <template #body-cell-source="props">
+          <q-td :props="props"><q-badge v-if="adminUsage(props.row)" color="amber-4" text-color="dark" class="token-usage__admin-badge"><q-icon name="mdi-shield-account-outline" size="15px" /> Uso administrativo</q-badge><span v-else>{{ props.value }}</span></q-td>
+        </template>
         <template #body-cell-state="props">
           <q-td :props="props"><q-badge outline :color="stateColors[props.row.state] || 'grey-4'" :label="props.value" /></q-td>
         </template>
@@ -719,6 +729,7 @@ onBeforeUnmount(() => {
         <q-card-section class="token-usage__header">
           <div>
             <h4>Detalhes da requisição</h4>
+            <q-badge v-if="adminUsage(selectedLog)" color="amber-4" text-color="dark" class="token-usage__admin-badge q-mr-xs"><q-icon name="mdi-shield-account-outline" size="15px" /> Uso administrativo</q-badge>
             <q-badge outline :color="stateColors[selectedLog.state] || 'grey-4'" :label="logStates[selectedLog.state] || selectedLog.state" />
           </div>
           <q-btn flat round dense icon="mdi-close" aria-label="Fechar detalhes" v-close-popup />
@@ -789,6 +800,9 @@ onBeforeUnmount(() => {
 .token-usage__providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: .7rem; }
 .token-usage__metric, .token-usage__box, .token-usage__table { border: 1px solid #345857; background: #0c2022; }
 .token-usage__table { max-width: 100%; }
+.token-usage__admin-badge { gap: .3rem; padding: .3rem .45rem; font-weight: 730; }
+.token-usage__metric--internal { border-color: #735b31; }
+.token-usage__metric--internal > .q-icon { color: #ffcf78; }
 .token-usage__metric, .token-usage__box { border-radius: .8rem; padding: 1rem; }
 .token-usage__metric { display: grid; gap: .32rem; align-content: start; }
 .token-usage__metric strong { overflow-wrap: anywhere; }

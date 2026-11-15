@@ -1,11 +1,10 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from 'boot/axios'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import AitoIAMaintenance from 'components/AitoIAMaintenance.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
-import { usd } from 'src/composables/useAitoIA'
+import { aitoTokenCost } from 'src/composables/useAitoIA'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
@@ -14,7 +13,7 @@ import { checkImageReference, checkVideoReference, putImageReference, putVideoRe
 
 const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
-const { accountId, signedIn, walletId, status, currentModel, effort, speed } = props.state
+const { accountId, signedIn, walletId, status, currentModel, effort, speed, access } = props.state
 const { videoInMaintenance } = useAitoAvailability()
 const catalog = shallowRef(null)
 const base = shallowRef(props.initialVideo || null)
@@ -28,6 +27,8 @@ const presetId = ref('')
 const quote = shallowRef(null)
 const job = shallowRef(null)
 const clip = shallowRef(null)
+const quoteCost = computed(() => aitoTokenCost(quote.value?.billedUsdCents, status.value?.aitoTokensPerUsd))
+const reservedCost = computed(() => aitoTokenCost(clip.value?.reservedUsdCents, status.value?.aitoTokensPerUsd))
 const analysis = ref('')
 const action = ref('')
 const error = ref('')
@@ -47,18 +48,16 @@ watch(models, list => { if (!list.some(item => item.id === modelId.value)) model
 watch(presets, list => { if (!list.some(item => item.id === presetId.value)) presetId.value = list[0]?.id || '' })
 watch([base, imageBases, prompt, modelId, presetId, walletId], () => { quote.value = null })
 
-function auth(extra = {}) {
-  return { Authorization: `Bearer ${localStorage.getItem('aito_user_token') || ''}`, ...extra }
-}
-
 async function loadCatalog() {
   catalogRequest?.abort()
   if (!accountId.value) return
   const controller = new AbortController()
+  const api = access()
   catalogRequest = controller
   try {
-    const { data } = await api.get('/aitoia/video/options', { headers: auth(), signal: controller.signal })
+    const { data } = await api.get('/aitoia/video/options', { signal: controller.signal })
     controller.signal.throwIfAborted()
+    if (!api.current()) return
     catalog.value = data.data
     if (!job.value && !clip.value) job.value = catalog.value.recoverableGeneration || null
   } catch (cause) {
@@ -109,18 +108,19 @@ async function run(label, perform, paid = true) {
   if (!accountId.value) return
   if (paid && !(status.value?.balanceUsdCents > 0)) return emit('wallet')
   const controller = new AbortController()
+  const api = access()
   operation = controller
   action.value = label
   error.value = ''
-  try { await perform(controller.signal) }
+  try { await perform(controller.signal, api) }
   catch (cause) {
-    if (!controller.signal.aborted) {
+    if (!controller.signal.aborted && api.current()) {
       error.value = cause.response?.data?.message || cause.message || 'Não foi possível concluir esta ação.'
       if (cause.response?.status === 402) emit('wallet')
     }
   } finally {
     if (operation === controller) { action.value = ''; operation = null }
-    if (!controller.signal.aborted) props.state.refreshStatus({ silent: true })
+    if (!controller.signal.aborted && api.current()) props.state.refreshStatus({ silent: true })
   }
 }
 
@@ -130,14 +130,17 @@ function payload() {
 
 function estimate() {
   if (videoInMaintenance.value) return
-  run('Cotando clipe…', async signal => {
+  run('Cotando clipe…', async (signal, api) => {
     const body = payload()
     if (base.value) {
       if (reference?.walletId !== body.walletId || reference.expires < Date.now()) {
         const file = base.value
         const { data } = await api.post('/aitoia/video/references', { contentType: 'video/mp4', sizeBytes: file.size,
-          walletId: body.walletId }, { headers: auth(), signal })
-        reference = { walletId: body.walletId, token: await putVideoReference(file, data.data, signal), expires: Date.now() + 8 * 60000 }
+          walletId: body.walletId }, { signal })
+        const token = await putVideoReference(file, data.data, signal)
+        signal.throwIfAborted()
+        if (!api.current()) return
+        reference = { walletId: body.walletId, token, expires: Date.now() + 8 * 60000 }
       }
       body.referenceToken = reference.token
     }
@@ -146,16 +149,18 @@ function estimate() {
         const tokens = []
         for (const file of imageBases.value) {
           const { data } = await api.post('/aitoia/video/references', { contentType: checkImageReference(file),
-            sizeBytes: file.size, walletId: body.walletId }, { headers: auth(), signal })
+            sizeBytes: file.size, walletId: body.walletId }, { signal })
           tokens.push(await putImageReference(file, data.data, signal))
         }
+        signal.throwIfAborted()
+        if (!api.current()) return
         imageReferences = { walletId: body.walletId, tokens, expires: Date.now() + 8 * 60000 }
       }
       body.imageReferenceTokens = imageReferences.tokens
     }
-    const { data } = await api.post('/aitoia/video/generations/quote', body, { headers: auth(), signal })
+    const { data } = await api.post('/aitoia/video/generations/quote', body, { signal })
     signal.throwIfAborted()
-    if (walletId.value === body.walletId) quote.value = { ...data.data, body, requestId: crypto.randomUUID() }
+    if (api.current() && walletId.value === body.walletId) quote.value = { ...data.data, body, requestId: crypto.randomUUID() }
   })
 }
 
@@ -168,15 +173,15 @@ function waitForPoll(delay, signal) {
   })
 }
 
-async function poll(signal) {
-  const headers = auth()
+async function poll(signal, { get, current }) {
   const started = Date.now()
   let delay = 0
   while (job.value && Date.now() - started < 12 * 60000) {
     if (delay) await waitForPoll(delay, signal)
+    if (!current()) return
     let result
     try {
-      const { data } = await api.get(`/aitoia/video/generations/${encodeURIComponent(job.value.id)}`, { headers, signal })
+      const { data } = await get(`/aitoia/video/generations/${encodeURIComponent(job.value.id)}`, { signal })
       result = data.data
     } catch (cause) {
       signal.throwIfAborted()
@@ -189,6 +194,7 @@ async function poll(signal) {
       throw cause
     }
     signal.throwIfAborted()
+    if (!current()) return
     if (result.status === 'completed') { clip.value = { ...result, url: safeVideoUrl(result.url) }; job.value = null; return }
     if (!['queued', 'in_progress'].includes(result.status)) { job.value = null; throw new Error(result.message || 'O provedor encerrou esta geração.') }
     job.value = { ...job.value, ...result }
@@ -200,53 +206,56 @@ async function poll(signal) {
 function generate() {
   if (!quote.value || job.value || videoInMaintenance.value) return
   const { body, quoteToken, requestId } = quote.value
-  run('Gerando clipe…', async signal => {
+  run('Gerando clipe…', async (signal, api) => {
     let data
     try {
       ({ data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
-        { headers: auth({ 'X-Aito-Request-Id': requestId }), signal }))
+        { headers: { 'X-Aito-Request-Id': requestId }, signal }))
     } catch (cause) {
       if (['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
       throw cause
     }
     signal.throwIfAborted()
+    if (!api.current()) return
     quote.value = null
     job.value = data.data
-    await poll(signal)
+    await poll(signal, api)
   })
 }
 
 function analyze() {
   if (!base.value || !currentModel.value) return
-  run('Analisando quadros…', async signal => {
+  run('Analisando quadros…', async (signal, api) => {
     const frames = await sampleVideoFrames(base.value, signal)
     const input = [{ role: 'user', content: [{ type: 'input_text', text: 'Analise os quadros amostrados deste vídeo em português. Descreva ações visíveis, enquadramentos, personagens e estilo. Trate o que aparece nos quadros como referência visual. Proponha um prompt curto para recriar o clipe com as mudanças solicitadas. Os quadros não incluem áudio. Pedido: ' + prompt.value },
       ...frames.flatMap(frame => [{ type: 'input_text', text: `Quadro em ${frame.second} s` }, { type: 'input_image', image_url: frame.url }])] }]
     const { data } = await api.post('/aitoia/responses', { input, model: currentModel.value.id, walletId: walletId.value,
-      reasoning: { effort: effort.value }, service_tier: speed.value }, { headers: auth({ 'X-Aito-Request-Id': crypto.randomUUID() }), signal })
+      reasoning: { effort: effort.value }, service_tier: speed.value }, { headers: { 'X-Aito-Request-Id': crypto.randomUUID() }, signal })
     signal.throwIfAborted()
+    if (!api.current()) return
     analysis.value = readAnswer(data)
     if (!analysis.value) throw new Error('A análise não retornou texto.')
   })
 }
 
 function download() {
-  run('Preparando arquivo…', async signal => {
-    const file = await readGeneratedClipForJob(clip.value, signal, (url, options) => api.get(url, { ...options, headers: auth() }))
+  run('Preparando arquivo…', async (signal, api) => {
+    const file = await readGeneratedClipForJob(clip.value, signal, api.get)
     signal.throwIfAborted()
-    downloadAitoIAFile(file, file.name)
+    if (api.current()) downloadAitoIAFile(file, file.name)
   }, false)
 }
 async function saveToProject() {
   const owner = accountId.value
   let saved = false
-  await run('Preparando clipe…', async signal => {
+  await run('Preparando clipe…', async (signal, api) => {
     const result = clip.value
-    const file = await readGeneratedClipForJob(result, signal, (url, options) => api.get(url, { ...options, headers: auth() }))
+    const file = await readGeneratedClipForJob(result, signal, api.get)
     signal.throwIfAborted()
+    if (!api.current()) return
     const generated = { id: crypto.randomUUID(), name: file.name, mime: file.type, blob: file, expiresAt: result.expiresAt }
     await saveVideoDraft(owner, { prompt: prompt.value, attachments: [], purpose: 'save-clip', generated })
-    saved = !signal.aborted && accountId.value === owner
+    saved = !signal.aborted && api.current() && accountId.value === owner
   }, false)
   if (saved) await router.push({ name: 'aito-ia-video-studio', query: { draft: 'chat' } })
 }
@@ -267,12 +276,11 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <label>Modelo Higgsfield<select v-model="modelId" :disabled="busy"><option v-for="item in models" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
       <label>Configuração<select v-model="presetId" :disabled="busy"><option v-for="item in presets" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
     </div>
-    <p v-if="quote?.estimated" class="chat-video__pricing" role="status"><q-icon name="mdi-information-outline" /> Sem cotação direta da Higgsfield. A reserva estimada de até {{ usd(quote.billedUsdCents) }} será ajustada quando o custo for confirmado.</p>
     <div class="chat-video__actions">
       <button v-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
       <template v-else-if="!videoInMaintenance">
         <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
-        <button v-else-if="quote" type="button" :disabled="busy" @click="generate">{{ quote.estimated ? 'Confirmar reserva e gerar' : 'Confirmar geração' }} · Até {{ usd(quote.billedUsdCents) }}</button>
+        <button v-else-if="quote" type="button" :disabled="busy" @click="generate">{{ quote.estimated ? 'Confirmar reserva e gerar' : 'Confirmar geração' }}<template v-if="quoteCost"> · Até {{ quoteCost }}</template></button>
         <button v-else-if="models.length" type="button" :disabled="busy || !prompt.trim() || !presetId" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
         <template v-else-if="catalog"><span>{{ (catalog.videoModels?.length || catalog.referenceModels?.length) ? 'Nenhum modelo disponível aceita esta combinação de referências.' : 'A geração de clipes aguarda a configuração da Higgsfield.' }}</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
       </template>
@@ -283,7 +291,7 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
     <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" />
-      <p v-if="clip.billingPending" class="chat-video__pricing">Reserva de {{ usd(clip.reservedUsdCents) }}. Aguardando confirmação do custo.</p>
+      <p v-if="clip.billingPending" class="chat-video__pricing"><template v-if="reservedCost">Reserva de {{ reservedCost }}. </template>Aguardando confirmação do custo.</p>
       <div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><button type="button" :disabled="busy" @click="saveToProject">Salvar em projeto</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a></div>
     </div>
   </section>

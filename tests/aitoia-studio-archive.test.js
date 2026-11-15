@@ -39,6 +39,29 @@ test('version four preserves the project script and remaps reusable component an
   assert.equal(project.components[0].voiceId, project.components[1].id)
 })
 
+test('video archive restores original cuts and remake results linked to saved video components', async () => {
+  const source = 'midias/cena-original.mp4'
+  const result = 'midias/cena-refeita.mp4'
+  const mp4 = new Blob([Buffer.from([0, 0, 0, 12, 102, 116, 121, 112, 109, 112, 52, 50])], { type: 'video/mp4' })
+  const blob = await zip({ format: 'aitoia-video', version: 5, aspectRatio: '16:9',
+    scenes: [{ heading: 'Transição', duration: 3, clipId: 'clip', kind: 'transition', media: result }],
+    clips: [{ id: 'clip', title: 'transition-1-2', kind: 'transition', media: result }],
+    components: [{ id: 'component', title: 'transition-1-2', type: 'Cenas', sourceClipId: 'clip', kind: 'transition', media: result }],
+    remake: { master: 'Preserve o ritmo', scenes: [{ index: 1, start: 5, duration: 4, edit: 'Aproxime a câmera',
+      media: source, referenceIds: null, result: { id: 'clip', title: 'Cena 2 refeita', media: result } }] },
+  }, [{ name: source, blob: mp4 }, { name: result, blob: mp4 }])
+  const project = await readStudioProject(blob, 'video', { expiresAt: Date.now() + 10000 })
+  assert.equal(project.clips[0].title, 'transition-1-2')
+  assert.equal(project.components[0].file.type, 'video/mp4')
+  assert.equal(project.components[0].sourceClipId, project.clips[0].id)
+  assert.equal(project.remake.master, 'Preserve o ritmo')
+  assert.equal(project.remake.scenes[0].start, 5)
+  assert.equal(project.remake.scenes[0].edit, 'Aproxime a câmera')
+  assert.equal(project.remake.scenes[0].file.name, 'cena-original.mp4')
+  assert.equal(project.remake.scenes[0].result.id, project.clips[0].id)
+  assert.equal(project.remake.scenes[0].result.file.name, 'cena-refeita.mp4')
+})
+
 test('marketing ZIP restores palette, images, references and selected reusable components', async () => {
   const original = { title: 'Campanha', formatId: 'feed', prompt: 'Criar campanha', palette: ['#AABBCC'],
     selectedKit: ['logo'], references: [{ label: 'Referência', blob: png }],

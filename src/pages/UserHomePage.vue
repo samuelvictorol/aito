@@ -22,7 +22,7 @@
       </main>
       <main v-else-if="activeMenu === 'finance'" class="user-app__main user-app__wide"><UserFinancePanel /></main>
       <main v-else-if="activeMenu === 'aito-tokens'" class="user-app__main user-app__wide"><UserAitoTokensPanel /></main>
-      <main v-else class="user-app__main user-app__wide"><SupportTicketsPanel /></main>
+      <main v-else class="user-app__main user-app__wide"><SupportTicketsPanel id="customer-support" tabindex="-1" aria-label="Chamados de suporte" /></main>
       <router-link to="/" class="user-app__assistant" aria-label="Abrir AitoIA com modelos OpenAI">
         <picture>
           <source media="(prefers-reduced-motion: reduce)" srcset="/icons/aitoia-192.png" />
@@ -63,7 +63,7 @@ const menu = [
   { id: 'aito-tokens', label: 'AitoTokens', icon: 'mdi-circle-multiple-outline' },
   { id: 'webhooks', label: 'Webhooks', icon: 'mdi-webhook' },
   { id: 'wpp-colab', label: 'WhatsApp da equipe', icon: 'mdi-whatsapp' },
-  { id: 'tickets', label: 'Chamados', icon: 'mdi-lifebuoy' },
+  { id: 'tickets', label: 'Suporte', icon: 'mdi-lifebuoy' },
   { id: 'profile', label: 'Meus dados', icon: 'mdi-account-outline' },
 ]
 const activeMenu = computed(() => menu.find(item => item.id === route.query.tab)?.id || 'products')

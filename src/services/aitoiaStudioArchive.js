@@ -41,7 +41,7 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     manifest = JSON.parse(await json.text())
   } catch { throw invalid() }
   signal?.throwIfAborted()
-  if (manifest?.format !== `aitoia-${studio}` || !(studio === 'video' ? [1, 2, 3, 4] : [1]).includes(manifest.version)) throw invalid()
+  if (manifest?.format !== `aitoia-${studio}` || !(studio === 'video' ? [1, 2, 3, 4, 5] : [1]).includes(manifest.version)) throw invalid()
   async function file(name, allowed, optionalRoot = false) {
     if (name === undefined || name === null) return undefined
     if (typeof name !== 'string' || (!optionalRoot && !/^midias\/[^/]+$/.test(name))) throw invalid()
@@ -73,7 +73,7 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
   const format = videoFormats.find(item => item.label === manifest.aspectRatio)
   if (!format || !Array.isArray(manifest.scenes) || !manifest.scenes.length) throw invalid()
   const clips = (await Promise.all(rows(manifest.clips, 200).map(async (item, index) => ({
-    originalId: item.id, id: uuid(), number: index + 1, kind: text(item.kind, 40), expiresAt, file: await file(item.media, videoTypes),
+    originalId: item.id, id: uuid(), number: index + 1, kind: text(item.kind, 40), title: text(item.title, 80), expiresAt, file: await file(item.media, videoTypes),
   })))).filter(item => item.file)
   const clipIds = new Map(clips.map(item => [item.originalId, item.id]))
   const scriptRows = rows(manifest.plan?.scenes, maxStudioScenes)
@@ -92,16 +92,36 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
   const components = await Promise.all(componentRows.map(async item => {
     const type = text(item.type, 32)
     const voiceComponent = manifest.version >= 4 && type === voiceComponentType
-    const asset = await file(item.media, voiceComponent ? audioTypes : imageTypes)
+    const asset = await file(item.media, voiceComponent ? audioTypes : manifest.version >= 5 && type === 'Cenas' ? [...imageTypes, ...videoTypes] : imageTypes)
     return { id: componentIds.get(item.id) || uuid(), type, title: text(item.title, 80), prompt: text(item.prompt, 2000),
-      file: voiceComponent && asset ? await normalizeVoiceReference(asset) : asset, voiceId: componentIds.get(item.voiceId) }
+      file: voiceComponent && asset ? await normalizeVoiceReference(asset) : asset, voiceId: componentIds.get(item.voiceId),
+      sourceClipId: clipIds.get(item.sourceClipId), kind: text(item.kind, 40) }
   }))
   const sceneScripts = scriptRows.map(item => cleanSceneScript({ ...item, id: scriptIds.get(item.id),
     componentIds: rows(item.componentIds, 12).map(id => componentIds.get(id)).filter(Boolean) }))
   const frames = async (items, max) => Promise.all(rows(items, max).map(name => file(name, imageTypes)))
   const recordingName = ['aitoia-video.mp4', 'aitoia-video.webm'].find(name => files.has(name))
+  let remake
+  if (manifest.version >= 5 && manifest.remake) {
+    const source = manifest.remake
+    const references = values => rows(values, 6).map(id => componentIds.get(id)).filter(Boolean)
+    const cutRows = rows(source.scenes, 200)
+    const indexes = new Set(cutRows.map(item => item?.index))
+    if (indexes.size !== cutRows.length || cutRows.some(item => !item || !Number.isSafeInteger(item.index) || item.index < 0 ||
+      !Number.isFinite(item.start) || item.start < 0 || !Number.isFinite(item.duration) || item.duration <= 0 || item.duration > 5)) throw invalid()
+    remake = { master: text(source.master, 1500), referenceIds: references(source.referenceIds), resolution: source.resolution === '720p' ? '720p' : '480p',
+      scenes: await Promise.all(cutRows.map(async item => {
+        const resultFile = await file(item.result?.media, videoTypes)
+        const result = resultFile && { id: clipIds.get(item.result.id) || uuid(), file: resultFile,
+          title: text(item.result.title, 80) || `Cena ${item.index + 1} refeita`, duration: item.duration,
+          captions: item.result.captions === true, kind: 'scene' }
+        return { index: item.index, start: item.start, duration: item.duration, file: await file(item.media, videoTypes),
+          edit: text(item.edit, 600), caption: text(item.caption, 180), captions: item.captions === true, plan: text(item.plan, 4000),
+          transcript: text(item.transcript, 2000), referenceIds: item.referenceIds === null ? null : references(item.referenceIds), result }
+      })) }
+  }
   return { title, formatId: format.id, projectColor: text(manifest.projectColor, 7), scenes, sceneId: scenes[0].id,
-    clips: clips.map(({ originalId: _id, ...clip }) => clip), selectedClipId: clips[0]?.id, components, componentTypes,
+    clips: clips.map(({ originalId: _id, ...clip }) => clip), selectedClipId: clips[0]?.id, components, componentTypes, remake,
     masterScript: text(manifest.plan?.master, 6000), sceneScripts,
     prompt: text(manifest.configuration?.prompt, 2000), scriptPrompt: text(manifest.configuration?.scriptPrompt, 2000),
     generationMode: text(manifest.configuration?.mode, 30), videoModel: text(manifest.configuration?.model, 80),
