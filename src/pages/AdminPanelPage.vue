@@ -11,6 +11,10 @@
               <q-item-section avatar><q-icon name="mdi-monitor-play" /></q-item-section>
               <q-item-section>Vídeos das landing pages</q-item-section>
             </q-item>
+            <q-item v-close-popup clickable @click="openDetail('codex-install-prompt')">
+              <q-item-section avatar><q-icon name="mdi-text-box-edit-outline" /></q-item-section>
+              <q-item-section>Prompt de instalação do Codex</q-item-section>
+            </q-item>
             <q-separator dark />
             <q-item v-for="link in siteLinks" :key="link.route" v-close-popup clickable :to="{ name: link.route }">
               <q-item-section avatar><q-icon :name="link.icon" /></q-item-section>
@@ -49,6 +53,7 @@
             <q-tab-panel name="desktop-expirations"><DesktopExpirations/></q-tab-panel>
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
             <q-tab-panel name="landing-videos"><AdminLandingVideos /></q-tab-panel>
+            <q-tab-panel name="codex-install-prompt"><AdminCodexInstallPrompt /></q-tab-panel>
             <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @reauthenticated="refreshAdminSession" @open-projects="openDetail('projects')" /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="access-security">
@@ -145,6 +150,7 @@ import SiteAssistantHistoryManager from 'components/SiteAssistantHistoryManager.
 const AdminEmailTemplates = defineAsyncComponent(() => import('components/AdminEmailTemplates.vue'))
 const AdminAitoTokensPanel = defineAsyncComponent(() => import('components/AdminAitoTokensPanel.vue'))
 const AdminLandingVideos = defineAsyncComponent(() => import('components/AdminLandingVideos.vue'))
+const AdminCodexInstallPrompt = defineAsyncComponent(() => import('components/AdminCodexInstallPrompt.vue'))
 const siteLinks = [
   { route: 'landing-3d', label: 'Site AitoSoftwares', icon: 'mdi-home-outline' },
   { route: 'bio-links', label: 'Links da bio', icon: 'mdi-link-variant' },
@@ -164,7 +170,7 @@ const initialTab = value => ['access-security', 'aito-tokens', 'projects'].inclu
 
 export default {
   name: 'AdminPanelPage',
-  components: { AdminLandingVideos, AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  components: { AdminLandingVideos, AdminCodexInstallPrompt, AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   watch: {
     '$route.query.tab' (tab) { this.openDetail(initialTab(tab)) },
   },
@@ -182,7 +188,7 @@ export default {
   computed: {
     sortedDetailOptions () { return [...this.detailOptions,{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
     sectionTitle () {
-      const main = { 'aito-tokens': 'AitoTokens', overview: 'Dashboard', projects: 'Projetos', detail: 'Detalhar', 'landing-videos': 'Site · Vídeos' }
+      const main = { 'aito-tokens': 'AitoTokens', overview: 'Dashboard', projects: 'Projetos', detail: 'Detalhar', 'landing-videos': 'Site · Vídeos', 'codex-install-prompt': 'Site · Prompt do Codex' }
       return main[this.tab] || this.sortedDetailOptions.find(item => item.name === this.tab)?.label || 'Administração'
     },
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },

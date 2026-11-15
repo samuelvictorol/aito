@@ -15,7 +15,12 @@ import AitoCodexInstallDialog from './AitoCodexInstallDialog.vue'
 
 const UserCodexKey = defineAsyncComponent(() => import('./UserCodexKey.vue'))
 const codexGuide = ref(false)
+const codexAutoDownload = ref(true)
 const codexKey = ref(false)
+function openCodexGuide(autoDownload) {
+  codexAutoDownload.value = autoDownload
+  codexGuide.value = true
+}
 const $q=useQuasar(),data=ref(null),catalog=ref({}),cart=ref(null),busy=ref(false),downloading=ref(''),visible=ref({}),now=ref(Date.now())
 const reauthOpen=ref(false),reauthChallenge=ref(null),pendingRotation=ref(null),termsOpen=ref(false),selectedTerms=ref(null)
 const rotating = ref('')
@@ -181,7 +186,8 @@ onBeforeUnmount(() => {
       <p class="products__group-help">Use a AitoKey vinculada à sua carteira para consumir AitoTokens no Codex. A chave pode ser gerada ou regenerada aqui.</p>
       <div class="product-card__actions">
         <q-btn unelevated no-caps color="teal-7" icon="mdi-key-outline" label="Gerenciar AitoKey" @click="codexKey = true" />
-        <q-btn flat no-caps icon="mdi-download" label="Baixar plugin e guia" @click="codexGuide = true" />
+        <q-btn flat no-caps icon="mdi-download" label="Baixar plugin e guia" @click="openCodexGuide(true)" />
+        <q-btn flat no-caps icon="mdi-content-copy" label="Copiar Prompt de Configuração" @click="openCodexGuide(false)" />
         <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Baixar Codex oficial ↗</a>
         <router-link :to="codexProductPath">Conhecer o plugin ↗</router-link>
       </div>
@@ -234,7 +240,7 @@ onBeforeUnmount(() => {
   </div>
   <q-banner v-else-if="data" rounded class="products__empty">Seus produtos aparecem aqui após resgatar um teste ou confirmar uma compra.</q-banner>
   </section>
-  <AitoCodexInstallDialog v-model="codexGuide" />
+  <AitoCodexInstallDialog v-model="codexGuide" :auto-download="codexAutoDownload" />
   <q-dialog v-model="replacementOpen" @hide="replacement = null; replacementVisible = false">
     <q-card v-if="replacement" dark class="products__key-dialog">
       <q-card-section>

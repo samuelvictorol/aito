@@ -1,25 +1,21 @@
 <script setup>
-import { ref, useId } from 'vue'
+import { onBeforeUnmount, ref, useId } from 'vue'
+import { api } from 'boot/axios'
 import { copyToClipboard } from 'quasar'
-import { codexPluginFilename, codexPluginZipUrl } from 'src/services/aitoCodexInstall'
+import { codexDefaultSetupPrompt, codexPluginFilename, codexPluginZipUrl, codexSetupPromptLimit } from 'src/services/aitoCodexInstall'
 import AitoCodexInstallVideo from './AitoCodexInstallVideo.vue'
 
+const props = defineProps({ autoDownload: { type: Boolean, default: true } })
 const open = defineModel({ type: Boolean, default: false })
 const titleId = useId()
 const promptField = ref(null)
 const feedback = ref('')
 const downloadRequested = ref(false)
-
-const setupPrompt = `Ajude-me a configurar o AitoIA no Codex para Windows com o ZIP oficial já extraído. Leia LEIA-ME.txt e CONFIGURAR-COM-CODEX.txt na pasta do pacote.
-
-1. Confira se o Codex gráfico e o Node.js 20 ou superior estão instalados. Se faltar algo, indique o download oficial. Se este chat não conseguir abrir janelas do Windows, mostre onde encontro o executável no Explorador.
-2. Oriente-me a salvar o trabalho e escolher Sair ou Exit no ícone do Codex perto do relógio. Depois, abra Iniciar AitoIA.exe na pasta extraída. Preserve minhas configurações e deixe comigo a decisão se aparecer uma confirmação de troca de provedor.
-3. Na primeira abertura, vou inserir a AitoKey apenas no campo protegido do Configurar AitoCodex Key. Se eu regenerar a chave no painel, quero usar o atalho com a chave verde ou pedir “@AitoIA Abra Configurar AitoCodex Key”.
-4. Confirme se os dois atalhos foram criados e se uma conversa nova mostra AitoTokens como provedor. Peça minha autorização antes de um teste pago.`
+const setupPrompt = ref(codexDefaultSetupPrompt)
+const promptLoading = ref(false)
+let promptRequest
 
 function startDownload() {
-  feedback.value = ''
-  downloadRequested.value = false
   const link = document.createElement('a')
   link.href = codexPluginZipUrl
   link.download = codexPluginFilename
@@ -33,9 +29,42 @@ function startDownload() {
   }
 }
 
-async function copyPrompt() {
+function cancelPromptLoad() {
+  promptRequest?.abort()
+  promptRequest = undefined
+}
+onBeforeUnmount(cancelPromptLoad)
+
+async function prepareGuide() {
+  feedback.value = ''
+  downloadRequested.value = false
+  if (props.autoDownload) startDownload()
+
+  cancelPromptLoad()
+  const request = new AbortController()
+  promptRequest = request
+  setupPrompt.value = codexDefaultSetupPrompt
+  promptLoading.value = true
   try {
-    await copyToClipboard(setupPrompt)
+    const { data } = await api.get('/public/codex-install-prompt', { signal: request.signal, timeout: 8000 })
+    const prompt = data?.data?.prompt
+    if (promptRequest === request && typeof prompt === 'string' && prompt.trim() && prompt.length <= codexSetupPromptLimit) {
+      setupPrompt.value = prompt
+    }
+  } catch {
+    // The local installation guide remains available if public settings cannot be loaded.
+  } finally {
+    if (promptRequest === request) {
+      promptLoading.value = false
+      promptRequest = undefined
+    }
+  }
+}
+
+async function copyPrompt() {
+  if (promptLoading.value) return
+  try {
+    await copyToClipboard(setupPrompt.value)
     feedback.value = 'Prompt copiado.'
   } catch {
     promptField.value?.focus()
@@ -46,7 +75,7 @@ async function copyPrompt() {
 </script>
 
 <template>
-  <q-dialog v-model="open" :aria-labelledby="titleId" @before-show="startDownload">
+  <q-dialog v-model="open" :aria-labelledby="titleId" @before-show="prepareGuide" @before-hide="cancelPromptLoad">
     <q-card dark class="codex-install">
       <header class="codex-install__header">
         <img src="/codex-app-icon.png" alt="" width="32" height="32" />
@@ -72,12 +101,13 @@ async function copyPrompt() {
         </div>
         <div class="codex-install__guide">
           <p>Extraia o ZIP e abra <strong>Iniciar AitoIA.exe</strong>. Se quiser ajuda do Codex com a configuração, copie o prompt abaixo.</p>
-          <textarea ref="promptField" :value="setupPrompt" readonly rows="7" aria-label="Prompt de instalação" />
+          <textarea ref="promptField" :value="promptLoading ? '' : setupPrompt" placeholder="Carregando prompt…"
+            :aria-busy="promptLoading" readonly rows="7" aria-label="Prompt de instalação" />
         </div>
       </div>
       <div class="codex-install__actions">
-        <q-btn unelevated no-caps icon="mdi-content-copy" label="Copiar prompt" class="codex-install__copy" @click="copyPrompt" />
-        <a :href="codexPluginZipUrl" :download="codexPluginFilename"><q-icon name="mdi-download" /> Baixar novamente</a>
+        <q-btn unelevated no-caps icon="mdi-content-copy" label="Copiar prompt" class="codex-install__copy" :disable="promptLoading" @click="copyPrompt" />
+        <a :href="codexPluginZipUrl" :download="codexPluginFilename"><q-icon name="mdi-download" /> {{ downloadRequested ? 'Baixar novamente' : 'Baixar ZIP do plugin' }}</a>
       </div>
       <span v-if="downloadRequested" class="codex-install__feedback" role="status">Download do ZIP solicitado. Se necessário, use Baixar novamente.</span>
       <span v-if="feedback" class="codex-install__feedback" role="status">{{ feedback }}</span>
