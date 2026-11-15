@@ -26,11 +26,15 @@ const modelQuery = ref('')
 const editing = reactive({ exchangeRate: false, config: false, billing: false, alerts: false, grant: false })
 const exchange = reactive({ rate: null, autoRefresh: true })
 const config = reactive({ model: 'gpt-6.1-sol', effort: 'medium', speed: 'standard' })
-const multipliers = reactive({ multiplier: null, higgsfieldMultiplier: null })
+const multipliers = reactive({ multiplier: null, higgsfieldMultiplier: null, codexMultiplier: null })
 const alerts = reactive({ alertsEnabled: false, alertEmail: '', alertPhone: '', openaiLimit: null, higgsfieldLimit: null })
 const providerSettings = [
-  { name: 'OpenAI', feature: 'Chat e outras ferramentas OpenAI', icon: 'mdi-message-text-outline', multiplier: 'multiplier', limit: 'openaiLimit' },
+  { name: 'OpenAI', feature: 'Chat AitoIA, imagens, locução e outras ferramentas OpenAI', icon: 'mdi-message-text-outline', multiplier: 'multiplier', limit: 'openaiLimit' },
   { name: 'Higgsfield', feature: 'Estúdio de vídeo e vídeo no chat', icon: 'mdi-movie-open-play-outline', multiplier: 'higgsfieldMultiplier', limit: 'higgsfieldLimit' },
+]
+const billingModes = [
+  ...providerSettings,
+  { name: 'Codex', feature: 'Uso do Codex via AitoKey', icon: 'mdi-console', multiplier: 'codexMultiplier' },
 ]
 const billingLoaded = ref(false)
 const billingLoading = ref(false)
@@ -165,8 +169,7 @@ async function loadBilling() {
 }
 
 function setMultipliers(data) {
-  multipliers.multiplier = data.multiplier
-  multipliers.higgsfieldMultiplier = data.higgsfieldMultiplier
+  for (const { multiplier } of billingModes) multipliers[multiplier] = data[multiplier]
 }
 
 function setAlerts(data) {
@@ -325,13 +328,14 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
       </q-form>
       <q-form class="token-admin__box" @submit.prevent="saveConfig">
         <div class="token-admin__model-heading">
-          <h3>Configurar Aito IA</h3>
+          <h3>Padrões da Aito IA gerenciada</h3>
           <q-btn flat dense no-caps color="teal-3" icon="mdi-refresh" label="Atualizar modelos" :loading="modelsLoading" @click="loadModels(true)" />
         </div>
         <div class="token-admin__status">
           <q-badge v-if="typeof config.configured === 'boolean'" outline :color="config.configured ? 'green-4' : 'orange-4'" :label="config.configured ? 'Provedor de IA configurado' : 'Chave da IA pendente'" />
           <q-badge v-if="typeof config.checkoutConfigured === 'boolean'" outline :color="config.checkoutConfigured ? 'green-4' : 'orange-4'" :label="config.checkoutConfigured ? 'Checkout InfinitePay configurado' : 'Checkout InfinitePay pendente'" />
         </div>
+        <p>O modelo é usado pelo assistente gerenciado no Desktop e Whitelabel e por integrações que omitem essa escolha. Esforço e processamento se aplicam ao assistente interno de Comunicação.</p>
         <p v-if="modelsError" role="alert" class="token-admin__warning">{{ modelsError }}</p>
         <q-select :model-value="config.model" :display-value="selectedModel?.label || config.model" dark outlined emit-value map-options use-input
           input-debounce="0" :options="modelOptions" :loading="modelsLoading" label="Modelo" @filter="filterModels" @update:model-value="selectModel">
@@ -352,7 +356,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
       </q-form>
       <q-form class="token-admin__box" @submit.prevent="saveMultiplier">
         <h3>Cobrança AitoTokens</h3>
-        <div v-for="provider in providerSettings" :key="provider.name" class="token-admin__provider-field">
+        <div v-for="provider in billingModes" :key="provider.name" class="token-admin__provider-field">
           <header>
             <span class="token-admin__provider-icon"><q-icon :name="provider.icon" size="20px" /></span>
             <div><strong>{{ provider.name }}</strong><small>{{ provider.feature }}</small></div>
@@ -364,7 +368,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
           <small v-if="validMultiplier(multipliers[provider.multiplier])">US$ 1,00 de custo equivale a
             <strong>{{ purchaseMoney(100 * parseMultiplier(multipliers[provider.multiplier]), 'USD') }}</strong> em AitoTokens.</small>
         </div>
-        <p>Os dois provedores usam a mesma carteira AitoTokens. A taxa de cada cobrança fica registrada.</p>
+        <p>As três tarifas usam a mesma carteira AitoTokens. O Codex consome do saldo de provedor da OpenAI, com tarifa própria. Cada cobrança registra o multiplicador aplicado.</p>
         <p v-if="billingError" role="alert" class="token-admin__warning">{{ billingError }}</p>
         <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar multiplicadores" :loading="editing.billing" :disable="!billingLoaded || billingLoading" />
       </q-form>

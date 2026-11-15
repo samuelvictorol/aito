@@ -21,7 +21,7 @@ const offerError = ref(false)
 const authOpen = ref(false)
 const walletOpen = ref(false)
 const requestedPackage = ref(null)
-const packAmounts = [500, 1500, 5000, 10000]
+const packAmounts = [500, 1000, 1500, 2500, 5000, 10000]
 const packs = computed(() => offers.value?.plans || packAmounts.map(usdCents => ({ usdCents })))
 const returnPath = computed(() => `/aitotokens${requestedPackage.value ? `?pacote=${requestedPackage.value}` : ''}`)
 
@@ -65,15 +65,16 @@ const steps = [
   { icon: 'mdi-wallet-outline', title: 'Recarregue em reais', text: 'Escolha um pacote em dólares e confira o valor convertido antes de abrir o checkout. O saldo é liberado após a confirmação do pagamento.' },
   { icon: 'mdi-chart-timeline-variant', title: 'Acompanhe o uso', text: 'O consumo é debitado do saldo conforme a quantidade de tokens e o modelo usado. Quando o saldo termina, a IA pausa até a próxima recarga.' },
 ]
-const factorLabel = computed(() => Number.isFinite(offers.value?.multiplier)
-  ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(offers.value.multiplier)
-  : '')
+const factorFormat = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 })
+const rateLabels = computed(() => [
+  ['OpenAI', offers.value?.multiplier], ['Higgsfield', offers.value?.higgsfieldMultiplier], ['Codex', offers.value?.codexMultiplier],
+].filter(([, factor]) => Number.isFinite(factor)).map(([label, factor]) => `${label} ${factorFormat.format(factor)}×`))
 const questions = computed(() => [
   { title: 'Qual é a diferença entre AitoTokens e uma chave OpenAI?', text: 'AitoTokens são créditos de uso. A AitoKey identifica o projeto na plataforma. A AitoSoftwares opera a integração com a OpenAI e mede o consumo por projeto.' },
-  { title: 'Como o uso é cobrado?', text: factorLabel.value
-    ? `O débito em AitoTokens corresponde a ${factorLabel.value}× o custo do provedor. Para vídeo, confira a cotação da geração antes de confirmar.`
-    : 'O débito considera o custo do provedor e a taxa de uso da AitoSoftwares. Para vídeo, confira a cotação da geração antes de confirmar.' },
-  { title: 'Quantos tokens recebo em uma recarga?', text: 'A recarga adiciona um valor em dólares ao saldo. A quantidade estimada de tokens depende do modelo e da proporção entre entrada e saída, por isso varia com o uso.' },
+  { title: 'Como o uso é cobrado?', text: rateLabels.value.length === 3
+    ? `O débito aplica o multiplicador de cada fluxo ao custo do provedor (${rateLabels.value.join(', ')}). Para vídeo, confira a cotação antes de confirmar.`
+    : 'O débito considera o custo do provedor e o multiplicador do fluxo. Para vídeo, confira a cotação antes de confirmar.' },
+  { title: 'Quantos AitoTokens recebo em uma recarga?', text: 'Cada US$ 1,00 de saldo equivale a 50.000 AitoTokens. O consumo desse saldo varia com o modelo e o tipo de uso.' },
   { title: 'O saldo é perdido se eu trocar a AitoKey?', text: 'O saldo fica vinculado ao projeto. A AitoSoftwares pode substituir a chave, preservando os créditos e o histórico de uso.' },
 ])
 
@@ -135,7 +136,7 @@ useMeta({
     <section id="pacotes" class="tokens-landing__section tokens-landing__packs" aria-labelledby="tokens-pack-title">
       <div>
         <h2 id="tokens-pack-title">Pacotes de recarga</h2>
-        <p>Escolha um pacote e entre na sua conta para pagar pela InfinitePay. A estimativa de tokens varia com o modelo e o tipo de uso.</p>
+        <p>Escolha um pacote e entre na sua conta para pagar em reais pela InfinitePay.</p>
         <p v-if="offerError" role="status">Não foi possível consultar a cotação. <button class="tokens-landing__retry" type="button" @click="loadOffers">Tentar novamente</button></p>
         <p v-else-if="offers?.checkoutConfigured === false" role="status">O checkout de recargas está temporariamente indisponível.</p>
       </div>
@@ -200,7 +201,7 @@ useMeta({
 .tokens-landing__card h3 { margin: .7rem 0 .35rem; font-size: 1.12rem; font-weight: 730; line-height: 1.25; }
 .tokens-landing__card p { margin: 0; }
 .tokens-landing__icon { color: var(--mint); font-size: 1.75rem; }
-.tokens-landing__pack-grid { grid-template-columns: repeat(4, 1fr); list-style: none; padding: 0; }
+.tokens-landing__pack-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; padding: 0; }
 .tokens-landing__pack-grid li { color: var(--gold); background: linear-gradient(145deg, #2b2916, #10261c); border-color: #6c5a34; }
 .tokens-landing__pack-grid strong { font-size: clamp(1.4rem, 5vw, 2.8rem); line-height: 1.05; }
 .tokens-landing__pack-grid small { display: block; margin-top: .3rem; color: var(--muted); font-size: .85rem; }

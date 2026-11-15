@@ -82,7 +82,10 @@ const projects = ref([])
 const clients = ref([])
 const pagination = ref({ page: 1, rowsPerPage: 50, rowsNumber: 0 })
 const simulatedCost = ref('')
-const simulatedProvider = ref('openai')
+const simulatedTariff = ref('openai')
+const simulationOptions = computed(() => Number.isFinite(funding.value?.codexMultiplier)
+  ? [...providerOptions, { value: 'codex', label: 'Codex' }]
+  : providerOptions)
 const reconciliation = ref(null)
 const reconciliationCost = ref('')
 const reconciliationBusy = ref(false)
@@ -211,7 +214,9 @@ const simulatedCents = computed(() => {
   const cents = usdCents(simulatedCost.value)
   return Number.isSafeInteger(cents) && cents >= 0 && cents <= 1000000 ? cents : 0
 })
-const simulatedMultiplier = computed(() => providerBalances.value.find(row => row.provider === simulatedProvider.value)?.multiplier ?? funding.value?.multiplier ?? 2)
+const simulatedMultiplier = computed(() => simulatedTariff.value === 'codex'
+  ? funding.value?.codexMultiplier
+  : providerBalances.value.find(row => row.provider === simulatedTariff.value)?.multiplier ?? funding.value?.multiplier ?? 2)
 const simulatedCharge = computed(() => Math.round(simulatedCents.value * simulatedMultiplier.value * 10000) / 10000)
 const liveStatus = computed(() => {
   if (!liveEnabled.value) return 'Atualização automática pausada'
@@ -641,6 +646,7 @@ onBeforeUnmount(() => {
               <div v-if="row.projectedCostUsdCents != null"><dt>Custo estimado</dt><dd>{{ money(row.projectedCostUsdCents) }}</dd></div>
               <div v-if="row.topUpUsdCents != null"><dt>Recarga sugerida</dt><dd>{{ money(row.topUpUsdCents) }}</dd></div>
             </dl>
+            <small v-if="row.provider === 'openai' && Number.isFinite(row.capacityMultiplier)">AitoIA e Codex compartilham este saldo. A capacidade considera a menor das duas tarifas ({{ numbers.format(row.capacityMultiplier) }}×).</small>
             <q-btn outline no-caps color="teal-3" type="submit" icon="mdi-content-save-outline" label="Atualizar saldo de referência"
               :loading="savingFunding === row.provider" :disable="Boolean(savingFunding)" />
           </q-form>
@@ -656,7 +662,7 @@ onBeforeUnmount(() => {
         <details>
           <summary>Simular uma cobrança</summary>
           <div class="token-usage__reserve-input">
-            <q-select v-model="simulatedProvider" :options="providerOptions" label="Provedor" emit-value map-options dark outlined dense />
+            <q-select v-model="simulatedTariff" :options="simulationOptions" label="Tarifa" emit-value map-options dark outlined dense />
             <q-input v-model="simulatedCost" dark outlined dense label="Custo do provedor" prefix="US$" type="number" min="0" max="10000" step="0.01" />
             <p>Débito AitoTokens <strong>{{ money(simulatedCharge) }}</strong> · Margem bruta <strong>{{ money(simulatedCharge - simulatedCents) }}</strong></p>
           </div>

@@ -51,7 +51,7 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
         </div>
         <div v-if="selected" class="aito-wallet__checkout"><div>Total <strong>{{ brl(selected.brlCents) }}</strong></div><button type="button" class="aito-wallet__action" :aria-busy="checkoutBusy" :disabled="checkoutBusy || walletLoading || status?.checkoutConfigured === false" @click="state.checkout(selected)"><q-spinner v-if="checkoutBusy" size="18px" /><q-icon v-else name="mdi-credit-card-outline" size="19px" />{{ checkoutBusy ? 'Preparando…' : 'Gerar pagamento' }}</button></div>
         <div v-if="pending" class="aito-wallet__pending">
-          <div><strong>Checkout disponível</strong><span>O saldo aparece após a confirmação do pagamento.</span></div>
+          <div><strong>Checkout de {{ usd(pending.usdCents) }}</strong><span>{{ brl(pending.brlCents) }} neste pedido. O saldo aparece após a confirmação.</span></div>
           <div><a class="aito-wallet__action" :href="pending.url" target="_blank" rel="noopener noreferrer">Abrir InfinitePay <q-icon name="mdi-arrow-top-right" size="17px" /></a><button type="button" :disabled="Boolean(paymentBusy)" @click="state.checkPayment(pending)">{{ paymentBusy ? 'Verificando…' : 'Já paguei' }}</button></div>
         </div>
       </section>
@@ -90,7 +90,7 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
 .aito-wallet__section { margin-top: 13px; }
 .aito-wallet__section h3 { margin: 0 0 7px; color: var(--aito-ai-text); font-size: .94rem; font-weight: 720; line-height: 1.25; }
 .aito-wallet__section p { margin: 0; color: var(--aito-ai-muted); font-size: .8rem; }
-.aito-wallet__plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.aito-wallet__plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .aito-wallet__plans button { display: grid; gap: 4px; min-width: 0; padding: 9px 6px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-panel); text-align: left; cursor: pointer; }
 .aito-wallet__plans button[aria-pressed=true] { border-color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .aito-wallet__plans strong { display: flex; justify-content: space-between; align-items: center; gap: 3px; color: var(--aito-ai-gold); font-size: .91rem; }

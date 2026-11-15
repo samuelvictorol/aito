@@ -557,9 +557,13 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     try {
       const { data } = await generationApi.post('/aitoia/checkout', { usdCents: plan.usdCents, walletId: id })
       if (sessionEpoch !== epoch || walletId.value !== id) return
-      const url = checkoutLink(data.data?.url)
-      if (!url || !data.data?.orderNsu) throw new Error('Checkout indisponível.')
-      pending.value = { ...data.data, url, walletId: id, usdCents: plan.usdCents, brlCents: plan.brlCents }
+      const order = data.data
+      const url = checkoutLink(order?.url)
+      if (!url || !order?.orderNsu || (order.usdCents != null && order.usdCents !== plan.usdCents)) {
+        throw new Error('Checkout indisponível.')
+      }
+      pending.value = { ...order, url, walletId: id, usdCents: plan.usdCents,
+        brlCents: Number.isSafeInteger(order.brlCents) && order.brlCents > 0 ? order.brlCents : plan.brlCents }
       loadHistory()
     } catch (cause) {
       if (sessionEpoch === epoch) walletError.value = errorMessage(cause, 'Não foi possível preparar o pagamento. Tente novamente.')
