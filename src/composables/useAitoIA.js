@@ -100,6 +100,8 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     return {
       current,
       get: async (path, options) => api.get(endpoint(path), authorized(options)),
+      put: async (path, body, options) => api.put(endpoint(path), body, authorized(options)),
+      delete: async (path, options) => api.delete(endpoint(path), authorized(options)),
       post: async (path, body, options) => {
         const target = endpoint(path)
         return followGeneration(accountId.value, path, options, current, () => api.post(target, body, authorized(options)))

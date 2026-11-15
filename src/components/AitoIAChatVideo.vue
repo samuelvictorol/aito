@@ -12,6 +12,7 @@ import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { saveVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
+import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 
@@ -39,6 +40,7 @@ const error = ref('')
 let operation
 let catalogRequest
 let pollTimer
+let clipExpiryTimer
 let disposed = false
 let reference
 let imageReferences
@@ -182,9 +184,15 @@ function estimate() {
 }
 
 function clearClip() {
+  clearTimeout(clipExpiryTimer)
   if (clip.value?.url) URL.revokeObjectURL(clip.value.url)
   clip.value = null
 }
+watch(removedGeneration, item => {
+  if (item?.owner !== accountId.value) return
+  if (clip.value?.id === item.id) clearClip()
+  if (job.value?.id === item.id) job.value = null
+})
 function schedulePoll(delay = 9000) {
   clearTimeout(pollTimer)
   if (!disposed && job.value) pollTimer = setTimeout(() => {
@@ -224,8 +232,13 @@ async function poll(signal, { get, current }) {
   const file = await readGeneratedClipForJob({ ...result, remoteUrl: result.url }, signal, get)
   signal.throwIfAborted()
   if (!current()) return
+  if (removedGeneration.value?.owner === accountId.value && removedGeneration.value?.id === result.id) return
   clearClip()
-  clip.value = { ...result, file, url: URL.createObjectURL(file), expiresAt: videoGenerationExpiry(result.expiresAt, Date.now() + AITOIA_RETENTION_MS) }
+  const sourceExpiry = videoGenerationExpiry(result.expiresAt, Date.now() + AITOIA_RETENTION_MS)
+  const playbackExpiry = Math.min(sourceExpiry, videoGenerationExpiry(result.orphanExpiresAt, sourceExpiry))
+  if (playbackExpiry <= Date.now()) { job.value = null; return }
+  clip.value = { ...result, file, url: URL.createObjectURL(file), expiresAt: sourceExpiry }
+  clipExpiryTimer = setTimeout(clearClip, playbackExpiry - Date.now())
   job.value = null
 }
 
@@ -280,7 +293,7 @@ async function saveToProject() {
     const file = await readGeneratedClipForJob(result, signal, api.get)
     signal.throwIfAborted()
     if (!api.current()) return
-    const generated = { id: crypto.randomUUID(), name: file.name, mime: file.type, blob: file, expiresAt: result.expiresAt }
+    const generated = { id: result.id, name: file.name, mime: file.type, blob: file, expiresAt: result.expiresAt }
     await saveVideoDraft(owner, { prompt: prompt.value, attachments: [], purpose: 'save-clip', generated })
     saved = !signal.aborted && api.current() && accountId.value === owner
   }, false)

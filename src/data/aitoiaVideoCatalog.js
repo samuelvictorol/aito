@@ -41,6 +41,15 @@ export function videoModelSpecialty(model) {
   return videoCatalog.find(item => item.id === family)?.summary || ''
 }
 
+const previewFamilies = new Set(videoCatalog.filter(item => item.type !== 'image').map(item => item.familyId || item.id))
+
+export function videoModelPreview(model) {
+  const family = model?.familyId || model?.id
+  if (!previewFamilies.has(family)) return null
+  const asset = `/aitoia-model-previews/${family}`
+  return { cover: `${asset}.webp`, motion: `${asset}.mp4` }
+}
+
 export function studioVideoModels(catalog, { mode, hasVideo = false, imageCount = 0, hasAudio = false, maxSeconds }) {
   const models = mode === 'text' ? catalog?.videoModels :
     mode === 'transition' ? catalog?.transitionModels || (catalog?.transitionModel ? [catalog.transitionModel] : []) :

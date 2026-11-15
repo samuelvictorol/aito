@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
-import { localGenerationActivity } from 'src/services/aitoiaGenerationActivity'
+import { forgetLocalGeneration, localGenerationActivity } from 'src/services/aitoiaGenerationActivity'
+import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { videoGenerationActive } from 'src/services/aitoiaVideoJobs'
 
@@ -16,20 +17,26 @@ const time = ref(Date.now())
 const preview = shallowRef(null)
 const previewing = ref('')
 const previewError = ref('')
+const removing = ref('')
+const removalError = ref('')
+const removedIds = shallowRef(new Set())
 let pollTimer
 let pollRequest
 let previewRequest
+let removalRequest
 let disposed = false
 
 const types = { remake: 'Cena refeita', studio: 'Clipe do estúdio', chat: 'Vídeo no chat' }
 const isActive = item => item.active ?? videoGenerationActive(item.status)
 const sortTime = item => typeof item.createdAt === 'number' ? item.createdAt : Date.parse(item.createdAt) || 0
+const projectsFor = item => Array.isArray(item.associatedProjects) ? item.associatedProjects.filter(project => project?.id) : []
 const owned = computed(() => localGenerationActivity.value.filter(item => item.owner === accountId.value))
 const jobs = computed(() => {
   const upstream = remoteJobs.value.map(job => ({ title: types[job.source] || 'Vídeo', kind: 'video', ...job }))
   const local = owned.value.filter(job => !upstream.some(item => item.requestId === job.requestId || item.id && item.id === job.id) &&
     time.value - job.createdAt < (job.kind === 'video' && isActive(job) ? 120000 : 24 * 60 * 60_000))
-  return [...upstream, ...local].sort((left, right) =>
+  return [...upstream, ...local].filter(item => !removedIds.value.has(item.id) &&
+    !(item.status === 'completed' && Date.parse(item.orphanExpiresAt) <= time.value)).sort((left, right) =>
     Number(isActive(right)) - Number(isActive(left)) || sortTime(right) - sortTime(left)).slice(0, 8)
 })
 const active = computed(() => jobs.value.some(isActive))
@@ -37,6 +44,18 @@ const latest = computed(() => jobs.value[0])
 const label = computed(() => active.value ? 'Ver andamento das gerações' : 'Ver resultados das gerações')
 const statusIcon = computed(() => latest.value?.status === 'completed' ? 'mdi-check-circle-outline' :
   latest.value?.status === 'uncertain' ? 'mdi-clock-alert-outline' : 'mdi-alert-circle-outline')
+
+function timeToExpire(deadline) {
+  const expires = Date.parse(deadline)
+  if (!Number.isFinite(expires)) return ''
+  const remaining = expires - time.value
+  if (remaining <= 0) return 'Prazo encerrado'
+  if (remaining < 60_000) return 'Expira em menos de 1 min'
+  const minutes = Math.floor(remaining / 60_000)
+  const hours = Math.floor(minutes / 60)
+  const duration = [hours && `${hours} h`, (!hours || minutes % 60) && `${minutes % 60} min`].filter(Boolean)
+  return `Expira em ${duration.join(' ')}`
+}
 
 function queuePoll(delay) {
   clearTimeout(pollTimer)
@@ -85,6 +104,10 @@ function reset() {
   pollRequest?.abort()
   pollRequest = null
   refreshing.value = false
+  removalRequest?.abort()
+  removalRequest = null
+  removing.value = ''
+  removalError.value = ''
   clearPreview()
 }
 
@@ -92,15 +115,56 @@ watch(accountId, id => {
   reset()
   open.value = false
   remoteJobs.value = []
+  removedIds.value = new Set()
   refreshFailed.value = false
   if (id) queuePoll(0)
 }, { immediate: true })
 watch(owned, () => queuePoll(350))
+watch(jobs, rows => {
+  const id = preview.value?.id || previewing.value
+  if (id && !rows.some(item => item.id === id)) clearPreview()
+})
 watch(open, visible => {
   if (visible) queuePoll(0)
   else clearPreview()
 })
 onBeforeUnmount(() => { disposed = true; reset() })
+
+function askRemove(job) {
+  if (removing.value || !job.id) return
+  const owner = access()
+  const ownerId = accountId.value
+  const message = projectsFor(job).length
+    ? 'O clipe original sairá de Gerações. As cópias salvas nos projetos continuam disponíveis.'
+    : 'O clipe sairá de Gerações e ficará indisponível para abrir ou baixar.'
+  confirmStudioRemoval('Remover clipe gerado?', message, () => {
+    if (!disposed && owner.current() && accountId.value === ownerId) void removeClip(job, owner, ownerId)
+  })
+}
+
+async function removeClip(job, owner, ownerId) {
+  if (removing.value) return
+  const controller = new AbortController()
+  removalRequest = controller
+  removing.value = job.id
+  removalError.value = ''
+  try {
+    await owner.delete(`/aitoia/video/generations/${encodeURIComponent(job.id)}`, { signal: controller.signal })
+    if (!controller.signal.aborted && owner.current()) {
+      removedIds.value = new Set([...removedIds.value, job.id])
+      remoteJobs.value = remoteJobs.value.filter(item => item.id !== job.id)
+      forgetLocalGeneration(ownerId, job)
+      if (preview.value?.id === job.id || previewing.value === job.id) clearPreview()
+      queuePoll(350)
+    }
+  } catch (cause) {
+    if (!controller.signal.aborted && owner.current()) {
+      removalError.value = cause.response?.data?.message || 'Não foi possível remover este clipe. Tente novamente.'
+    }
+  } finally {
+    if (removalRequest === controller) { removalRequest = null; removing.value = '' }
+  }
+}
 
 async function openClip(job) {
   if (preview.value?.id === job.id) return
@@ -143,6 +207,7 @@ async function openClip(job) {
       </q-card-section>
       <q-card-section class="aito-generation-dialog__list">
         <p v-if="refreshFailed" role="status">Falha ao atualizar a fila. Tente novamente.</p>
+        <p v-if="removalError" role="alert">{{ removalError }}</p>
         <p v-if="!jobs.length">Nenhuma geração recente.</p>
         <article v-for="item in jobs" :key="item.requestId || item.id">
           <strong>{{ item.title }}</strong>
@@ -154,8 +219,20 @@ async function openClip(job) {
           </template>
           <span v-else-if="item.status === 'completed'" class="aito-generation-dialog__done"><q-icon name="mdi-check-circle-outline" /> Concluída</span>
           <small v-else role="status">{{ item.message || (item.status === 'uncertain' ? 'Aguardando confirmação do provedor.' : 'Geração encerrada.') }}</small>
-          <q-btn v-if="item.kind === 'video' && item.status === 'completed' && item.id && preview?.id !== item.id"
-            flat no-caps dense icon="mdi-play-circle-outline" label="Ver clipe" :loading="previewing === item.id" @click="openClip(item)" />
+          <div v-if="item.kind === 'video' && item.status === 'completed' && item.id" class="aito-generation-dialog__details">
+            <small v-if="projectsFor(item).length">
+              <q-icon name="mdi-folder-outline" size="16px" />
+              {{ projectsFor(item).length === 1 ? 'Projeto' : 'Projetos' }} · {{ projectsFor(item).map(project => project.title || 'Projeto sem nome').join(', ') }}
+            </small>
+            <small v-else-if="item.orphanExpiresAt"><q-icon name="mdi-clock-outline" size="16px" /> {{ timeToExpire(item.orphanExpiresAt) }}</small>
+            <small v-if="item.available === false && projectsFor(item).length">Abra o projeto para ver a cópia salva.</small>
+            <div class="aito-generation-dialog__actions">
+              <q-btn v-if="item.available !== false && preview?.id !== item.id" flat no-caps dense icon="mdi-play-circle-outline" label="Ver clipe"
+                :loading="previewing === item.id" :disable="removing === item.id" @click="openClip(item)" />
+              <q-btn flat no-caps dense icon="mdi-delete-outline" label="Remover" :aria-label="`Remover ${item.title}`"
+                :loading="removing === item.id" :disable="Boolean(removing) && removing !== item.id" @click="askRemove(item)" />
+            </div>
+          </div>
           <template v-if="preview?.id === item.id">
             <video :src="preview.url" controls playsinline preload="metadata" :aria-label="item.title" />
             <q-btn flat no-caps dense icon="mdi-download-outline" label="Baixar clipe" @click="downloadAitoIAFile(preview.file, preview.file.name)" />
@@ -175,6 +252,9 @@ async function openClip(job) {
 .aito-generation-dialog__list { display: grid; gap: 9px; max-height: min(70dvh, 540px); overflow-y: auto; }
 .aito-generation-dialog__list article { display: grid; gap: 6px; justify-items: start; padding: 11px; border: 1px solid var(--aito-ai-line); border-radius: 9px; background: var(--aito-ai-panel); }
 .aito-generation-dialog__list :is(small, p) { margin: 0; color: var(--aito-ai-muted); }
+.aito-generation-dialog__details { display: grid; gap: 3px; width: 100%; }
+.aito-generation-dialog__details small { overflow-wrap: anywhere; }
+.aito-generation-dialog__actions { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .aito-generation-dialog__list .q-btn, .aito-generation-dialog__done { color: var(--aito-ai-accent); }
 .aito-generation-dialog__list video { width: 100%; max-height: 290px; background: #000; border-radius: 7px; }
 </style>

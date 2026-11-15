@@ -10,6 +10,7 @@ const routes = {
 }
 
 export const localGenerationActivity = shallowRef([])
+export const removedGeneration = shallowRef(null)
 
 function update(row) {
   const remaining = localGenerationActivity.value.filter(item =>
@@ -19,6 +20,12 @@ function update(row) {
 
 function dismiss(owner, requestId) {
   localGenerationActivity.value = localGenerationActivity.value.filter(row => row.owner !== owner || row.requestId !== requestId)
+}
+
+export function forgetLocalGeneration(owner, generation) {
+  localGenerationActivity.value = localGenerationActivity.value.filter(row =>
+    row.owner !== owner || !(row.id === generation.id || generation.requestId && row.requestId === generation.requestId))
+  removedGeneration.value = { owner, id: generation.id }
 }
 
 export async function followGeneration(owner, path, options, current, submit) {

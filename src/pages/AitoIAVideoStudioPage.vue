@@ -7,17 +7,20 @@ import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
 import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
+import AitoVideoModelPreview from 'components/AitoVideoModelPreview.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
-import { studioVideoModels, videoAspectPreview, videoCatalog, videoModelSpecialty } from 'src/data/aitoiaVideoCatalog'
+import { studioVideoModels, videoAspectPreview, videoCatalog, videoModelPreview, videoModelSpecialty } from 'src/data/aitoiaVideoCatalog'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { downloadAitoIAFile, zipAitoIAFiles } from 'src/services/aitoiaArchive'
 import { readStudioProject } from 'src/services/aitoiaStudioArchive'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
+import { createVideoProjectLinks, isVideoGenerationId } from 'src/services/aitoiaVideoProjectLinks'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
+import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia,
   recordStudioVideo, sceneSeconds, splitStudioClip, studioFrame, studioNarration, studioRenderSize, studioSubtitles, studioTimeline, studioVideoExports, videoFormats } from 'src/services/aitoiaVideo'
@@ -62,6 +65,7 @@ const voicePreview = shallowRef(null)
 const recording = shallowRef(null)
 const generated = shallowRef(null)
 const clipLibrary = shallowRef([])
+const removedGeneratedIds = shallowRef([])
 const generatedDuration = ref(0)
 const activeJob = shallowRef(null)
 const prompt = ref('')
@@ -225,6 +229,28 @@ const canQuoteVideo = computed(() => Boolean(offer.value && (prompt.value.trim()
 const modelOptions = computed(() => selectedConfig.value?.options || [])
 const offer = computed(() => modelOptions.value.find(item => item.id === videoOption.value) || modelOptions.value[0])
 const selectedModelName = computed(() => selectedConfig.value?.label.replace(/ · Higgsfield$/, ''))
+const hoveredModel = ref('')
+const focusedModel = ref('')
+const reduceModelMotion = ref(true)
+const activeModelPreview = computed(() => tab.value === 'ai' && modelListOpen.value && !reduceModelMotion.value
+  ? hoveredModel.value || focusedModel.value : '')
+
+function previewModelOnHover(event, id) {
+  if (event.pointerType !== 'touch') hoveredModel.value = id
+}
+function previewModelOnFocus(event, id) {
+  if (event.currentTarget.matches(':focus-visible')) focusedModel.value = id
+}
+watch([tab, modelListOpen, generationMode], () => { hoveredModel.value = ''; focusedModel.value = '' })
+let motionPreference
+function readModelMotionPreference() { reduceModelMotion.value = motionPreference?.matches ?? true }
+onMounted(() => {
+  motionPreference = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+  readModelMotionPreference()
+  motionPreference?.addEventListener('change', readModelMotionPreference)
+})
+onBeforeUnmount(() => motionPreference?.removeEventListener('change', readModelMotionPreference))
+
 const selectedReferenceVariant = computed(() => {
   if (generationMode.value !== 'text') return null
   const variants = options.value?.referenceModels?.filter(model => model.familyId === selectedConfig.value?.familyId && model.mode === 'reference')
@@ -237,7 +263,7 @@ const modelCards = computed(() => clipModels.value.map(model => {
   const requirement = model.requiresVideo ? 'Vídeo-base' : model.minImageReferences ? 'Imagem de referência' :
     model.mode ? 'Vídeo com referência' : 'Texto para vídeo'
   return { ...family, id: model.id, name: model.label.replace(/ · Higgsfield$/, ''), maker: family?.maker || 'Higgsfield',
-    summary: videoModelSpecialty(model), perSecond, requirement }
+    summary: videoModelSpecialty(model), preview: videoModelPreview(model), perSecond, requirement }
 }))
 const optionResolution = item => item?.resolution || '720p'
 const videoAspects = computed(() => [...new Set(modelOptions.value.map(item => item.format))])
@@ -294,13 +320,17 @@ watch(accountId, (next, previous) => {
   else { options.value = null; optionsLoading.value = false }
 })
 
+const videoProjectLinks = createVideoProjectLinks({ owner: () => accountId.value, access: wallet.access })
+const refreshVideoProjectLinks = () => videoProjectLinks.retry()
+watch(accountId, () => videoProjectLinks.retry(), { immediate: true })
 const { projects, records, activeId, loading: projectLoading, storageError, cloudState, createProject, openProject,
   resolveProject, deleteProject, renewProject, importProject, atLimit, saveProject } = useAitoStudioProjects({
   studio: 'video', accountId, localOnly: adminMode, busy, defaultName: defaultProjectName, snapshot: snapshotProject, restore: restoreProject,
+  onPersisted: videoProjectLinks.save, onRemoved: videoProjectLinks.remove,
   watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, masterScript, sceneScripts, scriptTarget,
     voiceReferenceId, prompt, generationMode, videoModel, referenceModelId,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
-    activeJob, projectComponents, componentTypes, remakeDraft],
+    activeJob, projectComponents, componentTypes, remakeDraft, removedGeneratedIds],
 })
 
 function importArchive(file) {
@@ -432,7 +462,7 @@ watch(() => componentForm.value?.file, file => {
 }, { flush: 'sync' })
 function setComponentImage(file) {
   if (!file) return
-  try { checkImageReference(file); updateComponentForm({ file }); componentError.value = '' }
+  try { checkImageReference(file); updateComponentForm({ file, sourceClipId: undefined }); componentError.value = '' }
   catch (cause) { componentError.value = cause.message }
 }
 async function setComponentVoice(file) {
@@ -532,13 +562,13 @@ async function applyDraft(fresh = false) {
     if (activeId.value === previous) return
   }
   if (!activeId.value || accountId.value !== owner || !mayEdit.value) return
-  if (incoming.generated || incoming.purpose === 'save-clip') {
+  const carriesClip = incoming.generated || incoming.purpose === 'save-clip'
+  if (carriesClip) {
     const asset = incoming.generated || incoming.attachments[0]
     const file = asset && new File([asset.blob], asset.name, { type: asset.mime })
     if (!file || !file.type.startsWith('video/')) return
     storeClip({ id: asset.id || crypto.randomUUID(), file, expiresAt: Number(asset.expiresAt) || Date.parse(asset.expiresAt) || clipExpiry(asset) })
     tab.value = 'ai'
-    notice.value = 'Clipe salvo no projeto.'
   } else {
     prompt.value = incoming.prompt || ''
     tab.value = 'ai'
@@ -555,6 +585,8 @@ async function applyDraft(fresh = false) {
     notice.value = 'Rascunho do chat carregado. Confira o prompt e as referências.'
   }
   await saveProject()
+  if (accountId.value !== owner || storageError.value) return
+  if (carriesClip) notice.value = 'Clipe salvo no projeto.'
   await clearVideoDraft(owner).catch(() => {})
   if (draft.value === incoming) draft.value = null
 }
@@ -664,7 +696,8 @@ function restoreJob() {
   void listVideoGenerations(access.get, { source: 'studio', projectId: project }).then(jobs => {
     if (!mounted || !access.current() || owner !== accountId.value || project !== activeId.value || activeJob.value || projectLoading.value) return
     const job = jobs.find(item => videoGenerationActive(item.status))
-      || jobs.find(item => item.status === 'completed' && !clipLibrary.value.some(clip => clip.id === item.id))
+      || jobs.find(item => item.status === 'completed' && !removedGeneratedIds.value.includes(item.id) &&
+        !clipLibrary.value.some(clip => clip.id === item.id))
     if (!job) return
     activeJob.value = job
     keepJob(job)
@@ -672,6 +705,24 @@ function restoreJob() {
   }).catch(() => {})
 }
 watch([accountId, activeId, projectLoading], restoreJob)
+watch(removedGeneration, item => {
+  if (!item?.id || item.owner !== accountId.value) return
+  if (draft.value?.generated?.id === item.id) {
+    draft.value = null
+    void clearVideoDraft(item.owner).catch(() => {})
+  }
+  const remoteOnly = clipLibrary.value.find(clip => clip.id === item.id && !clip.file)
+  if (remoteOnly) {
+    clipLibrary.value = clipLibrary.value.filter(clip => clip !== remoteOnly)
+    if (generated.value?.id === item.id) selectGenerated(clipLibrary.value[0] || null)
+  }
+  const job = activeJob.value
+  if (job?.id !== item.id || clipLibrary.value.some(clip => clip.id === item.id && clip.file)) return
+  clearTimeout(jobTimer)
+  if (busy.value === 'video' || busy.value === 'transition-generate') activeOperation?.abort()
+  activeJob.value = null
+  keepJob(job, true)
+})
 
 function syncVideo(media, offset, animate) {
   const element = media?.isVideo ? media.element : null
@@ -1088,10 +1139,17 @@ function localClip(clip) {
 }
 
 function disposeClip(clip) { if (clip.file) URL.revokeObjectURL(clip.url) }
+function retainedClipExpiry(clip) {
+  const generationId = clip?.sourceClipId || clip?.id
+  if (isVideoGenerationId(generationId) && activeProject.value) return activeProject.value.expiresAt
+  return clip?.expiresAt || null
+}
 function storeClip(asset) {
   const previous = clipLibrary.value.find(item => item.id === asset.id)
-  const clip = localClip({ ...asset, number: previous?.number || ((clipLibrary.value[0]?.number || 0) + 1) })
+  const clip = localClip({ ...asset, expiresAt: asset.file ? retainedClipExpiry(asset) : asset.expiresAt,
+    number: previous?.number || ((clipLibrary.value[0]?.number || 0) + 1) })
   if (previous) disposeClip(previous)
+  if (removedGeneratedIds.value.includes(clip.id)) removedGeneratedIds.value = removedGeneratedIds.value.filter(id => id !== clip.id)
   clipLibrary.value = [clip, ...clipLibrary.value.filter(item => item.id !== clip.id)]
   selectGenerated(clip)
   return clip
@@ -1215,7 +1273,7 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   }
   if (!stillOwner() || projectId !== activeId.value) return
   if (job.timelineTransition) asset.title = job.timelineTransition.title
-  storeClip(asset)
+  asset.expiresAt = storeClip(asset).expiresAt
   let applied = false
   if (job.timelineTransition && asset.file) {
     const { beforeSceneId, prompt: direction } = job.timelineTransition
@@ -1322,6 +1380,7 @@ function removeGenerated() {
     if (!clip) return
     disposeClip(clip)
     clipLibrary.value = clipLibrary.value.filter(item => item.id !== id)
+    if (isVideoGenerationId(id)) removedGeneratedIds.value = [...removedGeneratedIds.value.filter(removed => removed !== id), id].slice(-300)
     if (generated.value?.id === id) selectGenerated(clipLibrary.value[0] || null)
   }, 'Excluir')
 }
@@ -1349,6 +1408,7 @@ async function saveClipInProject() {
     }
     storeClip({ id: clip.id, file, expiresAt: clip.expiresAt, kind: clip.kind })
     await saveProject()
+    if (owner !== accountId.value || storageError.value) return
     tab.value = 'ai'
     notice.value = 'Clipe salvo no projeto escolhido.'
     saveClipOpen.value = false
@@ -1691,7 +1751,7 @@ async function insertClip(file, signal, clip) {
     throw new Error(`O clipe precisa de ${segments.length} cenas livres na linha do tempo.`)
   }
   const appended = segments.map(segment => freshScene({ ...segment, media, cut: media.isVideo,
-    clipId: clip?.id || null, expiresAt: clip?.expiresAt || null, kind: clip?.kind }))
+    clipId: clip?.sourceClipId || clip?.id || null, expiresAt: retainedClipExpiry(clip), kind: clip?.kind }))
   const index = clip?.afterSceneId ? base.findIndex(scene => scene.id === clip.afterSceneId) + 1 : 0
   replaceScenes(index ? [...base.slice(0, index), ...appended, ...base.slice(index)] : [...base, ...appended])
   tab.value = 'scenes'
@@ -1760,6 +1820,7 @@ function resetProject() {
   clipLibrary.value.forEach(disposeClip)
   generated.value = null
   clipLibrary.value = []
+  removedGeneratedIds.value = []
   projectComponents.value = []
   remakeDraft.value = null
   remakeRevision.value++
@@ -1805,7 +1866,7 @@ function snapshotProject() {
     insertionAfter: insertionAfter.value,
     componentTypes: componentTypes.value, components: projectComponents.value, remake: remakeDraft.value,
     clips: clipLibrary.value.map(({ url, ...clip }) => ({ ...clip, ...(clip.expiresAt <= Date.now() && { file: undefined, remoteUrl: undefined, expired: true }) })),
-    selectedClipId: generated.value?.id, activeJob: activeJob.value }
+    selectedClipId: generated.value?.id, activeJob: activeJob.value, removedGeneratedIds: removedGeneratedIds.value }
 }
 
 async function restoreProject(project, signal) {
@@ -1852,6 +1913,7 @@ async function restoreProject(project, signal) {
     }
     projectComponents.value = project.components || []
     remakeDraft.value = project.remake || null
+    removedGeneratedIds.value = Array.isArray(project.removedGeneratedIds) ? project.removedGeneratedIds.filter(isVideoGenerationId).slice(-300) : []
     referenceAnalysis.value = project.referenceAnalysis || ''
     clipLibrary.value = (project.clips || []).flatMap(clip => {
       try {
@@ -1908,6 +1970,7 @@ watch([timeline, format, previewMode], () => { if (mounted) seek(playhead.value)
 watch(tab, () => { if (mounted) paint(playhead.value) }, { flush: 'post' })
 onMounted(async () => {
   mounted = true
+  window.addEventListener('online', refreshVideoProjectLinks)
   if (route.query.auth === 'register' && !signedIn.value) showAuth()
   exportFormats.value = studioVideoExports()
   exportFormat.value = exportFormats.value[0]?.extension || ''
@@ -1919,7 +1982,16 @@ onMounted(async () => {
   await nextTick()
   paint(0)
 })
-onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObserver?.disconnect(); activeOperation?.abort(); optionsRequest?.abort(); resetProject() })
+onBeforeUnmount(() => {
+  mounted = false
+  window.removeEventListener('online', refreshVideoProjectLinks)
+  videoProjectLinks.dispose()
+  clearInterval(expireTimer)
+  headerObserver?.disconnect()
+  activeOperation?.abort()
+  optionsRequest?.abort()
+  resetProject()
+})
 </script>
 
 <template>
@@ -2027,11 +2099,12 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
             </button>
           </div>
           <q-expansion-item v-if="!remakeMode" v-model="modelListOpen" class="video-studio__catalog-models" icon="mdi-movie-open-outline" label="Modelos de vídeo" :caption="selectedModelName">
-            <div v-if="modelCards.length" class="video-studio__model-grid"><article v-for="item in modelCards" :key="item.id" class="video-studio__model-card" :class="{ 'video-studio__model-card--selected': selectedConfig?.id === item.id }">
-              <div class="video-studio__model-poster" :class="{ 'video-studio__model-poster--symbol': !item.poster }" :style="{ backgroundPosition: item.poster }" aria-hidden="true">
-                <q-icon v-if="!item.poster" :name="item.type === 'workflow' ? 'mdi-movie-open-star-outline' : 'mdi-movie-open-play-outline'" size="36px" />
-                <span class="video-studio__model-type" :class="{ 'video-studio__model-type--image': item.type === 'image' }"><q-icon :name="item.type === 'image' ? 'mdi-image-outline' : 'mdi-play-box-outline'" size="15px" /> {{ item.type === 'image' ? 'Imagem' : item.type === 'workflow' ? 'Fluxo' : 'Vídeo' }}</span>
-              </div>
+            <div v-if="modelCards.length" class="video-studio__model-grid">
+              <article v-for="item in modelCards" :key="item.id" class="video-studio__model-card"
+                :class="{ 'video-studio__model-card--selected': selectedConfig?.id === item.id }"
+                @pointerenter="previewModelOnHover($event, item.id)" @pointerleave="hoveredModel = ''">
+              <AitoVideoModelPreview :files="item.preview" :fallback-position="item.poster" :type="item.type"
+                :animate="activeModelPreview === item.id" />
               <div class="video-studio__model-content">
                 <div><span class="video-studio__model-maker">{{ item.maker }}</span><h3>{{ item.name }}</h3></div>
                 <p>{{ item.summary }}</p>
@@ -2040,7 +2113,8 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
                   <span class="video-studio__model-status--available">{{ item.requirement }}</span>
                 </div>
               </div>
-              <button class="video-studio__model-hit" type="button" :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" :aria-label="`Selecionar ${item.name}`" :aria-pressed="selectedConfig?.id === item.id" @click="selectVideoModel(item.id)">
+              <button class="video-studio__model-hit" type="button" :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" :aria-label="`Selecionar ${item.name}`" :aria-pressed="selectedConfig?.id === item.id"
+                @focus="previewModelOnFocus($event, item.id)" @blur="focusedModel = ''" @click="selectVideoModel(item.id)">
                 <q-tooltip :delay="350">{{ item.summary }}</q-tooltip>
                 <q-icon :name="selectedConfig?.id === item.id ? 'mdi-check-circle' : 'mdi-arrow-top-right'" size="18px" aria-hidden="true" />
               </button>
@@ -2626,11 +2700,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__catalog-empty { padding: 12px; color: var(--aito-ai-muted); font-size: .85rem; }
 .video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 5px 10px 10px; }
 .video-studio__model-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 13px; background: var(--aito-ai-surface); }
-.video-studio__model-card--selected, .video-studio__model-card:has(.video-studio__model-hit:not(:disabled):hover) { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-panel); }
-.video-studio__model-poster { position: relative; aspect-ratio: 2.35 / 1; max-height: 125px; overflow: hidden; border-radius: 8px; background-color: var(--aito-ai-panel); background-image: url('/aitoia-model-posters.webp'); background-size: 200% 400%; }
-.video-studio__model-poster--symbol { display: grid; place-items: center; color: var(--aito-ai-accent); background: radial-gradient(ellipse at center, #34404d, #171a20 76%); }
-.video-studio__model-type { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 6px; background: #281d3aeb; color: #f7dff9; font-size: .69rem; font-weight: 700; }
-.video-studio__model-type--image { background: #082f25eb; color: #d7ffed; }
+.video-studio__model-card--selected, .video-studio__model-card:has(.video-studio__model-hit:not(:disabled):is(:hover, :focus-visible)) { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-panel); }
 .video-studio__model-content { display: grid; flex: 1; grid-template-rows: auto 1fr auto; gap: 5px; padding: 7px 7px 5px; }
 .video-studio__model-maker { color: var(--aito-ai-muted); font-size: .76rem; }
 .video-studio__model-content h3 { margin-top: 2px; overflow-wrap: anywhere; }

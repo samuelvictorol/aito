@@ -2,7 +2,9 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { AITOIA_RETENTION_MS, AITOIA_STUDIO_LIMIT, canRenewStudio, createAitoIALocalStore, renewStudioMedia } from 'src/services/aitoiaLocal'
 import { createStudioCloud } from 'src/services/aitoiaStudioCloud'
 
-export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defaultName, snapshot, restore, watch: fields }) {
+export function useAitoStudioProjects({
+  studio, accountId, localOnly, busy, defaultName, snapshot, restore, watch: fields, onPersisted, onRemoved,
+}) {
   const activeId = ref('')
   const loading = ref(false)
   const storageError = ref('')
@@ -11,6 +13,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
   const projects = computed(() => records.value.map(({ id, title, expiresAt, projectColor }) => ({ id, title, expiresAt, projectColor })))
   const atLimit = computed(() => projects.value.length >= AITOIA_STUDIO_LIMIT)
   let store
+  let storeOwner = ''
   let cloud
   let operation
   let timer
@@ -29,6 +32,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
     if (!dirty || !store || !activeId.value || loading.value || expiredActive) return writes
     dirty = false
     const target = store
+    const owner = storeOwner
     const id = activeId.value
     const previous = records.value.find(item => item.id === id)
     if (!previous || previous.expiresAt <= Date.now()) return writes
@@ -39,7 +43,8 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
     const remote = cloud
     writes = writes.then(async () => {
       try {
-        await target.save(project)
+        const saved = await target.save(project)
+        onPersisted?.(saved, owner)
         if (store === target) storageError.value = ''
       } catch {
         if (store === target) storageError.value = 'O navegador não conseguiu salvar este projeto. Baixe as mídias que quiser guardar.'
@@ -50,6 +55,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
       if (activeId.value === project.id) cloudState.value = 'saving'
       try {
         const saved = await remote.save(project)
+        onPersisted?.(saved, owner)
         if (cloud !== remote) return
         cloudProjects.add(project.id)
         if (activeId.value === project.id) cloudState.value = 'saved'
@@ -97,6 +103,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
   async function create({ reset = true, readImport } = {}) {
     const target = store
     const remote = cloud
+    const owner = storeOwner
     if (!target || atLimit.value) return
     const previousId = activeId.value
     loading.value = true
@@ -130,6 +137,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
         }
       }
       controller.signal.throwIfAborted()
+      onPersisted?.(project, owner)
       remember(project)
       await loadProject(project, { reset })
       if (project.id !== activeId.value) return
@@ -178,11 +186,13 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
     flush()
     const target = store
     const remote = cloud
+    const owner = storeOwner
     loading.value = true
     try {
       await Promise.all([writes, cloudWrites])
       if (remote && (cloudProjects.has(id) || records.value.find(item => item.id === id)?.cloudSaved)) await remote.remove(id)
       await target.remove(id)
+      onRemoved?.(id, owner)
       if (store !== target) return
       cloudProjects.delete(id)
       records.value = records.value.filter(item => item.id !== id)
@@ -198,6 +208,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
   async function renewProject(id) {
     const target = store
     const remote = cloud
+    const owner = storeOwner
     if (!target || busy.value || loading.value) return
     flush()
     const previous = records.value.find(item => item.id === id)
@@ -222,6 +233,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
         }
       } else renewed = await target.renew(id, current.expiresAt)
       if (store !== target) return
+      onPersisted?.(renewed, owner)
       remember(renewed)
       if (activeId.value === id) await loadProject(renewed)
       else replaceExpiredProject()
@@ -244,6 +256,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
     const oldStore = store
     const oldCloud = cloud
     store = null
+    storeOwner = ''
     cloud = null
     oldCloud?.dispose()
     cloudWrites = Promise.resolve()
@@ -266,6 +279,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
       replaceExpiredProject()
     } })
     store = target
+    storeOwner = id
     const remote = localOnly?.value ? null : createStudioCloud(studio)
     cloud = remote
     try {
@@ -284,6 +298,7 @@ export function useAitoStudioProjects({ studio, accountId, localOnly, busy, defa
       const saved = [...savedById.values()].filter(item => item.expiresAt > Date.now()).sort((a, b) => b.updatedAt - a.updatedAt)
       cloudState.value = uploaded === null ? 'local' : 'saved'
       records.value = saved
+      saved.forEach(project => onPersisted?.(project, id))
       if (saved.length) {
         await loadProject(saved[0])
         if (uploaded && uploaded.items.length < AITOIA_STUDIO_LIMIT && !saved[0].cloudSaved && store === target && activeId.value === saved[0].id) {
