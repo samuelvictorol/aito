@@ -106,7 +106,7 @@ useMeta({
         <p class="tokens-landing__tag">Créditos de IA</p>
         <h1 id="aitotokens-title">Aito<span>Tokens</span></h1>
         <p class="tokens-landing__lead">Converse, crie vídeos e conecte seus projetos com saldo pré-pago.</p>
-        <p>Recarregue em reais e use o mesmo saldo no chat, no Estúdio de vídeo e no Estúdio de Marketing.</p>
+        <p>Recarregue em reais e use o mesmo saldo no chat, no Estúdio de vídeo e no Estúdio de Marketing. Pague pelo uso de IA, sem assinatura.</p>
         <div class="tokens-landing__actions">
           <a class="tokens-landing__button" href="#pacotes">Ver pacotes <q-icon name="mdi-arrow-down" /></a>
           <router-link class="tokens-landing__link" to="/aitoia">Abrir AitoIA <q-icon name="mdi-message-text-outline" /></router-link>

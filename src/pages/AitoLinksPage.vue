@@ -26,13 +26,17 @@ useMeta({
         <span><strong>Aito IA</strong><small>Modelos GPT 6+ e Higgsfield Seedance + Genjutsu</small></span>
         <q-icon name="mdi-arrow-right" size="21px" />
       </router-link>
-      <router-link class="bio-links__item" :to="{ name: 'whatsapp-solutions-product' }">
-        <q-icon name="mdi-whatsapp" size="28px" />
+      <router-link class="bio-links__item bio-links__item--whatsapp" :to="{ name: 'whatsapp-solutions-product' }">
+        <q-icon name="mdi-whatsapp" size="28px" aria-hidden="true" />
         <strong>Soluções para WhatsApp</strong>
         <q-icon name="mdi-arrow-right" size="21px" />
+        <span class="bio-links__whatsapp-lines">
+          <span><img src="/meta-symbol.svg" alt="Meta" width="17" height="17"> Disparos em massa (API oficial)</span>
+          <span><q-icon name="mdi-qrcode" size="17px" aria-hidden="true" /> Chatbot e IA (WhatsApp Web QR Code)</span>
+        </span>
       </router-link>
       <a class="bio-links__item" href="https://lembr.it/" target="_blank" rel="noopener noreferrer">
-        <q-icon name="mdi-calendar-check-outline" size="28px" />
+        <img src="/lembrit-link-icon.svg" alt="" width="38" height="38">
         <span><strong>Lembr.it</strong><small>Seu link na bio agendando e lembrando por você</small></span>
         <q-icon name="mdi-open-in-new" size="19px" />
       </a>
@@ -55,11 +59,20 @@ useMeta({
 .bio-links__item > .q-icon { justify-self: center; color: #8ff5df; }
 .bio-links__item strong { display: block; font-size: .99rem; font-weight: 740; }
 .bio-links__item small { display: block; margin-top: 2px; color: #bed4d1; font-size: .81rem; line-height: 1.3; }
+.bio-links__item--whatsapp { row-gap: 7px; }
+.bio-links__whatsapp-lines { display: grid; grid-column: 1 / -1; gap: 2px; padding: 4px 8px; border: 1px solid #28504e; border-radius: 8px; color: #d3e7e3; background: #101f25; }
+.bio-links__whatsapp-lines > span { display: grid; grid-template-columns: 17px minmax(0, 1fr); align-items: center; gap: 8px; padding: 4px 0; font-size: .77rem; line-height: 1.3; }
+.bio-links__whatsapp-lines > span + span { border-top: 1px solid #28504e; }
+.bio-links__whatsapp-lines .q-icon { color: #8ff5df; }
 .bio-links__item:hover { border-color: #73d5c1; background: #133435; }
 .bio-links__item:focus-visible { outline: 3px solid #b7ffe9; outline-offset: 3px; }
 .bio-links__item--offer { border-color: #ffdc7e; background: linear-gradient(110deg, #ffe6a0, #f2c366); color: #2a1b05; animation: bio-offer-glow 2s ease-in-out 2; }
 .bio-links__item--offer small, .bio-links__item--offer > .q-icon { color: #50351c; }
 .bio-links__item--offer:hover { background: #ffe29a; }
 @keyframes bio-offer-glow { 50% { box-shadow: 0 0 23px #ecc36a82; } }
+@media (max-width: 360px) {
+  .bio-links__item--whatsapp { padding-inline: 10px; }
+  .bio-links__whatsapp-lines { padding-inline: 6px; }
+}
 @media (prefers-reduced-motion: reduce) { .bio-links__item { animation: none; transition: none; } }
 </style>

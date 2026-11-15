@@ -1602,7 +1602,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
         </div>
       </div>
       <p v-if="route.query.maintenance === 'chat'" class="video-studio__notice" role="status"><img src="/ia.gif" width="30" height="30" alt="" /> O Chat AitoIA está em manutenção. Desculpe o transtorno. Estamos trazendo novas funcionalidades.</p>
-      <p v-if="!signedIn" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Crie sua conta para ganhar US$ 1 em AitoTokens e começar a criar.</p>
+      <p v-if="!signedIn" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 50.000 AitoTokens no primeiro cadastro.</p>
       <p v-if="error" role="alert" class="video-studio__notice video-studio__notice--error"><q-icon name="mdi-alert-circle-outline" size="20px" /> {{ error }}</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
