@@ -9,7 +9,7 @@
   </router-view>
   <CosmicScene v-if="screenLoading"/>
   <AitoInstallDialog v-if="canPromoteInstall || installOpen" v-model="installOpen" :platform="platform" :native-prompt="!!installEvent" :installing="installing" @install="installAitoIA" />
-  <AitoCodexOffer v-if="!screenLoading && !maintenance && !checkingAvailability && route.meta.requiresAuth !== 'admin'" />
+  <AitoCodexOffer v-if="!themePage && !screenLoading && !maintenance && !checkingAvailability && route.meta.requiresAuth !== 'admin'" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
   <AitoSupportShortcut v-if="showSupportShortcut" />
   <button v-if="canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
@@ -39,13 +39,14 @@ const installOpen = ref(false)
 const installing = ref(false)
 const installed = ref(typeof window !== 'undefined' && isInstalledAito(window))
 const platform = typeof navigator === 'undefined' ? 'desktop' : installPlatform(navigator)
+const themePage = computed(() => route.name === 'aito-codex-theme')
 const isAitoManifest = computed(() => siteManifest(route).url === '/aitoia.webmanifest')
 const hasInstallShortcut = computed(() => route.name === 'landing-3d' || offersAitoInstall(route) ||
   (route.name !== 'aito-ia-video-studio' && Boolean(installEvent.value)))
-const canPromoteInstall = computed(() => isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
+const canPromoteInstall = computed(() => !themePage.value && isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
 const installOfferKey = 'aito.install-offer.v1'
 const customerSession = ref(false)
-const showSupportShortcut = computed(() => customerSession.value && !screenLoading.value &&
+const showSupportShortcut = computed(() => !themePage.value && customerSession.value && !screenLoading.value &&
   route.meta.requiresAuth !== 'admin' && route.meta.requiresAuth !== 'affiliate' &&
   route.name !== 'admin-login' && route.name !== 'affiliate-login')
 let offerShown = false

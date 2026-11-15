@@ -30,6 +30,7 @@
         </picture>
         <span class="user-app__assistant-label"><strong>AitoIA</strong><span><img src="/chatgpt-mark.svg" alt="" width="13" height="13" /> Modelos OpenAI</span></span>
       </router-link>
+      <AitoCodexThemeShortcut class="user-app__theme" />
     </div></q-page></q-page-container>
   </q-layout>
 </template>
@@ -44,6 +45,7 @@ import UserCoursesPanel from 'components/UserCoursesPanel.vue'
 import UserCertificatesPanel from 'components/UserCertificatesPanel.vue'
 import UserProductsPanel from 'components/UserProductsPanel.vue'
 import NotificationBell from 'components/NotificationBell.vue'
+import AitoCodexThemeShortcut from 'components/AitoCodexThemeShortcut.vue'
 
 const UserWebhooksPanel = defineAsyncComponent(() => import('components/UserWebhooksPanel.vue'))
 const UserWhatsappCollaboratorsPanel = defineAsyncComponent(() => import('components/UserWhatsappCollaboratorsPanel.vue'))
@@ -89,7 +91,7 @@ async function logout () { try { await api.post('/auth/logout',{}, {headers:{Aut
 
 <style scoped>
 .user-app { color: #effffb; background: #03090b; }
-.user-app__page { min-height: 100vh; padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); background: radial-gradient(circle at 70% 18%, rgba(19,188,157,.16), transparent 25rem), #03090b; }
+.user-app__page { min-height: 100vh; padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); background: radial-gradient(circle at 70% 18%, rgba(19,188,157,.16), transparent 25rem), #03090b; }
 .user-app__shell { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; }
 .user-app__header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 0; border-bottom: 1px solid rgba(19,188,157,.18); }
 .user-app__session { display: flex; align-items: center; gap: .8rem; }.user-app__session>.user-app__identity { display: grid; gap: .12rem; text-align: right; }.user-app__session strong { color: #effffb; font-size: .78rem; }.user-app__session small { color: rgba(230,255,250,.58); font-size: .64rem; }
@@ -100,6 +102,7 @@ async function logout () { try { await api.post('/auth/logout',{}, {headers:{Aut
 .user-app__ai-link:focus-visible { outline: 2px solid #ffe3a6; outline-offset: 2px; }
 .user-app__assistant { position: fixed; z-index: 20; inset-inline-end: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: .6rem; min-height: 3.3rem; padding: .35rem .8rem .35rem .5rem; border: 1px solid #73d9c0; border-radius: 999px; background: #0c2729; color: #f2fffa; box-shadow: 0 .35rem 1rem #0009; text-decoration: none; }
 .user-app__assistant:hover { background: #143c3c; }
+.user-app__theme { --aito-theme-shortcut-offset: 3.85rem; }
 .user-app__assistant:focus-visible { outline: 2px solid #a4fce4; outline-offset: 3px; }
 .user-app__assistant picture { display: grid; place-items: center; width: 40px; height: 40px; }
 .user-app__assistant picture img { object-fit: contain; }
