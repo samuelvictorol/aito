@@ -110,6 +110,7 @@ function draw(now) {
   const movingPointer = Math.hypot(pointer.targetX - pointer.x, pointer.targetY - pointer.y) > .002
   const scatterColumns = width < 650 ? 4 : 6
   const scatterRows = Math.ceil(cells.length / scatterColumns)
+  const focusedControl = document.activeElement
   let traveling = false
 
   for (const [index, cell] of cells.entries()) {
@@ -118,7 +119,8 @@ function draw(now) {
     const target = docked ? 1 : 0
     cell.progress = reducedMotion ? 1 : mix(cell.from, target, ease(time))
     traveling ||= cell.progress !== target
-    const progress = control.matches(':focus-visible') ? 1 : cell.progress
+    const focused = focusedControl === control
+    const progress = focused ? 1 : cell.progress
     const backgroundX = width * (.045 + .91 * ((index % scatterColumns + .18 + spreadX * .64) / scatterColumns))
     const backgroundY = height * (.075 + .85 * ((Math.floor(index / scatterColumns) + .18 + spreadY * .64) / scatterRows))
     const x = mix(backgroundX + pointer.x * (11 + spreadY * 15) * morph, gridRect.left + cell.x, progress)
@@ -130,7 +132,7 @@ function draw(now) {
     particle.style.transform = `translate3d(${x - cell.width / 2}px,${y - cell.height / 2}px,0) rotate(${rotate}deg) scale(${scale})`
     particle.style.opacity = mix(.82, 1, progress)
     particle.style.setProperty('--case-fill', ease(clamp((progress - .15) / .7)))
-    particle.classList.toggle('is-highlighted', label > .9 && control.matches(':hover, :focus-visible'))
+    particle.classList.toggle('is-highlighted', label > .9 && (focused || control.matches(':hover')))
     slot.style.setProperty('--case-label', label)
     slot.classList.toggle('is-arrived', progress >= .88)
   }
