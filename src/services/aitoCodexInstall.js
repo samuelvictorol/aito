@@ -12,8 +12,7 @@ export const codexDefaultSetupPrompt = `Ajude-me a configurar o AitoIA no Codex 
 3. Na primeira abertura, vou inserir a AitoKey apenas no campo protegido do Configurar AitoCodex Key. Se eu regenerar a chave no painel, quero usar o atalho com a chave verde ou pedir “@AitoIA Abra Configurar AitoCodex Key”.
 4. Confirme se os dois atalhos foram criados e se uma conversa nova mostra AitoTokens como provedor. Peça minha autorização antes de um teste pago.`
 
-export const codexOfferInterval = 10 * 60 * 1000
-export const codexOfferStorageKey = 'aito.codex-offer.last-shown.v1'
+export const codexOfferInterval = 15 * 60 * 1000
 
 const promotedRoutes = new Set([
   'landing-3d', 'aito-tokens-product', 'aito-codex-product', 'user-app', 'aito-ia',

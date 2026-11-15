@@ -3,7 +3,7 @@
   <router-view v-else v-slot="{ Component }">
     <component :is="Component">
       <template v-if="canPromoteInstall && route.name === 'landing-3d'" #install-aitoia>
-        <button type="button" class="aito-install-button aito-install-button--landing" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
+        <div class="aito-install-button aito-install-button--landing"><button type="button" class="aito-install-action" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button><button type="button" class="aito-install-close" aria-label="Ocultar botão Instalar Aito IA" @click="installDismissed = true"><q-icon name="mdi-close" size="16px" /></button></div>
       </template>
     </component>
   </router-view>
@@ -12,7 +12,7 @@
   <AitoCodexOffer v-if="!themePage && !screenLoading && !maintenance && !checkingAvailability && route.meta.requiresAuth !== 'admin'" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
   <AitoSupportShortcut v-if="showSupportShortcut" />
-  <button v-if="canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
+  <div v-if="canPromoteInstall && route.name !== 'landing-3d'" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }"><button type="button" class="aito-install-action" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button><button type="button" class="aito-install-close" aria-label="Ocultar botão Instalar Aito IA" @click="installDismissed = true"><q-icon name="mdi-close" size="16px" /></button></div>
 </template>
 
 <script setup>
@@ -36,6 +36,7 @@ const AdminProviderAlert = defineAsyncComponent(() => import('./components/Admin
 const AitoSupportShortcut = defineAsyncComponent(() => import('./components/AitoSupportShortcut.vue'))
 const installEvent = shallowRef(null)
 const installOpen = ref(false)
+const installDismissed = ref(false)
 const installing = ref(false)
 const installed = ref(typeof window !== 'undefined' && isInstalledAito(window))
 const platform = typeof navigator === 'undefined' ? 'desktop' : installPlatform(navigator)
@@ -43,14 +44,11 @@ const themePage = computed(() => route.name === 'aito-codex-theme')
 const isAitoManifest = computed(() => siteManifest(route).url === '/aitoia.webmanifest')
 const hasInstallShortcut = computed(() => route.name === 'landing-3d' || offersAitoInstall(route) ||
   (route.name !== 'aito-ia-video-studio' && Boolean(installEvent.value)))
-const canPromoteInstall = computed(() => !themePage.value && isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
-const installOfferKey = 'aito.install-offer.v1'
+const canPromoteInstall = computed(() => !installDismissed.value && !themePage.value && isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
 const customerSession = ref(false)
 const showSupportShortcut = computed(() => !themePage.value && customerSession.value && !screenLoading.value &&
   route.meta.requiresAuth !== 'admin' && route.meta.requiresAuth !== 'affiliate' &&
   route.name !== 'admin-login' && route.name !== 'affiliate-login')
-let offerShown = false
-let offerTimer
 
 function refreshCustomerSession() {
   if (typeof window === 'undefined') return
@@ -84,20 +82,6 @@ async function installAitoIA() {
 watch(() => route.fullPath, () => { installOpen.value = false })
 watch(() => route.fullPath, refreshCustomerSession, { immediate: true })
 watch(isAitoManifest, active => { if (!active) installEvent.value = null })
-watch([() => route.fullPath, screenLoading], ([, loading]) => {
-  if (typeof window === 'undefined') return
-  window.clearTimeout(offerTimer)
-  if (!offersAitoInstall(route) || loading || installed.value || offerShown) return
-  try { if (sessionStorage.getItem(installOfferKey)) return } catch { /* Storage is optional. */ }
-  offerTimer = window.setTimeout(() => {
-    if (installed.value || !offersAitoInstall(route) || !isAitoManifest.value || document.visibilityState !== 'visible' ||
-        document.activeElement?.matches('input, textarea, select, [contenteditable]') || document.querySelector('.q-dialog__inner')) return
-    offerShown = true
-    try { sessionStorage.setItem(installOfferKey, '1') } catch { /* Keep the offer dismissed in memory. */ }
-    installOpen.value = true
-  }, 800)
-}, { immediate: true })
-
 function handleSessionExpired(event) {
   refreshCustomerSession()
   const loginPath = event.detail?.loginPath || '/?auth=login'
@@ -124,12 +108,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('storage', refreshCustomerSession)
   window.removeEventListener('beforeinstallprompt', captureInstall)
   window.removeEventListener('appinstalled', markInstalled)
-  window.clearTimeout(offerTimer)
 })
 </script>
 
 <style scoped>
-.aito-install-button { position: fixed; top: calc(72px + env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 20; display: flex; align-items: center; gap: .4rem; padding: .45rem .65rem; border: 1px solid #5ead9e; border-radius: .55rem; background: #0c2a28; color: #c0fcf0; cursor: pointer; font: inherit; font-size: .75rem; }
+.aito-install-button { position: fixed; top: calc(72px + env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 20; display: flex; align-items: stretch; border: 1px solid #5ead9e; border-radius: .55rem; background: #0c2a28; color: #c0fcf0; cursor: pointer; font: inherit; font-size: .75rem; }
+.aito-install-action, .aito-install-close { display: flex; align-items: center; gap: .4rem; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.aito-install-action { padding: .45rem .65rem; }
+.aito-install-close { padding: 0 .45rem; border-left: 1px solid #5ead9e; }
 .aito-install-button--landing { position: static; pointer-events: auto; }
 @media (max-width: 670px) {
   .aito-install-button--workspace { top: calc(105px + env(safe-area-inset-top)); }

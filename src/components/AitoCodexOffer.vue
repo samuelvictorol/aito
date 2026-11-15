@@ -1,9 +1,13 @@
+<script>
+let lastShown = 0
+</script>
+
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import { usd } from 'src/composables/useAitoIA'
-import { codexOfferDelay, codexOfferInterval, codexOfferStorageKey, codexOfficialUrl, codexProductPath, offersCodex } from 'src/services/aitoCodexInstall'
+import { codexOfferDelay, codexOfferInterval, codexOfficialUrl, codexProductPath, offersCodex } from 'src/services/aitoCodexInstall'
 import AuthDialog from 'components/AuthDialog.vue'
 import AitoCodexInstallDialog from './AitoCodexInstallDialog.vue'
 import AitoCodexInstallVideo from './AitoCodexInstallVideo.vue'
@@ -18,7 +22,6 @@ const profilePath = '/app?tab=profile'
 const eligibleRoute = computed(() => offersCodex(route, false))
 let timer
 let offersRequest
-let lastShown = 0
 
 function readStorage(key) {
   try { return window.localStorage.getItem(key) } catch { return null }
@@ -33,14 +36,13 @@ function checkOffer() {
   if (!eligibleRoute.value) return
   if (readStorage('aito_admin_token')) return schedule(codexOfferInterval)
   const now = Date.now()
-  const remaining = codexOfferDelay(now, Math.max(lastShown, Number(readStorage(codexOfferStorageKey)) || 0))
+  const remaining = codexOfferDelay(now, lastShown)
   if (remaining) return schedule(remaining)
   if (open.value || authOpen.value || installGuide.value || document.visibilityState !== 'visible' ||
       document.activeElement?.matches('input, textarea, select, [contenteditable]') || document.querySelector('.q-dialog__inner')) {
     return schedule(15_000)
   }
   lastShown = now
-  try { window.localStorage.setItem(codexOfferStorageKey, String(now)) } catch { /* Fall back to the in-memory timestamp. */ }
   open.value = true
   schedule(codexOfferInterval)
   loadOffers()
