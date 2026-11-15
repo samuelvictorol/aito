@@ -1,5 +1,6 @@
 <template>
-  <router-view v-slot="{ Component }">
+  <AitoIAMaintenance v-if="maintenance || checkingAvailability" :area="maintenance" :checking="checkingAvailability" @retry="refreshAvailability" />
+  <router-view v-else v-slot="{ Component }">
     <component :is="Component">
       <template v-if="canPromoteInstall && route.name === 'landing-3d'" #install-aitoia>
         <button type="button" class="aito-install-button aito-install-button--landing" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
@@ -9,7 +10,7 @@
   <CosmicScene v-if="screenLoading"/>
   <AitoInstallDialog v-if="canPromoteInstall || installOpen" v-model="installOpen" :platform="platform" :native-prompt="!!installEvent" :installing="installing" @install="installAitoIA" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
-  <button v-if="canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
+  <button v-if="canPromoteInstall && route.name !== 'landing-3d'" type="button" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button>
 </template>
 
 <script setup>
@@ -19,11 +20,14 @@ import CosmicScene from './components/CosmicScene.vue'
 import {screenLoading} from './services/screen-loading'
 import { installPlatform, isInstalledAito, offersAitoInstall } from './services/aitoInstall'
 import { siteManifest } from './services/siteManifest'
+import AitoIAMaintenance from './components/AitoIAMaintenance.vue'
+import { useAitoAvailabilityBoundary } from './composables/useAitoAvailability'
 import { useRoute, useRouter } from 'vue-router'
 
 const $q = useQuasar()
 const router = useRouter()
 const route = useRoute()
+const { maintenance, checkingAvailability, refreshAvailability } = useAitoAvailabilityBoundary(route, router)
 const AitoInstallDialog = defineAsyncComponent(() => import('./components/AitoInstallDialog.vue'))
 const AdminProviderAlert = defineAsyncComponent(() => import('./components/AdminProviderAlert.vue'))
 const installEvent = shallowRef(null)
@@ -34,7 +38,7 @@ const platform = typeof navigator === 'undefined' ? 'desktop' : installPlatform(
 const isAitoManifest = computed(() => siteManifest(route).url === '/aitoia.webmanifest')
 const hasInstallShortcut = computed(() => route.name === 'landing-3d' || offersAitoInstall(route) ||
   (route.name !== 'aito-ia-video-studio' && Boolean(installEvent.value)))
-const canPromoteInstall = computed(() => isAitoManifest.value && !installed.value && !screenLoading.value && hasInstallShortcut.value)
+const canPromoteInstall = computed(() => isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
 const installOfferKey = 'aito.install-offer.v1'
 let offerShown = false
 let offerTimer
@@ -104,6 +108,9 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.aito-install-button { position: fixed; top: calc(60px + env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 20; display: flex; align-items: center; gap: .4rem; padding: .45rem .65rem; border: 1px solid #5ead9e; border-radius: .55rem; background: #0c2a28; color: #c0fcf0; cursor: pointer; font: inherit; font-size: .75rem; }
+.aito-install-button { position: fixed; top: calc(72px + env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 20; display: flex; align-items: center; gap: .4rem; padding: .45rem .65rem; border: 1px solid #5ead9e; border-radius: .55rem; background: #0c2a28; color: #c0fcf0; cursor: pointer; font: inherit; font-size: .75rem; }
 .aito-install-button--landing { position: static; pointer-events: auto; }
+@media (max-width: 670px) {
+  .aito-install-button--workspace { top: calc(105px + env(safe-area-inset-top)); }
+}
 </style>

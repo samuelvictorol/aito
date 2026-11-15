@@ -42,6 +42,9 @@ function resolveSession(token) {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.data?.code === 'AITO_MAINTENANCE' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('aito:maintenance', { detail: error.response.data.area }))
+    }
     const responseMessage = String(error.response?.data?.message || '')
     const requestToken = getRequestToken(error.config)
     const isExpiredToken = error.response?.status === 401 && requestToken && /token.*(invalido|inválido|expirado)/i.test(responseMessage)

@@ -1,6 +1,7 @@
 import { readAitoProjectZip, zipAitoIAFiles } from './aitoiaArchive.js'
 import { marketingFormats } from './aitoiaMarketingLocal.js'
 import { maxStudioScenes, videoFormats } from './aitoiaVideo.js'
+import { cleanSceneScript, normalizeVoiceReference, voiceComponentType } from './aitoiaVideoPlan.js'
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp']
 const videoTypes = ['video/mp4', 'video/webm']
@@ -40,7 +41,7 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     manifest = JSON.parse(await json.text())
   } catch { throw invalid() }
   signal?.throwIfAborted()
-  if (manifest?.format !== `aitoia-${studio}` || !(studio === 'video' ? [1, 2, 3] : [1]).includes(manifest.version)) throw invalid()
+  if (manifest?.format !== `aitoia-${studio}` || !(studio === 'video' ? [1, 2, 3, 4] : [1]).includes(manifest.version)) throw invalid()
   async function file(name, allowed, optionalRoot = false) {
     if (name === undefined || name === null) return undefined
     if (typeof name !== 'string' || (!optionalRoot && !/^midias\/[^/]+$/.test(name))) throw invalid()
@@ -75,22 +76,33 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     originalId: item.id, id: uuid(), number: index + 1, kind: text(item.kind, 40), expiresAt, file: await file(item.media, videoTypes),
   })))).filter(item => item.file)
   const clipIds = new Map(clips.map(item => [item.originalId, item.id]))
+  const scriptRows = rows(manifest.plan?.scenes, maxStudioScenes)
+  const scriptIds = new Map(scriptRows.filter(item => typeof item?.id === 'string').map(item => [item.id, uuid()]))
   const scenes = await Promise.all(rows(manifest.scenes, maxStudioScenes).map(async scene => {
     const asset = await file(scene.media, [...imageTypes, ...videoTypes])
     return { id: uuid(), heading: text(scene.heading, 140), caption: text(scene.caption, 500), file: asset,
       duration: Number.isFinite(scene.duration) ? Math.max(.01, scene.duration) : 5,
       offset: Number.isFinite(scene.offset) ? Math.max(0, scene.offset) : 0,
-      cut: Boolean(scene.cut), kind: text(scene.kind, 40), clipId: clipIds.get(scene.clipId),
+      cut: Boolean(scene.cut), kind: text(scene.kind, 40), clipId: clipIds.get(scene.clipId), scriptId: scriptIds.get(scene.scriptId),
       missingMedia: !asset && Boolean(scene.missingMedia || scene.expiresAt) }
   }))
   const componentTypes = rows(manifest.componentTypes, 20).map(type => text(type, 32)).filter(Boolean)
-  const components = await Promise.all(rows(manifest.components, 200).map(async item => ({
-    id: uuid(), type: text(item.type, 32), title: text(item.title, 80), prompt: text(item.prompt, 2000), file: await file(item.media, imageTypes),
-  })))
+  const componentRows = rows(manifest.components, 200)
+  const componentIds = new Map(componentRows.filter(item => typeof item?.id === 'string').map(item => [item.id, uuid()]))
+  const components = await Promise.all(componentRows.map(async item => {
+    const type = text(item.type, 32)
+    const voiceComponent = manifest.version >= 4 && type === voiceComponentType
+    const asset = await file(item.media, voiceComponent ? audioTypes : imageTypes)
+    return { id: componentIds.get(item.id) || uuid(), type, title: text(item.title, 80), prompt: text(item.prompt, 2000),
+      file: voiceComponent && asset ? await normalizeVoiceReference(asset) : asset, voiceId: componentIds.get(item.voiceId) }
+  }))
+  const sceneScripts = scriptRows.map(item => cleanSceneScript({ ...item, id: scriptIds.get(item.id),
+    componentIds: rows(item.componentIds, 12).map(id => componentIds.get(id)).filter(Boolean) }))
   const frames = async (items, max) => Promise.all(rows(items, max).map(name => file(name, imageTypes)))
   const recordingName = ['aitoia-video.mp4', 'aitoia-video.webm'].find(name => files.has(name))
   return { title, formatId: format.id, projectColor: text(manifest.projectColor, 7), scenes, sceneId: scenes[0].id,
     clips: clips.map(({ originalId: _id, ...clip }) => clip), selectedClipId: clips[0]?.id, components, componentTypes,
+    masterScript: text(manifest.plan?.master, 6000), sceneScripts,
     prompt: text(manifest.configuration?.prompt, 2000), scriptPrompt: text(manifest.configuration?.scriptPrompt, 2000),
     generationMode: text(manifest.configuration?.mode, 30), videoModel: text(manifest.configuration?.model, 80),
     narrationText: text(manifest.narration?.text, 12000), narration: await file(manifest.narration?.media, audioTypes),

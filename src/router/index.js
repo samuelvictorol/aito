@@ -4,6 +4,7 @@ import { createRouter, createMemoryHistory, createWebHistory, createWebHashHisto
 import routes from './routes'
 import {installScreenLoading} from '../services/screen-loading'
 import { applySiteManifest } from '../services/siteManifest'
+import { landing3dSections } from '../data/landing3dSections'
 
 /*
  * If not building with SSR mode, you can
@@ -44,6 +45,10 @@ export default defineRouter(function (/* { store, ssrContext } */) {
   Router.beforeEach((to) => {
     if (process.env.SERVER) return true
 
+    if (to.path === '/' && to.hash && landing3dSections.some(section => `#${section.id}` === to.hash)) {
+      return { name: 'landing-3d', query: to.query, hash: to.hash }
+    }
+
     const token = localStorage.getItem('aito_user_token')
     const affiliateToken = localStorage.getItem('aito_affiliate_token')
     let sessionUser = {}
@@ -54,7 +59,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     }
 
     if (to.meta?.requiresAuth === 'user' && !token) {
-      return '/'
+      return { name: 'aito-ia', query: { auth: 'login' } }
     }
 
 

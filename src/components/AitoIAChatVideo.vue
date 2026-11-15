@@ -3,8 +3,10 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
+import AitoIAMaintenance from 'components/AitoIAMaintenance.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { usd } from 'src/composables/useAitoIA'
+import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { saveVideoDraft } from 'src/services/aitoiaVideoDraft'
@@ -13,6 +15,7 @@ import { checkImageReference, checkVideoReference, putImageReference, putVideoRe
 const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
 const { accountId, signedIn, walletId, status, currentModel, effort, speed } = props.state
+const { videoInMaintenance } = useAitoAvailability()
 const catalog = shallowRef(null)
 const base = shallowRef(props.initialVideo || null)
 const imageBases = shallowRef((props.initialImages || []).filter(file => {
@@ -125,6 +128,7 @@ function payload() {
 }
 
 function estimate() {
+  if (videoInMaintenance.value) return
   run('Cotando clipe…', async signal => {
     const body = payload()
     if (base.value) {
@@ -193,7 +197,7 @@ async function poll(signal) {
 }
 
 function generate() {
-  if (!quote.value) return
+  if (!quote.value || videoInMaintenance.value) return
   const { body, quoteToken } = quote.value
   run('Gerando clipe…', async signal => {
     let data
@@ -263,13 +267,16 @@ onBeforeUnmount(() => { operation?.abort(); catalogRequest?.abort(); emit('busy'
       <label>Configuração<select v-model="presetId" :disabled="busy"><option v-for="item in presets" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
     </div>
     <div class="chat-video__actions">
-      <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
-      <button v-else-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
-      <button v-else-if="quote" type="button" :disabled="busy" @click="generate">Gerar por até {{ usd(quote.billedUsdCents) }}</button>
-      <button v-else-if="models.length" type="button" :disabled="busy || !prompt.trim() || !presetId" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
-      <template v-else-if="catalog"><span>{{ (catalog.videoModels?.length || catalog.referenceModels?.length) ? 'Nenhum modelo disponível aceita esta combinação de referências.' : 'A geração de clipes aguarda a configuração da Higgsfield.' }}</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
+      <button v-if="job" type="button" :disabled="busy" @click="run('Consultando clipe…', poll, false)">Verificar geração</button>
+      <template v-else-if="!videoInMaintenance">
+        <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
+        <button v-else-if="quote" type="button" :disabled="busy" @click="generate">Gerar por até {{ usd(quote.billedUsdCents) }}</button>
+        <button v-else-if="models.length" type="button" :disabled="busy || !prompt.trim() || !presetId" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
+        <template v-else-if="catalog"><span>{{ (catalog.videoModels?.length || catalog.referenceModels?.length) ? 'Nenhum modelo disponível aceita esta combinação de referências.' : 'A geração de clipes aguarda a configuração da Higgsfield.' }}</span><button type="button" :disabled="busy" @click="loadCatalog">Atualizar</button></template>
+      </template>
       <span v-if="action" role="status"><q-spinner size="16px" /> {{ action }}</span>
     </div>
+    <AitoIAMaintenance v-if="videoInMaintenance" area="video" compact />
     <AitoVideoProgress v-if="job && busy" :stage="job.status || 'queued'" />
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>

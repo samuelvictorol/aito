@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import routes from '../src/router/routes.js'
 import { siteManifest } from '../src/services/siteManifest.js'
 import { installPlatform, isInstalledAito, offersAitoInstall } from '../src/services/aitoInstall.js'
 import { requestsVideoGeneration, readVideoDraft, saveVideoDraft, clearVideoDraft } from '../src/services/aitoiaVideoDraft.js'
@@ -12,11 +14,23 @@ test('public, client and admin routes advertise distinct app installations', asy
   const notify = await manifest('../communications/frontend/public/manifest.webmanifest')
   assert.notEqual(aito.id, notify.id)
   assert.notEqual(aito.scope, notify.scope)
-  assert.equal(aito.start_url, '/aitoia')
+  assert.equal(aito.start_url, '/')
+  assert.equal(aito.id, '/aitoia')
   assert.equal(siteManifest({ path: '/app' }).title, 'Aito IA')
   assert.equal(siteManifest({ path: '/whatsapp-solucoes' }).title, 'Aito IA')
   assert.equal(siteManifest({ path: '/admin/comunicacao' }).title, 'AitoNotify')
   assert.equal(siteManifest({ path: '/generate-notifications' }).title, 'Notification Lab')
+})
+
+test('the home route opens AitoIA and historical routes keep their destinations', () => {
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  assert.equal(router.resolve('/').name, 'aito-ia')
+  assert.equal(router.resolve('/aitoia?auth=register').name, 'aito-ia')
+  assert.equal(router.resolve('/aitoia?auth=register').query.auth, 'register')
+  assert.equal(router.resolve('/sobre').name, 'landing-3d')
+  assert.equal(router.resolve('/quem-somos').name, 'landing-3d')
+  assert.equal(router.resolve('/links').name, 'bio-links')
+  assert.equal(router.resolve({ name: 'aito-ia' }).href, '/')
 })
 
 test('the installation offer replaces the Codex popup and adapts to the current device', async () => {

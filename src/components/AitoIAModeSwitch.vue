@@ -1,5 +1,7 @@
 <script setup>
 import { ref } from 'vue'
+import AitoIAMaintenance from './AitoIAMaintenance.vue'
+import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 
 defineProps({
   mode: { type: String, default: 'chat' },
@@ -7,6 +9,7 @@ defineProps({
 })
 const emit = defineEmits(['chat-video'])
 const open = ref(false)
+const { videoInMaintenance } = useAitoAvailability()
 </script>
 
 <template>
@@ -27,7 +30,8 @@ const open = ref(false)
         <h2 id="aito-video-mode-title">Como você quer criar seu vídeo?</h2>
         <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar" />
       </header>
-      <div class="aito-mode-dialog__actions">
+      <AitoIAMaintenance v-if="videoInMaintenance" area="video" compact />
+      <div v-else class="aito-mode-dialog__actions">
         <button v-close-popup type="button" @click="emit('chat-video')">
           <span class="aito-mode-dialog__option-icon" aria-hidden="true"><q-icon name="mdi-message-text-outline" size="23px" /></span>
           <span><strong>Gerar no chat</strong><small>Descreva o clipe, anexe referências e confirme o preço da Higgsfield.</small></span>
@@ -39,7 +43,7 @@ const open = ref(false)
           <q-icon class="aito-mode-dialog__arrow" name="mdi-chevron-right" size="20px" aria-hidden="true" />
         </router-link>
       </div>
-      <footer><img src="/aitotokens.svg" alt="" width="18" height="18" /> As duas opções usam sua carteira AitoTokens.</footer>
+      <footer v-if="!videoInMaintenance"><img src="/aitotokens.svg" alt="" width="18" height="18" /> As duas opções usam sua carteira AitoTokens.</footer>
     </q-card>
   </q-dialog>
 </template>

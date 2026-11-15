@@ -8,7 +8,7 @@ export function useAitoStudioProjects({ studio, accountId, busy, defaultName, sn
   const storageError = ref('')
   const records = shallowRef([])
   const cloudState = ref('loading')
-  const projects = computed(() => records.value.map(({ id, title, expiresAt }) => ({ id, title, expiresAt })))
+  const projects = computed(() => records.value.map(({ id, title, expiresAt, projectColor }) => ({ id, title, expiresAt, projectColor })))
   const atLimit = computed(() => projects.value.length >= AITOIA_STUDIO_LIMIT)
   let store
   let cloud

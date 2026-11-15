@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf" class="user-app">
     <q-page-container><q-page class="user-app__page"><div class="user-app__shell">
-      <header class="user-app__header"><router-link class="user-app__brand" to="/"><img src="/aito-logo-restored.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="user-app__session"><NotificationBell /><div class="user-app__identity"><strong>{{ firstName }}</strong><small>{{ sessionUser.email }}</small></div><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
+      <header class="user-app__header"><router-link class="user-app__brand" to="/sobre"><img src="/aito-logo-restored.png" alt="" /><span>AITO<span>SOFTWARES</span></span></router-link><div class="user-app__session"><NotificationBell /><div class="user-app__identity"><strong>{{ firstName }}</strong><small>{{ sessionUser.email }}</small></div><q-btn flat round icon="mdi-logout" aria-label="Sair" @click="logout"><q-tooltip>Sair</q-tooltip></q-btn></div></header>
       <nav class="user-app__nav" aria-label="Área do usuário">
         <button v-for="item in menu" :key="item.id" type="button" :class="{ 'is-active': activeMenu === item.id }" :aria-current="activeMenu === item.id ? 'page' : undefined" @click="showTab(item.id)"><q-icon :name="item.icon" /> {{ item.label }}</button>
         <router-link class="user-app__ai-link" :to="{ name: 'aito-ia' }"><q-icon name="mdi-creation" /> AitoIA <q-icon name="mdi-arrow-top-right" aria-hidden="true" /></router-link>
@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
 onMounted(async () => { if(sessionStorage.getItem('aito.productClaim')){router.replace('/produto/acesso');return} try { const response=await api.get('/products/aitonotify/profile',{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});localStorage.setItem('aito_user',JSON.stringify(response.data.data)); sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
 async function saveProfile () { saving.value = true; try { const response=await api.patch('/products/aitonotify/profile',{name:profile.name.trim()},{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});sessionUser.value=response.data.data;localStorage.setItem('aito_user',JSON.stringify(sessionUser.value));$q.notify({type:'positive',message:'Perfil salvo.'}) }catch(error){$q.notify({type:'negative',message:error.response?.data?.message || 'Não foi possível salvar.'})}finally{saving.value=false} }
 
-async function logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')},withCredentials:true}); localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/') } catch { $q.notify({type:'negative',message:'Não foi possível encerrar o acesso neste dispositivo. Tente novamente.'}) } }
+async function logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')},withCredentials:true}); localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/sobre') } catch { $q.notify({type:'negative',message:'Não foi possível encerrar o acesso neste dispositivo. Tente novamente.'}) } }
 </script>
 
 <style scoped>

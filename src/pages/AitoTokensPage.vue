@@ -93,7 +93,7 @@ useMeta({
 <template>
   <main class="tokens-landing">
     <header class="tokens-landing__nav">
-      <router-link to="/" class="tokens-landing__brand" aria-label="Página inicial da AitoSoftwares">
+      <router-link to="/sobre" class="tokens-landing__brand" aria-label="Página inicial da AitoSoftwares">
         <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
         <strong>AitoSoftwares</strong>
       </router-link>
@@ -159,7 +159,7 @@ useMeta({
       </div>
     </section>
     <footer class="tokens-landing__footer">
-      <router-link to="/">AitoSoftwares</router-link>
+      <router-link to="/sobre">AitoSoftwares</router-link>
       <router-link to="/politica-privacidade">Privacidade</router-link>
       <router-link to="/termos-servico">Termos de serviço</router-link>
     </footer>

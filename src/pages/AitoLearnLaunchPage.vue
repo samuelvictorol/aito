@@ -18,7 +18,7 @@
     <div class="learn-launch__veil" aria-hidden="true"></div>
 
     <header class="learn-launch__header">
-      <router-link class="learn-launch__brand" to="/" aria-label="Voltar para AitoSoftwares">
+      <router-link class="learn-launch__brand" to="/sobre" aria-label="Voltar para AitoSoftwares">
         <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
         <span>AITO<span>LEARN</span></span>
       </router-link>
@@ -33,7 +33,7 @@
         <button v-if="isAffiliate" class="learn-launch__login" type="button" @click="router.push('/affiliate')">
           <q-icon name="mdi-account-star-outline" aria-hidden="true" /> Area do afiliado
         </button>
-        <button class="learn-launch__back" type="button" @click="router.push('/')">
+        <button class="learn-launch__back" type="button" @click="router.push('/sobre')">
           <q-icon name="mdi-arrow-left" aria-hidden="true" />
           Voltar para Aito
         </button>

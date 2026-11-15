@@ -404,7 +404,7 @@ onBeforeUnmount(() => {
           <q-btn ref="drawerButton" flat round icon="mdi-menu" aria-controls="marketing-workspace" :aria-expanded="drawerOpen"
             :aria-label="drawerOpen ? 'Recolher projetos e componentes' : 'Abrir projetos e componentes'"
             @click="showWorkspace"><q-tooltip>Projetos e componentes</q-tooltip></q-btn>
-          <router-link to="/" class="marketing__brand" aria-label="Site AitoSoftwares"><img src="/ia.gif" width="37" height="37" alt="" /><strong>AitoIA</strong></router-link>
+          <router-link :to="{ name: 'aito-ia' }" class="marketing__brand" aria-label="Chat AitoIA"><img src="/ia.gif" width="37" height="37" alt="" /><strong>AitoIA</strong></router-link>
         </div>
         <div class="marketing__mode"><AitoIAModeSwitch mode="marketing" :busy="busy" /></div>
         <div class="marketing__account">
@@ -635,6 +635,16 @@ onBeforeUnmount(() => {
 .marketing__notice--error { background: var(--aito-ai-error-soft); border-color: var(--aito-ai-error-line); }
 .marketing__notice button { color: var(--aito-ai-accent); background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .marketing__actions { display: flex; justify-content: end; gap: 8px; }
+.marketing__main { background: radial-gradient(ellipse at 82% 12%, #7357ac25, transparent 55%), radial-gradient(ellipse at 6% 2%, #77c4ac1c, transparent 54%); border-radius: 0 0 22px 22px; }
+.marketing__intro h1 { color: #dcffef; }
+.marketing__form { border-color: #3e756e; background: linear-gradient(150deg, #102d29, #0a1e24 64%); }
+.marketing__preview { border-color: #64577c; background: linear-gradient(150deg, #252239, #121f28 65%); }
+.marketing__preview h2 { color: #eadcff; }
+.marketing__canvas, .marketing__result { background: #0a131d; }
+.marketing__canvas > div { background: linear-gradient(150deg, #26213d, #151f34); border-color: #766498; color: #ddd2ec; }
+.marketing__formats label:nth-child(2n) { background: #202a3c; }
+.marketing__formats label:has(:checked) { background: #134c42; border-color: #52d0b1; }
+.marketing__formats label:nth-child(2n):has(:checked) { background: #342951; border-color: #b49ce8; color: #eee3ff; }
 @media (max-width: 900px) {
   .marketing__drawer-content { padding-top: calc(16px + env(safe-area-inset-top)); }
 }

@@ -2,7 +2,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { api } from 'boot/axios'
 import { AITOIA_CHAT_LIMIT, createAitoIALocalStore } from 'src/services/aitoiaLocal'
 import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/services/aitoiaArchive'
-import { checkAttachment, checkoutLink, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
+import { checkAttachment, checkoutLink, fileKind, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
 import { artifactReferences, fileFromArtifact, fileFromImage, prepareArtifactReferences } from 'src/services/aitoiaArtifacts'
 
 const sessionKey = 'aito_user_token'
@@ -303,16 +303,20 @@ export function useAitoIA({ chatHistory = true } = {}) {
   function addFiles(files) {
     error.value = ''
     const result = [...attachments.value]
-    let total = result.reduce((sum, item) => sum + item.blob.size, 0)
+    let total = result.reduce((sum, item) => sum + (fileKind(item) === 'video' ? 0 : item.blob.size), 0)
+    let hasVideo = result.some(item => fileKind(item) === 'video')
     for (const file of files) {
       const invalid = checkAttachment(file)
       if (invalid) { error.value = invalid; continue }
-      if (result.length >= MAX_ATTACHMENTS || total + file.size > MAX_ATTACHMENT_BYTES) {
-        error.value = 'Cada mensagem aceita até 4 arquivos e 4,5 MB no total.'
+      const video = fileKind(file) === 'video'
+      if (video && hasVideo) { error.value = 'Anexe até um vídeo por mensagem.'; continue }
+      if (result.length >= MAX_ATTACHMENTS || (!video && total + file.size > MAX_ATTACHMENT_BYTES)) {
+        error.value = 'Cada mensagem aceita até 4 arquivos. Imagens e documentos podem somar até 4,5 MB.'
         break
       }
-      total += file.size
-      result.push({ id: crypto.randomUUID(), name: file.name || 'Imagem colada', type: file.type, blob: file })
+      if (video) hasVideo = true
+      else total += file.size
+      result.push({ id: crypto.randomUUID(), name: file.name || (video ? 'Vídeo anexado' : 'Imagem colada'), type: file.type, blob: file })
     }
     attachments.value = result
   }
@@ -354,7 +358,7 @@ export function useAitoIA({ chatHistory = true } = {}) {
         chats.value = [next, ...chats.value.filter(item => item.id !== next.id)]
       }
       scrollToEnd()
-      const { input, shortened } = await requestMessages(messages)
+      const { input, shortened } = await requestMessages(messages, { signal: controller.signal })
       if (controller.signal.aborted || sessionEpoch !== epoch) return
       contextShortened.value = shortened
       const body = { input, ...parameters, artifacts: true }

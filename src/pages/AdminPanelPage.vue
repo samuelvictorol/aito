@@ -129,6 +129,7 @@ const AdminAitoTokensPanel = defineAsyncComponent(() => import('components/Admin
 const AdminLandingVideos = defineAsyncComponent(() => import('components/AdminLandingVideos.vue'))
 const siteLinks = [
   { route: 'landing-3d', label: 'Site AitoSoftwares', icon: 'mdi-home-outline' },
+  { route: 'bio-links', label: 'Links da bio', icon: 'mdi-link-variant' },
   { route: 'whatsapp-solutions-product', label: 'Aplicativo Desktop', icon: 'mdi-microsoft-windows' },
   { route: 'whatsapp-solutions-source', label: 'Código-fonte Whitelabel', icon: 'mdi-code-braces' },
   { route: 'communication-demo', label: 'Demonstração de Comunicação', icon: 'mdi-play-box-outline' },

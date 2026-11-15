@@ -1,4 +1,4 @@
-export const AITO_INSTALL_PATH = '/aitoia'
+export const AITO_INSTALL_PATH = '/'
 
 const offerRoutes = new Set(['aito-tokens-product', 'user-app', 'aito-ia', 'aito-ia-marketing-studio'])
 

@@ -17,7 +17,7 @@
           <q-btn unelevated no-caps class="full-width q-mt-md customer-login__button" icon="mdi-briefcase-outline" label="Entrar no portal" type="submit" :loading="loading" />
           <q-btn outline no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-google" label="Continuar com Google" type="button" @click="continueWithGoogle" />
           <q-btn flat no-caps class="full-width customer-login__forgot q-mt-md" icon="mdi-lock-reset" label="Esqueci minha senha" type="button" @click="forgotOpen = true" />
-          <q-btn flat no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-arrow-left" label="Voltar para a AitoSoftwares" type="button" @click="$router.push('/')" />
+          <q-btn flat no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-arrow-left" label="Voltar para a AitoSoftwares" type="button" @click="$router.push('/sobre')" />
         </q-form>
       </q-page>
     </q-page-container>

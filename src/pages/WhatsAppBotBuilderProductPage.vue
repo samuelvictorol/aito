@@ -103,7 +103,7 @@ function scrollToProductSection(event) {
     <q-page-container>
       <q-page class="product solutions-product" @click="scrollToProductSection">
         <header class="solutions-navbar">
-          <router-link to="/" class="brand solutions-brand" aria-label="AitoSoftwares, página inicial">
+          <router-link to="/sobre" class="brand solutions-brand" aria-label="AitoSoftwares, página inicial">
             <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
             <span>AITO<span>SOFTWARES</span></span>
           </router-link>

@@ -22,6 +22,23 @@ test('video restores all three legacy manifest versions and resets retention for
   }
 })
 
+test('version four preserves the project script and remaps reusable component and scene links', async () => {
+  const blob = await zip({ format: 'aitoia-video', version: 4, aspectRatio: '9:16', projectColor: '#FEAD33',
+    scenes: [{ heading: 'Entrada', duration: 3, scriptId: 'cena' }],
+    plan: { master: 'Apresente a ideia', scenes: [{ id: 'cena', title: 'Entrada', prompt: 'Plano aberto', duration: 3,
+      componentIds: ['personagem'] }] },
+    components: [{ id: 'personagem', type: 'Personagens', title: 'Protagonista', voiceId: 'voz' },
+      { id: 'voz', type: 'Vozes', title: 'Voz principal' }],
+  })
+  const project = await readStudioProject(blob, 'video')
+  assert.equal(project.projectColor, '#FEAD33')
+  assert.equal(project.masterScript, 'Apresente a ideia')
+  assert.equal(project.sceneScripts[0].duration, 3)
+  assert.equal(project.scenes[0].scriptId, project.sceneScripts[0].id)
+  assert.equal(project.sceneScripts[0].componentIds[0], project.components[0].id)
+  assert.equal(project.components[0].voiceId, project.components[1].id)
+})
+
 test('marketing ZIP restores palette, images, references and selected reusable components', async () => {
   const original = { title: 'Campanha', formatId: 'feed', prompt: 'Criar campanha', palette: ['#AABBCC'],
     selectedKit: ['logo'], references: [{ label: 'Referência', blob: png }],

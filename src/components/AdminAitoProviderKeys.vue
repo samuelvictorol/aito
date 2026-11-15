@@ -5,6 +5,7 @@ import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
 import { sealAitoProviderCredential } from 'src/services/aitoProviderCredentials'
 import LoginMfaDialog from './LoginMfaDialog.vue'
+import AdminAitoVoicePreviews from './AdminAitoVoicePreviews.vue'
 
 const props = defineProps({ checkoutState: String })
 const emit = defineEmits(['updated', 'reauthenticated'])
@@ -163,6 +164,7 @@ onBeforeUnmount(() => {
       </article>
     </div>
     <p v-if="checkoutMessage" class="provider-keys__warning">{{ checkoutMessage }}</p>
+    <AdminAitoVoicePreviews :enabled="Boolean(statusOf('openai').configured)" @reauthenticated="emit('reauthenticated', $event)" />
 
     <q-dialog :model-value="Boolean(selected)" :persistent="submitting || mfaOpen" @update:model-value="value => { if (!value) closeEdit() }">
       <q-card dark class="provider-keys__dialog">

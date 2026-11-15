@@ -253,7 +253,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useQuasar } from 'quasar'
+import { useMeta, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
@@ -276,6 +276,7 @@ const isMobile = computed(() => window.innerWidth < 768)
 const $q = useQuasar()
 const router = useRouter()
 const route = useRoute()
+useMeta({ title: 'Quem Somos | AitoSoftwares', link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/sobre' } } })
 const USER_TOKEN_KEY = 'aito_user_token'
 const LANDING_SCENE_WATCHDOG_MS = 9000
 const LANDING_INTRO_CACHE_KEY = 'aito_landing_intro_seen_v1'
@@ -624,7 +625,7 @@ onBeforeUnmount(() => {
 .landing-3d__brand > span > span { color: var(--aito-teal); }
 
 .landing-3d__header-actions { display: flex; align-items: center; gap: 0.65rem; }
-.landing-3d__install { position: absolute; top: calc(100% + .55rem); right: max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)); }
+.landing-3d__install { position: absolute; top: calc(100% + 1.15rem); right: max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)); }
 .landing-3d__product-link { color: var(--aito-aqua); font-size: .72rem; font-weight: 700; text-decoration: none; border: 1px solid rgba(143,255,238,.35); border-radius: 999px; padding: .55rem .8rem; white-space: nowrap; pointer-events: auto; }
 .landing-3d__product-link:hover,.landing-3d__product-link:focus-visible { background: rgba(19,188,157,.18); outline: none; }
 @media(max-width:600px){.landing-3d__product-link{font-size:.62rem;padding:.45rem .55rem}}

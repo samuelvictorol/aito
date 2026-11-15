@@ -76,7 +76,7 @@ onBeforeUnmount(() => { clearInterval(countdown); clearInterval(polling); window
 <template>
 <q-layout class="lab"><q-page-container><q-page class="lab-page">
   <div class="lab-orbit lab-orbit--one" aria-hidden="true"/><div class="lab-orbit lab-orbit--two" aria-hidden="true"/>
-  <header class="lab-header"><a href="/" aria-label="AitoSoftwares"><img src="/aito-logo-restored.png" width="36" height="36" alt=""/><span><strong>AitoSoftwares</strong><small>NOTIFICATION LAB</small></span></a><q-btn outline rounded no-caps :icon="state.installed?'mdi-check-circle-outline':'mdi-cellphone-arrow-down'" :label="state.installed?'No seu dispositivo':'Adicionar à Tela de Início'" @click="install"/></header>
+  <header class="lab-header"><a href="/sobre" aria-label="AitoSoftwares"><img src="/aito-logo-restored.png" width="36" height="36" alt=""/><span><strong>AitoSoftwares</strong><small>NOTIFICATION LAB</small></span></a><q-btn outline rounded no-caps :icon="state.installed?'mdi-check-circle-outline':'mdi-cellphone-arrow-down'" :label="state.installed?'No seu dispositivo':'Adicionar à Tela de Início'" @click="install"/></header>
   <main class="lab-shell">
     <section class="lab-hero"><span class="lab-eyebrow"><i/> UM LABORATÓRIO. SEU DISPOSITIVO.</span><h1>Sua mensagem.<br/><em>Seu próximo alerta.</em></h1><p>Monte uma notificação pessoal, veja a prévia e experimente como ela chega no seu celular. Simples, rápido e com a sua cara.</p><div class="lab-pills"><span><q-icon name="mdi-shield-check-outline"/> Imagens ficam no navegador</span><span><q-icon name="mdi-bookmark-multiple-outline"/> 3 templates locais</span><span><q-icon name="mdi-apple"/><q-icon name="mdi-android"/> Web Push</span></div></section>
     <div class="lab-workspace">

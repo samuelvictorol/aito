@@ -1,11 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, watch } from 'vue'
+import { fileKind } from 'src/services/aitoiaChat'
 
 const props = defineProps({ attachment: { type: Object, required: true }, removable: Boolean, preview: Boolean })
 defineEmits(['remove'])
 let url = ''
 const image = computed(() => /^image\/(png|jpeg|webp|gif)$/.test(props.attachment.type))
-const type = computed(() => image.value ? 'mdi-image-outline' : props.attachment.type === 'application/pdf' ? 'mdi-file-pdf-box' : 'mdi-file-document-outline')
+const video = computed(() => fileKind(props.attachment) === 'video')
+const type = computed(() => image.value ? 'mdi-image-outline' : video.value ? 'mdi-file-video-outline' : props.attachment.type === 'application/pdf' ? 'mdi-file-pdf-box' : 'mdi-file-document-outline')
 const size = computed(() => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(props.attachment.blob.size / 1024) + ' KB')
 function refresh() {
   if (url) URL.revokeObjectURL(url)
@@ -22,7 +24,7 @@ onBeforeUnmount(() => { if (url) URL.revokeObjectURL(url) })
     <a class="aito-attachment__link" :href="href" :download="attachment.name" :aria-label="'Baixar ' + attachment.name">
       <img v-if="image" :src="href" alt="" loading="lazy" />
       <q-icon v-else :name="type" size="21px" />
-      <span><strong>{{ attachment.name }}</strong><small>{{ preview ? 'Baixar · ' : '' }}{{ size }}</small></span>
+      <span><strong>{{ attachment.name }}</strong><small>{{ video ? 'Vídeo · ' : preview ? 'Baixar · ' : '' }}{{ size }}</small></span>
     </a>
     <button v-if="removable" type="button" class="aito-attachment__remove" :aria-label="'Remover ' + attachment.name" @click="$emit('remove')"><q-icon name="mdi-close" size="17px" /></button>
   </div>

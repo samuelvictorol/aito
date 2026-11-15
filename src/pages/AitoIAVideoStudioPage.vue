@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
+import AitoStudioSocialImport from 'components/AitoStudioSocialImport.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokens, useAitoIA, usd } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -14,9 +15,10 @@ import { downloadAitoIAFile, zipAitoIAFiles } from 'src/services/aitoiaArchive'
 import { readStudioProject } from 'src/services/aitoiaStudioArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
-import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia, parseStudioScript,
+import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia,
   recordStudioVideo, sceneSeconds, splitStudioClip, studioFrame, studioNarration, studioRenderSize, studioSubtitles, studioTimeline, studioVideoExports, videoFormats } from 'src/services/aitoiaVideo'
-import { captureTransitionFrame, checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
+import { cleanSceneScript, normalizeVoiceReference, parseVideoPlan, sceneScriptSeconds, studioAiSeconds, voiceComponentType } from 'src/services/aitoiaVideoPlan'
+import { captureTransitionFrame, checkImageReference, checkVideoReference, putImageReference, putVideoReference, putVoiceReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -24,6 +26,7 @@ const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.
 useMeta({ title: 'AitoIA | Estúdio de vídeo', meta: { description: { name: 'description', content: 'Crie roteiros, narrações e vídeos com AitoIA. Monte cenas e exporte no navegador.' } } })
 const wallet = useAitoIA({ chatHistory: false })
 const { signedIn, status, walletId, accountId, models } = wallet
+const route = useRoute()
 const authOpen = ref(false)
 const authMode = ref('register')
 const walletOpen = ref(false)
@@ -48,7 +51,7 @@ const title = ref(defaultProjectName)
 const projectTitle = computed(() => title.value.trim() || defaultProjectName)
 const projectColor = ref(defaultProjectColor)
 const projectColorOpen = ref(false)
-const tab = ref(useRoute().query.tab === 'ai' ? 'ai' : 'scenes')
+const tab = ref(route.query.tab === 'ai' ? 'ai' : 'scenes')
 const formatId = ref(videoFormats[0].id)
 const format = computed(() => videoFormats.find(item => item.id === formatId.value))
 const freshScene = (fields = {}) => ({ id: crypto.randomUUID(), duration: 5, offset: 0, heading: '', caption: '', media: null, ...fields })
@@ -69,6 +72,11 @@ const generatedDuration = ref(0)
 const activeJob = shallowRef(null)
 const prompt = ref('')
 const scriptPrompt = ref('')
+const masterScript = ref('')
+const sceneScripts = shallowRef([])
+const scriptOpen = ref(false)
+const scriptTarget = shallowRef(null)
+const scriptError = ref('')
 const audio = ref(null)
 const canvas = ref(null)
 const imageInput = ref(null)
@@ -92,6 +100,7 @@ const builtInComponentNames = {
   'Modelos de cena': 'Modelo de cena',
   Cenários: 'Cenário',
   Roteiros: 'Roteiro',
+  [voiceComponentType]: 'Voz',
 }
 const builtInComponentTypes = Object.keys(builtInComponentNames)
 const componentTypes = ref([...builtInComponentTypes])
@@ -101,6 +110,7 @@ const componentIcons = {
   'Modelos de cena': 'mdi-view-dashboard-outline',
   Cenários: 'mdi-image-outline',
   Roteiros: 'mdi-script-text-outline',
+  [voiceComponentType]: 'mdi-waveform',
 }
 const componentType = ref('Cenas')
 const componentName = computed(() => Object.hasOwn(builtInComponentNames, componentType.value)
@@ -109,6 +119,13 @@ const componentOpen = ref(false)
 const componentForm = shallowRef(null)
 const editingComponent = ref(false)
 const componentPosters = shallowRef(new Map())
+const componentVoicePreview = ref('')
+const componentError = ref('')
+const componentLoading = ref(false)
+const voiceComponents = computed(() => projectComponents.value.filter(item => item.type === voiceComponentType && item.file))
+const voiceReferenceId = ref('')
+const voiceReference = computed(() => voiceComponents.value.find(item => item.id === voiceReferenceId.value))
+const acceptsVoiceReference = computed(() => generationMode.value === 'text' && videoModelConfig.value?.audioReference)
 const componentTypeName = ref('')
 const confirmDeleteClip = ref(false)
 const saveClipOpen = ref(false)
@@ -116,7 +133,7 @@ const destinationProject = ref('')
 const savingClip = ref(false)
 const projectsOpen = ref(false)
 const masterOpen = ref(false)
-const modelListOpen = ref(false)
+const modelListOpen = ref(true)
 const studioHeader = ref(null)
 const workspace = ref(null)
 const headerHeight = ref(104)
@@ -168,7 +185,8 @@ const canQuoteVideo = computed(() => Boolean(offer.value && (prompt.value.trim()
     continuationMode.value ? sourceFrames.value.length === 1 :
       (generationMode.value === 'text' || hasReference.value) &&
       (!referenceModel.value?.sourceDuration || referenceImages.value.length) && referenceImages.value.length <= maxImageReferences.value)))
-const modelOptions = computed(() => (generationMode.value === 'text' ? modelOffers.value.get(videoModel.value) : referenceModel.value?.options) || [])
+const modelOptions = computed(() => ((generationMode.value === 'text' ? modelOffers.value.get(videoModel.value) : referenceModel.value?.options) || [])
+  .filter(item => referenceModel.value?.sourceDuration || studioAiSeconds.includes(item.seconds)))
 const offer = computed(() => modelOptions.value.find(item => item.id === videoOption.value))
 const selectedModel = computed(() => generationMode.value === 'text' ? videoCatalog.find(item => item.id === videoModel.value) :
   referenceModel.value && { name: referenceModel.value.label })
@@ -191,8 +209,10 @@ function speechPrice(text) {
   return Math.ceil(Array.from(text.trim()).length * rate * 10000 - 1e-8) / 10000
 }
 const voicePrice = computed(() => speechPrice(narrationText.value))
-const sample = 'Olá. Esta é uma amostra da minha voz em português.'
-const samplePrice = computed(() => speechPrice(sample))
+const paceLabels = { 0.85: 'Pausada', 1: 'Natural', 1.15: 'Dinâmica' }
+const selectedVoice = computed(() => options.value?.voices?.find(item => item.id === voice.value))
+const baseVoices = computed(() => options.value?.voices?.filter(item => item.id === (item.base || item.id)) || [])
+const voicePaces = computed(() => options.value?.voices?.filter(item => item.base && item.base === selectedVoice.value?.base) || [])
 function projectMediaBytes(entries = scenes.value) {
   const files = new Set(entries.flatMap(scene => scene.media ? [scene.media.file] : []))
   return [...files].reduce((sum, file) => sum + file.size, narration.value?.file.size || 0)
@@ -228,7 +248,8 @@ watch(accountId, (next, previous) => {
 const { projects, records, activeId, loading: projectLoading, storageError, cloudState, createProject, openProject,
   resolveProject, deleteProject, renewProject, importProject, atLimit, saveProject } = useAitoStudioProjects({
   studio: 'video', accountId, busy, defaultName: defaultProjectName, snapshot: snapshotProject, restore: restoreProject,
-  watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, prompt, generationMode,
+  watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, masterScript, sceneScripts, scriptTarget,
+    voiceReferenceId, prompt, generationMode,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
     activeJob, projectComponents, componentTypes],
 })
@@ -247,6 +268,10 @@ function chooseProject(id) {
   return id ? openProject(id) : createProject()
 }
 function chooseEditorTab(value) {
+  if (value === 'ai' && tab.value !== 'ai') {
+    changeGenerationMode('text')
+    modelListOpen.value = true
+  }
   tab.value = value
   if (compactViewport() && workspace.value?.getBoundingClientRect().top < headerHeight.value) {
     workspace.value.scrollIntoView({ block: 'start' })
@@ -319,16 +344,18 @@ function openComponents(type) {
   componentType.value = type
   inventoryQuery.value = ''
   componentForm.value = null
+  componentError.value = ''
   componentOpen.value = true
 }
 function editComponent(item) {
   editingComponent.value = Boolean(item)
+  componentError.value = ''
   componentForm.value = item ? { ...item } : { id: crypto.randomUUID(), type: componentType.value, title: '', prompt: '', file: null }
 }
 function updateComponentForm(values) { componentForm.value = { ...componentForm.value, ...values } }
 function saveComponent() {
   const item = componentForm.value
-  if (!item.title.trim()) return
+  if (!item.title.trim() || (item.type === voiceComponentType && !item.file)) return
   projectComponents.value = projectComponents.value.some(row => row.id === item.id)
     ? projectComponents.value.map(row => row.id === item.id ? item : row) : [...projectComponents.value, item]
   componentForm.value = null
@@ -339,10 +366,31 @@ watch(projectComponents, items => {
   existing.forEach((url, file) => { if (!next.has(file)) URL.revokeObjectURL(url) })
   componentPosters.value = next
 }, { flush: 'sync' })
+watch(() => componentForm.value?.file, file => {
+  if (componentVoicePreview.value) URL.revokeObjectURL(componentVoicePreview.value)
+  componentVoicePreview.value = file?.type.startsWith('audio/') ? URL.createObjectURL(file) : ''
+}, { flush: 'sync' })
 function setComponentImage(file) {
   if (!file) return
-  try { checkImageReference(file); updateComponentForm({ file }) }
-  catch (cause) { error.value = cause.message }
+  try { checkImageReference(file); updateComponentForm({ file }); componentError.value = '' }
+  catch (cause) { componentError.value = cause.message }
+}
+async function setComponentVoice(file) {
+  if (!file) return
+  const id = componentForm.value?.id
+  componentLoading.value = true
+  componentError.value = ''
+  try {
+    const audio = await normalizeVoiceReference(file)
+    if (componentOpen.value && componentForm.value?.id === id) updateComponentForm({ file: audio })
+  } catch (cause) { componentError.value = cause.message }
+  finally { componentLoading.value = false }
+}
+function removeComponent(item) {
+  if (voiceReferenceId.value === item.id) voiceReferenceId.value = ''
+  projectComponents.value = projectComponents.value.filter(row => row.id !== item.id).map(row =>
+    row.voiceId === item.id ? { ...row, voiceId: '' } : row)
+  sceneScripts.value = sceneScripts.value.map(scene => ({ ...scene, componentIds: scene.componentIds.filter(id => id !== item.id) }))
 }
 function addComponentType() {
   const type = componentTypeName.value.trim()
@@ -369,7 +417,14 @@ function changeCustomType(delta, rename) {
   componentTypes.value = next
 }
 function useComponent(item, variation = false) {
-  if (item.file) chooseReferenceImages([item.file])
+  chooseEditorTab('ai')
+  const sample = item.type === voiceComponentType ? item : voiceComponents.value.find(voice => voice.id === item.voiceId)
+  if (sample && modelOffers.value.get('seedance-2.5')?.length) {
+    changeGenerationMode('text')
+    videoModel.value = 'seedance-2.5'
+    voiceReferenceId.value = sample.id
+  }
+  if (item.file && item.type !== voiceComponentType) chooseReferenceImages([item.file])
   prompt.value = [prompt.value.trim(), item.prompt || item.title].filter(Boolean).join('\n').slice(0, 2000)
   if (variation) prompt.value = `Crie uma variação: ${item.prompt || item.title}`.slice(0, 2000)
   componentOpen.value = false
@@ -475,7 +530,7 @@ async function loadOptions() {
   } finally { if (optionsRequest === controller) optionsLoading.value = false }
 }
 watch(modelOptions, list => { if (!list.some(item => item.id === videoOption.value)) videoOption.value = list[0]?.id || '' })
-watch([generationMode, videoModel, videoOption, prompt, reference, referenceImages, transitionClips, sourceFrames, walletId], () => { videoQuote.value = null })
+watch([generationMode, videoModel, videoOption, prompt, reference, referenceImages, voiceReference, transitionClips, sourceFrames, walletId], () => { videoQuote.value = null })
 watch(signedIn, active => { if (active) loadOptions(); else { optionsRequest?.abort(); options.value = null; optionsLoading.value = false } })
 function jobStorage(change) {
   try {
@@ -494,7 +549,7 @@ function keepJob(job, finished = false) {
     const saved = entries[accountId.value]
     if (!finished || !saved || saved.id === job.id) entries[accountId.value] = {
       id: job.id, projectId: activeId.value, finished, expiresAt: Date.now() + jobLifetime,
-      afterSceneId: job.afterSceneId, kind: job.kind,
+      afterSceneId: job.afterSceneId, kind: job.kind, scriptTarget: job.scriptTarget,
     }
   })
 }
@@ -504,7 +559,8 @@ function restoreJob() {
   if (saved?.finished || saved?.projectId && saved.projectId !== activeId.value) return
   const recoverable = saved || options.value?.recoverableGeneration
   if (recoverable?.id && !clipLibrary.value.some(clip => clip.id === recoverable.id)) {
-    activeJob.value = { id: recoverable.id, status: 'queued', afterSceneId: recoverable.afterSceneId, kind: recoverable.kind }
+    activeJob.value = { id: recoverable.id, status: 'queued', afterSceneId: recoverable.afterSceneId, kind: recoverable.kind,
+      scriptTarget: recoverable.scriptTarget }
     keepJob(activeJob.value)
     tab.value = 'ai'
   }
@@ -739,30 +795,97 @@ function useCredits() {
   if (status.value.balanceUsdCents <= 0) { showWallet(); return false }
   return true
 }
-async function makeScript() {
-  if (!scriptPrompt.value.trim() || !useCredits()) return
+function openProjectScript() {
+  closeMobilePanel(projectsOpen)
+  scriptError.value = ''
+  scriptOpen.value = true
+}
+function updateScriptScene(id, values) {
+  sceneScripts.value = sceneScripts.value.map(item => item.id === id ? cleanSceneScript({ ...item, ...values }) : item)
+}
+function addScriptScene() {
+  if (sceneScripts.value.length < maxStudioScenes) sceneScripts.value = [...sceneScripts.value, cleanSceneScript()]
+}
+async function writeProjectScript(mode, item) {
+  if (!useCredits()) return
+  scriptError.value = ''
   await run('script', async signal => {
     try {
-      const model = models.value.find(item => item.id === 'gpt-6.1-sol') || models.value[0]
+      const model = models.value.find(model => /mini/i.test(model.id)) ||
+        models.value.find(model => model.id === 'gpt-6.1-sol') || models.value[0]
       if (!model) throw new Error('O roteiro com IA está temporariamente indisponível.')
+      const components = projectComponents.value.slice(0, 30).map(({ id, title, type, prompt }) => ({ id, title, type, description: prompt.slice(0, 150) }))
+      const directions = {
+        master: 'Escreva somente o roteiro master em português, com premissa, tom e continuidade visual. Devolva texto simples.',
+        scenes: `Divida em até ${maxStudioScenes} cenas. Responda somente com JSON {"scenes":[{"title":"","prompt":"","duration":5,"componentIds":[]}]}`,
+        refine: 'Reescreva apenas a cena indicada. Responda somente com JSON {"scenes":[{"title":"","prompt":"","duration":5,"componentIds":[]}]}.',
+      }
       const { data } = await api.post('/aitoia/responses', {
-        model: model.id, walletId: walletId.value, reasoning: { effort: model.efforts.includes('medium') ? 'medium' : model.efforts[0] },
-        input: [{ role: 'user', content: `Crie um roteiro em português com base no briefing abaixo. Responda somente com JSON válido no formato {"title":"","scenes":[{"heading":"","caption":"","duration":5}],"narration":""}. Use de 3 a ${maxStudioScenes} cenas, cada uma de 1 a 15 segundos, texto curto na tela e narração em português brasileiro. Formato ${format.value.label}. Briefing:\n${scriptPrompt.value.trim()}` }],
+        model: model.id, walletId: walletId.value,
+        reasoning: { effort: model.efforts.includes('low') ? 'low' : model.efforts[0] },
+        input: [{ role: 'user', content: `${directions[mode]} Formato ${format.value.label}. Cada cena deve ter duração inteira de 1 a 5 segundos, uma ação principal, movimento de câmera simples e fala curta quando houver diálogo. Reutilize personagens e cenários entre tomadas. Em componentIds use apenas IDs dos componentes cadastrados abaixo que fazem parte da cena. Não invente IDs.\nBriefing: ${scriptPrompt.value.trim()}\nRoteiro master: ${masterScript.value.trim()}\nComponentes: ${JSON.stringify(components)}${item ? '\nCena atual: ' + JSON.stringify(item) : ''}` }],
       }, { headers: authorization({ 'X-Aito-Request-Id': crypto.randomUUID() }), signal })
-      const script = parseStudioScript(readAnswer(data))
-      const previous = scenes.value
-      script.scenes = script.scenes.map((scene, index) => {
-        const old = previous[index]
-        if (!old) return freshScene(scene)
-        return { ...old, ...scene, ...(old.media?.isVideo && { duration: cutDuration(old) }) }
-      })
-      replaceScenes(script.scenes)
-      title.value = script.title || title.value
-      narrationText.value = script.narration
-      selectScene(scenes.value[0].id)
-      notice.value = 'Roteiro gerado. Revise as cenas antes de exportar.'
+      signal.throwIfAborted()
+      const answer = readAnswer(data)
+      if (!answer.trim()) throw new Error('A IA não retornou um roteiro. Tente novamente.')
+      if (mode === 'master') { masterScript.value = answer.trim().slice(0, 6000); return }
+      const plan = parseVideoPlan(answer, new Set(components.map(component => component.id)))
+      if (item) updateScriptScene(item.id, { ...plan.scenes[0], id: item.id })
+      else sceneScripts.value = plan.scenes.map((row, index) => ({ ...row, id: sceneScripts.value[index]?.id || row.id }))
+    } catch (cause) {
+      if (!isAbort(cause)) scriptError.value = cause.response?.data?.message || cause.message
+      throw cause
     } finally { if (mounted && !signal.aborted) wallet.refreshStatus({ silent: true }) }
   })
+}
+async function prepareScriptScene(item) {
+  if (busy.value || activeJob.value || !item.prompt.trim() || !useCredits()) return
+  const owner = accountId.value
+  const project = activeId.value
+  const existing = scenes.value.find(scene => scene.scriptId === item.id)
+  const empty = scenes.value.find(scene => !scene.scriptId && !scene.media && !scene.heading && !scene.caption)
+  if (!existing && !empty && scenes.value.length >= maxStudioScenes) {
+    scriptError.value = 'Remova uma cena do vídeo master para gerar outra.'
+    return
+  }
+  if (!options.value) await loadOptions()
+  if (owner !== accountId.value || project !== activeId.value) return
+  const components = item.componentIds.map(id => projectComponents.value.find(component => component.id === id)).filter(Boolean)
+  const sample = components.find(component => component.type === voiceComponentType && component.file) ||
+    components.map(component => voiceComponents.value.find(voice => voice.id === component.voiceId)).find(Boolean)
+  if (sample && !modelOffers.value.get('seedance-2.5')?.length) {
+    scriptError.value = 'O Seedance 2.5 está indisponível para esta voz de referência.'
+    return
+  }
+  changeGenerationMode('text')
+  const aspect = format.value.label
+  const order = [videoModel.value, ...videoCatalog.map(model => model.id)]
+  const choices = [...new Set(sample ? ['seedance-2.5'] : order)].flatMap((id, rank) => (modelOffers.value.get(id) || [])
+    .filter(option => option.format === aspect && studioAiSeconds.includes(option.seconds) && option.seconds >= item.duration)
+    .map(option => ({ id, option, rank })))
+  const match = choices.sort((left, right) => left.option.seconds - right.option.seconds ||
+    left.option.priceUsdCents - right.option.priceUsdCents || left.rank - right.rank)[0]
+  if (!match) { scriptError.value = 'Nenhum modelo disponível para gerar esta cena.'; return }
+  clearReference()
+  clearSourceFrames()
+  insertionAfter.value = null
+  referenceImages.value.forEach(image => URL.revokeObjectURL(image.url))
+  referenceImages.value = []
+  videoModel.value = match.id
+  videoOption.value = match.option.id
+  voiceReferenceId.value = sample?.id || ''
+  const media = [...new Set(components.filter(component => component.type !== voiceComponentType && component.file).map(component => component.file))]
+  chooseReferenceImages(media.slice(0, maxImageReferences.value))
+  const continuity = masterScript.value.trim().slice(0, 300)
+  const characterNotes = components.map(component => `${component.title}: ${component.prompt}`).join('\n').slice(0, 260)
+  prompt.value = [item.prompt.trim().slice(0, 1320), continuity && `Continuidade do projeto: ${continuity}`,
+    characterNotes && `Referências da cena:\n${characterNotes}`,
+    sample && 'Use o áudio somente como referência para a voz do personagem.'].filter(Boolean).join('\n\n').slice(0, 2000)
+  scriptTarget.value = { id: item.id, sceneId: existing?.id || empty?.id, title: item.title, duration: item.duration }
+  scriptOpen.value = false
+  createForScene(true)
+  await nextTick()
+  if (canQuoteVideo.value) await quoteVideo()
 }
 async function makeVoice() {
   const text = narrationText.value.trim()
@@ -787,13 +910,16 @@ function clearVoicePreview() {
 }
 watch(voice, clearVoicePreview)
 async function makeVoicePreview() {
-  if (!voice.value || !useCredits()) return
+  const item = selectedVoice.value
+  if (!item?.previewAvailable) return
   await run('sample', async signal => {
-    try {
-      const file = await requestSpeech(sample, signal)
-      clearVoicePreview()
-      voicePreview.value = { url: URL.createObjectURL(file) }
-    } finally { if (mounted && !signal.aborted) wallet.refreshStatus({ silent: true }) }
+    const { data } = await api.get('/aitoia/video/voice/previews/' + encodeURIComponent(item.id), {
+      headers: authorization(), responseType: 'blob', signal,
+    })
+    signal.throwIfAborted()
+    if (voice.value !== item.id || !mounted) return
+    clearVoicePreview()
+    voicePreview.value = { url: URL.createObjectURL(data) }
   })
 }
 function waitForJob(signal) {
@@ -859,11 +985,39 @@ async function readJob(job, signal) {
   try { asset.file = previous?.file || await generatedFile(asset, signal) }
   catch { signal.throwIfAborted() }
   storeClip(asset)
+  let applied = false
+  if (job.scriptTarget && asset.file) {
+    try { applied = await applyGeneratedScriptScene(job.scriptTarget, asset, signal) }
+    catch { signal.throwIfAborted() }
+  }
   activeJob.value = null
   keepJob(current, true)
   await saveProject()
   signal.throwIfAborted()
-  notice.value = asset.file && !storageError.value ? 'Clipe salvo no projeto.' : 'Clipe pronto. Baixe o original para guardar uma cópia.'
+  notice.value = applied ? 'Clipe aplicado à cena do roteiro.' :
+    asset.file && !storageError.value ? 'Clipe salvo no projeto.' : 'Clipe pronto. Baixe o original para guardar uma cópia.'
+}
+async function applyGeneratedScriptScene(target, asset, signal) {
+  const scriptIndex = sceneScripts.value.findIndex(item => item.id === target.id)
+  if (scriptIndex < 0) return false
+  const existing = scenes.value.find(scene => scene.scriptId === target.id) || scenes.value.find(scene => scene.id === target.sceneId)
+  if (!existing && scenes.value.length >= maxStudioScenes) return false
+  const media = await openStudioMedia(asset.file, projectMediaBytes(scenes.value.filter(scene => scene !== existing)), signal)
+  if (signal.aborted || !mounted) { closeStudioMedia(media); return false }
+  const fields = { scriptId: target.id, heading: target.title || existing?.heading || '', media, offset: 0,
+    duration: Math.min(sceneScriptSeconds(target.duration), media.element.duration), cut: true, clipId: asset.id, expiresAt: asset.expiresAt, missingMedia: false }
+  if (existing) { editScene(fields, existing.id); selectScene(existing.id) }
+  else {
+    const preceding = new Set(sceneScripts.value.slice(0, scriptIndex).map(item => item.id))
+    const index = scenes.value.findLastIndex(scene => preceding.has(scene.scriptId))
+    const next = freshScene(fields)
+    const offset = index >= 0 ? index + 1 : scenes.value.findIndex(scene => scene.scriptId)
+    const result = [...scenes.value]
+    result.splice(offset < 0 ? result.length : offset, 0, next)
+    replaceScenes(result)
+    selectScene(next.id)
+  }
+  return true
 }
 function selectGenerated(clip) {
   generatedDuration.value = 0
@@ -927,6 +1081,7 @@ function changeGenerationMode(mode) {
   if (mode === generationMode.value) return
   clearSourceFrames()
   insertionAfter.value = null
+  scriptTarget.value = null
   generationMode.value = mode
 }
 const nextScene = computed(() => {
@@ -1045,7 +1200,7 @@ async function quoteVideo() {
       const source = await openStudioMedia(reference.value.file, 0, signal)
       const duration = source.element.duration
       closeStudioMedia(source)
-      if (duration < 4) throw new Error('O Genjutsu exige um vídeo-base com pelo menos 4 segundos.')
+      if (duration < 4 || duration > 5) throw new Error('Use um vídeo-base de 4 a 5 segundos no Genjutsu.')
     }
     async function upload(file, contentType, put) {
       const { data } = await api.post('/aitoia/video/references', { contentType, sizeBytes: file.size, walletId: walletId.value },
@@ -1053,6 +1208,8 @@ async function quoteVideo() {
       return put(file, data.data, signal)
     }
     const referenceToken = !transitionMode.value && !continuationMode.value && reference.value && await upload(reference.value.file, 'video/mp4', putVideoReference)
+    const audioReferenceToken = acceptsVoiceReference.value && voiceReference.value &&
+      await upload(voiceReference.value.file, 'audio/wav', putVoiceReference)
     const imageReferenceTokens = []
     if (sourceFrames.value.length) {
       const first = sourceFrames.value[0]
@@ -1069,10 +1226,11 @@ async function quoteVideo() {
     } else {
       for (const { file } of referenceImages.value) imageReferenceTokens.push(await upload(file, checkImageReference(file), putImageReference))
     }
-    const tokens = { ...(referenceToken && { referenceToken }), ...(imageReferenceTokens.length && { imageReferenceTokens }) }
+    const tokens = { ...(referenceToken && { referenceToken }), ...(imageReferenceTokens.length && { imageReferenceTokens }),
+      ...(audioReferenceToken && { audioReferenceToken }) }
     const body = { model: generationMode.value === 'text' ? videoModel.value : referenceModel.value.id,
       option: videoOption.value, prompt: prompt.value.trim(), walletId: walletId.value, ...tokens }
-    const quote = await api.post('/aitoia/video/generations/quote', body, { headers: authorization(), signal })
+    const quote = await api.post('/aitoia/video/studio/generations/quote', body, { headers: authorization(), signal })
     signal.throwIfAborted()
     videoQuote.value = { ...quote.data.data, ...tokens, requestId: crypto.randomUUID() }
   })
@@ -1084,10 +1242,11 @@ async function makeVideo() {
     try {
       const body = { model: generationMode.value === 'text' ? videoModel.value : referenceModel.value?.id, option: videoOption.value,
         prompt: prompt.value.trim(), walletId: walletId.value }
-      const { quoteToken, referenceToken, imageReferenceTokens, requestId } = videoQuote.value
-      Object.assign(body, { quoteToken, ...(referenceToken && { referenceToken }), ...(imageReferenceTokens && { imageReferenceTokens }) })
-      const placement = { afterSceneId: insertionAfter.value, kind: transitionMode.value ? 'transition' : 'scene' }
-      const { data } = await api.post('/aitoia/video/generations', body, { headers: authorization({ 'X-Aito-Request-Id': requestId }), signal })
+      const { quoteToken, referenceToken, imageReferenceTokens, audioReferenceToken, requestId } = videoQuote.value
+      Object.assign(body, { quoteToken, ...(referenceToken && { referenceToken }), ...(imageReferenceTokens && { imageReferenceTokens }),
+        ...(audioReferenceToken && { audioReferenceToken }) })
+      const placement = { afterSceneId: insertionAfter.value, kind: transitionMode.value ? 'transition' : 'scene', scriptTarget: scriptTarget.value }
+      const { data } = await api.post('/aitoia/video/studio/generations', body, { headers: authorization({ 'X-Aito-Request-Id': requestId }), signal })
       signal.throwIfAborted()
       videoQuote.value = null
       const job = { ...data.data, ...placement }
@@ -1179,7 +1338,7 @@ async function archiveProject() {
       archived.set(file, name)
       return name
     }
-    const metadata = { format: 'aitoia-video', version: 3, title: projectTitle.value, projectColor: projectColor.value, aspectRatio: format.value.label,
+    const metadata = { format: 'aitoia-video', version: 4, title: projectTitle.value, projectColor: projectColor.value, aspectRatio: format.value.label,
       expiresAt: activeProject.value?.expiresAt,
       scenes: scenes.value.map(({ media, ...scene }, index) => ({
         ...scene, media: unavailableScene(scene) ? undefined : add(media?.file, `cena-${index + 1}`),
@@ -1187,6 +1346,7 @@ async function archiveProject() {
       narration: { text: narrationText.value, media: add(narration.value?.file, 'locucao') },
       components: projectComponents.value.map(({ file, ...item }, index) => ({ ...item, media: add(file, `componente-${index + 1}`) })),
       componentTypes: componentTypes.value,
+      plan: { master: masterScript.value, scenes: sceneScripts.value },
       configuration: { prompt: prompt.value, scriptPrompt: scriptPrompt.value, mode: generationMode.value, model: videoModel.value },
       references: { video: add(reference.value?.file, 'referencia'), images: referenceImages.value.map((item, index) => add(item.file, `imagem-${index + 1}`)),
         transition: transitionClips.value.map((clip, index) => add(clip?.file, `transicao-${index + 1}`)),
@@ -1219,8 +1379,14 @@ function resetProject() {
   clipLibrary.value = []
   projectComponents.value = []
   componentTypes.value = [...builtInComponentTypes]
+  componentForm.value = null
+  voiceReferenceId.value = ''
   activeJob.value = null
   scriptPrompt.value = ''
+  masterScript.value = ''
+  sceneScripts.value = []
+  scriptOpen.value = false
+  scriptTarget.value = null
   prompt.value = ''
   narrationText.value = ''
   title.value = defaultProjectName
@@ -1244,7 +1410,9 @@ function snapshotProject() {
   return { title: projectTitle.value, projectColor: projectColor.value, formatId: formatId.value, sceneId: sceneId.value,
     scenes: scenes.value.map(({ media, ...scene }) => ({ ...scene, file: media?.file })),
     narrationText: narrationText.value, narration: narration.value?.file, recording: recording.value?.blob,
-    prompt: prompt.value, scriptPrompt: scriptPrompt.value, generationMode: generationMode.value, videoModel: videoModel.value,
+    prompt: prompt.value, scriptPrompt: scriptPrompt.value, masterScript: masterScript.value, sceneScripts: sceneScripts.value,
+    scriptTarget: scriptTarget.value, voiceReferenceId: voiceReferenceId.value,
+    generationMode: generationMode.value, videoModel: videoModel.value,
     reference: reference.value?.file, referenceImages: referenceImages.value.map(item => item.file), referenceAnalysis: referenceAnalysis.value,
     transitionClips: transitionClips.value.map(clip => clip?.file || null), sourceFrames: sourceFrames.value.map(frame => frame.file),
     insertionAfter: insertionAfter.value, componentTypes: componentTypes.value, components: projectComponents.value,
@@ -1276,6 +1444,10 @@ async function restoreProject(project, signal) {
     updateRecording(project.recording)
     prompt.value = project.prompt || ''
     scriptPrompt.value = project.scriptPrompt || ''
+    masterScript.value = project.masterScript || ''
+    sceneScripts.value = (project.sceneScripts || []).map(cleanSceneScript)
+    scriptTarget.value = project.scriptTarget || null
+    voiceReferenceId.value = project.voiceReferenceId || ''
     generationMode.value = generationModes.some(mode => mode.id === project.generationMode) ? project.generationMode : 'text'
     if (videoCatalog.some(model => model.id === project.videoModel)) videoModel.value = project.videoModel
     reference.value = project.reference ? { file: project.reference, url: URL.createObjectURL(project.reference) } : null
@@ -1286,7 +1458,9 @@ async function restoreProject(project, signal) {
     })
     sourceFrames.value = (project.sourceFrames || []).map(file => ({ file, url: URL.createObjectURL(file) }))
     insertionAfter.value = project.insertionAfter || null
-    if (project.componentTypes?.length) componentTypes.value = project.componentTypes
+    if (project.componentTypes?.length) {
+      componentTypes.value = [...new Set([...builtInComponentTypes, ...project.componentTypes])].slice(0, 20)
+    }
     projectComponents.value = project.components || []
     referenceAnalysis.value = project.referenceAnalysis || ''
     clipLibrary.value = (project.clips || []).flatMap(clip => {
@@ -1324,7 +1498,8 @@ function expireCurrentMedia() {
   }
 }
 
-function createForScene() {
+function createForScene(keepScriptTarget = false) {
+  if (keepScriptTarget !== true) scriptTarget.value = null
   if (!prompt.value.trim()) prompt.value = [selectedScene.value?.heading, selectedScene.value?.caption].filter(Boolean).join('. ')
   closeMobilePanel(masterOpen)
   chooseEditorTab('ai')
@@ -1342,6 +1517,7 @@ watch([timeline, format, previewMode], () => { if (mounted) seek(playhead.value)
 watch(tab, () => { if (mounted) paint(playhead.value) }, { flush: 'post' })
 onMounted(async () => {
   mounted = true
+  if (route.query.auth === 'register' && !signedIn.value) showAuth()
   exportFormats.value = studioVideoExports()
   exportFormat.value = exportFormats.value[0]?.extension || ''
   expireTimer = setInterval(expireCurrentMedia, 10000)
@@ -1378,11 +1554,14 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
           <q-btn flat round dense icon="mdi-close" aria-label="Fechar painel de projetos" @click="projectsOpen = false" />
         </header>
         <div class="video-studio__drawer-section">
-          <AitoStudioProjectPicker v-if="signedIn" drawer :projects="projects" :active-id="activeId" :loading="projectLoading"
+          <AitoStudioProjectPicker v-if="signedIn" drawer colored :projects="projects" :active-id="activeId" :loading="projectLoading"
             :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)"
             @create="chooseProject()" @open="chooseProject" @remove="deleteProject" @renew="renewProject" @import="importArchive" />
           <q-btn v-else outline no-caps color="teal-3" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
           <q-input v-if="signedIn && activeId" v-model="title" dark outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
+          <q-btn outline no-caps class="video-studio__script-btn" icon="mdi-script-text-outline" label="Roteiro do projeto"
+            :disable="!mayEdit || Boolean(busy)" @click="openProjectScript" />
+          <AitoStudioSocialImport />
         </div>
         <div class="video-studio__drawer-section">
           <h3>Componentes</h3>
@@ -1422,6 +1601,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
           <button :class="nearingExpiry ? 'video-studio__primary' : 'video-studio__secondary'" type="button" :disabled="!mayEdit || Boolean(busy)" @click="archiveProject"><q-icon name="mdi-folder-zip-outline" size="20px" /> Baixar projeto ZIP</button>
         </div>
       </div>
+      <p v-if="route.query.maintenance === 'chat'" class="video-studio__notice" role="status"><img src="/ia.gif" width="30" height="30" alt="" /> O Chat AitoIA está em manutenção. Desculpe o transtorno. Estamos trazendo novas funcionalidades.</p>
       <p v-if="!signedIn" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Crie sua conta para ganhar US$ 1 em AitoTokens e começar a criar.</p>
       <p v-if="error" role="alert" class="video-studio__notice video-studio__notice--error"><q-icon name="mdi-alert-circle-outline" size="20px" /> {{ error }}</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
@@ -1435,7 +1615,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
       </div>
 
       <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai' }">
-        <nav class="video-studio__tabs" aria-label="Ferramentas do editor">
+        <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
           <q-tabs :model-value="tab" dark dense no-caps align="justify" indicator-color="transparent" active-color="teal-2" @update:model-value="chooseEditorTab">
             <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label" :disable="!mayEdit" />
           </q-tabs>
@@ -1540,29 +1720,32 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
                 <span v-if="!nextScene?.media?.isVideo" class="video-studio__hint">Adicione um vídeo na próxima cena para criar a transição.</span>
               </div>
             </template>
-            <details class="video-studio__script">
-              <summary><q-icon name="mdi-creation-outline" size="19px" /> Criar roteiro com IA</summary>
-              <label>Briefing<textarea v-model="scriptPrompt" rows="3" maxlength="3000" placeholder="Descreva o assunto, o público e a duração desejada…" :disabled="!mayEdit" /></label>
-              <button type="button" class="video-studio__secondary" :disabled="!scriptPrompt.trim() || !mayEdit" @click="makeScript"><q-spinner v-if="busy === 'script'" size="18px" /><q-icon v-else name="mdi-creation-outline" size="18px" /> {{ busy === 'script' ? 'Escrevendo…' : 'Gerar roteiro' }}</button>
-              <small>O roteiro preenche as cenas e a locução.</small>
-            </details>
+            <q-btn outline no-caps class="video-studio__script-btn" icon="mdi-script-text-outline" label="Abrir roteiro do projeto"
+              :disable="!mayEdit || Boolean(busy)" @click="openProjectScript" />
           </div>
 
           <div v-else-if="tab === 'voice'" class="video-studio__section">
             <div class="video-studio__scene-heading"><h2>Locução</h2><button v-if="signedIn" class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vozes" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button></div>
             <label>Texto da locução<textarea v-model="narrationText" rows="5" :maxlength="maxNarration" placeholder="Digite o texto que será narrado…" :disabled="!mayEdit" /></label>
-            <div v-if="options?.voices?.length" class="video-studio__voices" role="group" aria-label="Vozes OpenAI">
-              <button v-for="(item, index) in options.voices" :key="item.id" type="button" :style="{ '--voice-hue': [162, 195, 266, 41, 325][index % 5] }" :aria-pressed="voice === item.id" :disabled="!mayEdit" @click="voice = item.id"><span class="video-studio__voice-dot" aria-hidden="true" /> {{ item.label }}</button>
+            <div v-if="baseVoices.length" class="video-studio__voices" role="group" aria-label="Vozes OpenAI">
+              <button v-for="(item, index) in baseVoices" :key="item.id" type="button" :style="{ '--voice-hue': [162, 195, 266, 41, 325][index % 5] }" :aria-pressed="(selectedVoice?.base || voice) === item.id" :disabled="!mayEdit" @click="voice = item.id"><span class="video-studio__voice-dot" aria-hidden="true" /> {{ item.label }}</button>
             </div>
             <p v-else-if="signedIn" class="video-studio__hint">{{ optionsLoading ? 'Carregando vozes…' : optionsError || 'A geração de locução está temporariamente indisponível.' }}</p>
+            <label v-if="voicePaces.length > 1">Ritmo da locução
+              <select v-model="voice" :disabled="!mayEdit">
+                <option v-for="item in voicePaces" :key="item.id" :value="item.id">{{ paceLabels[item.speed] || item.label }}</option>
+              </select>
+            </label>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
               <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || !voice || !narrationText.trim()" @click="makeVoice"><q-spinner v-if="busy === 'voice'" size="19px" /><q-icon v-else name="mdi-waveform" size="19px" /> {{ busy === 'voice' ? 'Gerando…' : 'Gerar locução' }}<span v-if="voicePrice > 0"> · {{ usd(voicePrice) }}</span></button>
-              <button v-if="voice && !voicePreview" class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="makeVoicePreview"><q-spinner v-if="busy === 'sample'" size="18px" /><q-icon v-else name="mdi-volume-high" size="18px" /> {{ busy === 'sample' ? 'Gerando amostra…' : 'Ouvir amostra' }}<span v-if="samplePrice > 0"> · {{ usd(samplePrice) }}</span></button>
+              <button v-if="selectedVoice?.previewAvailable && !voicePreview" class="video-studio__secondary" type="button" :disabled="Boolean(busy)" @click="makeVoicePreview"><q-spinner v-if="busy === 'sample'" size="18px" /><q-icon v-else name="mdi-volume-high" size="18px" /> {{ busy === 'sample' ? 'Carregando amostra…' : 'Ouvir amostra grátis' }}</button>
               <input ref="audioInput" type="file" accept="audio/*,.m4a,.mp3,.ogg,.opus,.wav,.aac,.flac" hidden @change="fileFrom($event, file => { if (file) run('media', () => replaceNarration(file)) })" />
               <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="audioInput?.click()"><q-icon name="mdi-upload-outline" size="18px" /> Importar áudio</button>
             </div>
-            <audio v-if="voicePreview" class="video-studio__audio" :src="voicePreview.url" preload="metadata" controls aria-label="Amostra da voz selecionada" />
+            <p v-if="selectedVoice && !selectedVoice.previewAvailable" class="video-studio__hint">A amostra gratuita desta voz ainda está em preparação.</p>
+            <p v-if="selectedVoice" class="video-studio__hint">As vozes de locução são geradas por IA.</p>
+            <audio v-if="voicePreview" class="video-studio__audio" :src="voicePreview.url" preload="metadata" controls autoplay aria-label="Amostra da voz selecionada" />
             <div v-if="narration" class="video-studio__audio-meta">
               <strong>{{ narration.file.name }}</strong><span class="video-studio__spacer" /><a class="video-studio__icon" :href="narration.url" :download="narration.file.name" aria-label="Baixar locução"><q-icon name="mdi-download-outline" size="20px" /></a><button class="video-studio__icon" type="button" aria-label="Remover locução" :disabled="!mayEdit" @click="removeNarration"><q-icon name="mdi-delete-outline" size="20px" /></button>
             </div>
@@ -1630,6 +1813,15 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
               <label>Duração<select v-model="videoOption" :disabled="!mayEdit"><option v-for="item in videoDurations" :key="item.id" :value="item.id">{{ item.seconds }} s</option></select></label>
             </div>
             <p v-else-if="signedIn && !activeJob && !generated" class="video-studio__hint">{{ optionsLoading ? 'Carregando modelos de vídeo…' : optionsError || 'A geração de clipes está temporariamente indisponível.' }}</p>
+            <label v-if="acceptsVoiceReference && voiceComponents.length">Voz de referência
+              <select v-model="voiceReferenceId" :disabled="!mayEdit || Boolean(busy)">
+                <option value="">Sem referência de voz</option>
+                <option v-for="item in voiceComponents" :key="item.id" :value="item.id">{{ item.title }}</option>
+              </select>
+            </label>
+            <p v-if="scriptTarget && offer && offer.seconds !== scriptTarget.duration" class="video-studio__hint">
+              O modelo gera {{ offer.seconds }} s. A cena terá {{ scriptTarget.duration }} s no vídeo master.
+            </p>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
               <button v-else-if="activeJob && !busy" class="video-studio__primary" type="button" @click="checkJob"><q-icon name="mdi-refresh" size="20px" /> Verificar geração</button>
@@ -1716,18 +1908,80 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
         <q-card-section><q-color dark flat bordered format-model="hex" class="full-width" :model-value="projectColor" @update:model-value="setProjectColor" /></q-card-section>
       </q-card>
     </q-dialog>
+    <q-dialog v-model="scriptOpen" :persistent="busy === 'script'">
+      <q-card class="aito-ai-theme video-studio__dialog video-studio__plan">
+        <q-card-section class="video-studio__plan-header">
+          <div><h2>Roteiro do projeto</h2><p>{{ projectTitle }}</p></div>
+          <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar roteiro" :disable="Boolean(busy)" />
+        </q-card-section>
+        <q-card-section class="scroll video-studio__plan-body">
+          <p v-if="scriptError" role="alert" class="video-studio__notice video-studio__notice--error">{{ scriptError }}</p>
+          <label>Briefing<textarea v-model="scriptPrompt" rows="2" maxlength="3000" placeholder="Ex.: Reels mostrando como uma ideia vira vídeo" :disabled="Boolean(busy)" /></label>
+          <label>Roteiro master
+            <span class="video-studio__plan-editor">
+              <textarea v-model="masterScript" rows="5" maxlength="6000" placeholder="Escreva o panorama do vídeo e as referências que precisam se manter em todas as cenas." :disabled="Boolean(busy)" />
+              <q-btn flat round dense icon="mdi-creation-outline" aria-label="Gerar roteiro master com IA" :loading="busy === 'script'"
+                :disable="Boolean(busy) || !scriptPrompt.trim()" @click="writeProjectScript('master')"><q-tooltip>Gerar roteiro master com IA</q-tooltip></q-btn>
+            </span>
+          </label>
+          <div class="video-studio__scene-heading video-studio__plan-actions">
+            <h3>Roteiros de cena</h3>
+            <div class="video-studio__actions">
+              <q-btn outline no-caps icon="mdi-creation-outline" label="Dividir com IA" :loading="busy === 'script'"
+                :disable="Boolean(busy) || (!scriptPrompt.trim() && !masterScript.trim())" @click="writeProjectScript('scenes')" />
+              <q-btn outline no-caps icon="mdi-plus" label="Adicionar cena" :disable="Boolean(busy) || sceneScripts.length >= maxStudioScenes" @click="addScriptScene" />
+            </div>
+          </div>
+          <article v-for="(item, index) in sceneScripts" :key="item.id" class="video-studio__plan-card">
+            <div class="video-studio__scene-heading">
+              <strong>Cena {{ index + 1 }}</strong>
+              <q-btn flat round dense icon="mdi-delete-outline" :aria-label="`Excluir roteiro da cena ${index + 1}`" :disable="Boolean(busy)"
+                @click="sceneScripts = sceneScripts.filter(row => row.id !== item.id)" />
+            </div>
+            <div class="video-studio__fields">
+              <label>Título<input :value="item.title" maxlength="100" :disabled="Boolean(busy)" @input="updateScriptScene(item.id, { title: $event.target.value })" /></label>
+              <label>Tempo aproximado<select :value="item.duration" :disabled="Boolean(busy)" @change="updateScriptScene(item.id, { duration: $event.target.value })">
+                <option v-for="seconds in studioAiSeconds" :key="seconds" :value="seconds">{{ seconds }} s</option>
+              </select></label>
+            </div>
+            <label>Roteiro da cena<textarea :value="item.prompt" rows="3" maxlength="1500" placeholder="Ação, enquadramento, expressão e fala" :disabled="Boolean(busy)"
+              @input="updateScriptScene(item.id, { prompt: $event.target.value })" /></label>
+            <q-select v-if="projectComponents.length" dense dark outlined multiple emit-value map-options use-chips label="Componentes da cena"
+              :model-value="item.componentIds" :options="projectComponents" :max-values="12" option-label="title" option-value="id" :disable="Boolean(busy)"
+              @update:model-value="value => updateScriptScene(item.id, { componentIds: value })" />
+            <div class="video-studio__actions">
+              <q-btn outline no-caps icon="mdi-creation-outline" label="Refinar com IA" :disable="Boolean(busy) || !item.prompt.trim()" @click="writeProjectScript('refine', item)" />
+              <button type="button" class="video-studio__primary" :disabled="Boolean(busy) || Boolean(activeJob) || !item.prompt.trim()" @click="prepareScriptScene(item)">
+                <q-icon name="mdi-movie-open-play-outline" size="18px" /> {{ scenes.some(scene => scene.scriptId === item.id) ? 'Gerar de novo' : 'Gerar cena' }}
+              </button>
+            </div>
+          </article>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
     <q-dialog v-model="componentOpen">
       <q-card class="aito-ai-theme video-studio__dialog">
         <q-card-section class="video-studio__scene-heading"><h2>{{ componentForm ? `${editingComponent ? 'Editar' : 'Adicionar'} ${componentName}` : componentType }}</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar componentes" /></q-card-section>
         <q-card-section class="video-studio__dialog-list">
           <template v-if="componentForm">
+            <p v-if="componentError" role="alert" class="video-studio__notice video-studio__notice--error">{{ componentError }}</p>
             <label>Nome<input :value="componentForm.title" maxlength="80" @input="updateComponentForm({ title: $event.target.value })" /></label>
             <label>Descrição ou prompt<textarea :value="componentForm.prompt" rows="3" maxlength="2000" @input="updateComponentForm({ prompt: $event.target.value })" /></label>
-            <label>Imagem de referência<input type="file" accept="image/jpeg,image/png,image/webp" @change="fileFrom($event, setComponentImage)" /></label>
+            <label v-if="componentType === voiceComponentType">Arquivo de áudio de até 3 segundos
+              <input type="file" accept="audio/*,.mp3,.wav,.m4a" :disabled="componentLoading" @change="fileFrom($event, setComponentVoice)" />
+            </label>
+            <label v-else>Imagem de referência<input type="file" accept="image/jpeg,image/png,image/webp" @change="fileFrom($event, setComponentImage)" /></label>
+            <label v-if="componentType === 'Personagens'">Voz do personagem
+              <select :value="componentForm.voiceId || ''" @change="updateComponentForm({ voiceId: $event.target.value })">
+                <option value="">Sem voz vinculada</option>
+                <option v-for="sample in voiceComponents" :key="sample.id" :value="sample.id">{{ sample.title }}</option>
+              </select>
+            </label>
+            <audio v-if="componentVoicePreview" class="video-studio__audio" controls preload="metadata" :src="componentVoicePreview" aria-label="Ouvir voz de referência" />
             <span v-if="componentForm.file" class="video-studio__hint">{{ componentForm.file.name }}</span>
             <div class="video-studio__actions">
               <button type="button" class="video-studio__secondary" @click="componentForm = null">Cancelar</button>
-              <button type="button" class="video-studio__primary" :disabled="!componentForm.title.trim()" @click="saveComponent">Salvar</button>
+              <button type="button" class="video-studio__primary" :disabled="componentLoading || !componentForm.title.trim() || (componentType === voiceComponentType && !componentForm.file)" @click="saveComponent">Salvar</button>
             </div>
           </template>
           <template v-else>
@@ -1743,12 +1997,12 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
               <button type="button" class="video-studio__icon" aria-label="Mover tipo para baixo" @click="changeCustomType(1)"><q-icon name="mdi-chevron-down" /></button>
             </div>
             <div v-for="item in matchingComponents" :key="item.id" class="video-studio__inventory-item">
-              <img v-if="componentPosters.has(item.file)" :src="componentPosters.get(item.file)" class="video-studio__component-thumb" alt="" loading="lazy" /><q-icon v-else name="mdi-image-text" size="23px" />
-              <span><strong>{{ item.title }}</strong><small>{{ item.prompt }}</small></span>
+              <img v-if="item.type !== voiceComponentType && componentPosters.has(item.file)" :src="componentPosters.get(item.file)" class="video-studio__component-thumb" alt="" loading="lazy" /><q-icon v-else :name="item.type === voiceComponentType ? 'mdi-waveform' : 'mdi-image-text'" size="23px" />
+              <span><strong>{{ item.title }}</strong><small>{{ item.prompt }}</small><small v-if="item.voiceId">{{ voiceComponents.find(voice => voice.id === item.voiceId)?.title }}</small></span>
               <button type="button" class="video-studio__secondary" @click="useComponent(item)">Usar</button>
               <button type="button" class="video-studio__secondary" @click="useComponent(item, true)">Gerar variação</button>
               <button type="button" class="video-studio__icon" :aria-label="`Editar ${item.title}`" @click="editComponent(item)"><q-icon name="mdi-pencil-outline" /></button>
-              <button type="button" class="video-studio__icon" :aria-label="`Excluir ${item.title}`" @click="projectComponents = projectComponents.filter(row => row.id !== item.id)"><q-icon name="mdi-delete-outline" /></button>
+              <button type="button" class="video-studio__icon" :aria-label="`Excluir ${item.title}`" @click="removeComponent(item)"><q-icon name="mdi-delete-outline" /></button>
             </div>
           </template>
         </q-card-section>
@@ -1780,7 +2034,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 </template>
 
 <style scoped>
-.video-studio { min-height: 100dvh; color: var(--aito-ai-text); background: var(--aito-ai-glow), var(--aito-ai-bg); font-family: var(--aito-ai-font); }
+.video-studio { min-height: 100dvh; color: var(--aito-ai-text); background: radial-gradient(ellipse at 15% 28%, #663d7641, transparent 48%), radial-gradient(ellipse at 100% 45%, #154d6757, transparent 52%), var(--aito-ai-glow), var(--aito-ai-bg); font-family: var(--aito-ai-font); }
 .video-studio button, .video-studio input, .video-studio textarea, .video-studio select { font: inherit; }
 .video-studio button, .video-studio a { -webkit-tap-highlight-color: transparent; }
 .video-studio button:focus-visible, .video-studio a:focus-visible, .video-studio input:focus-visible, .video-studio select:focus-visible, .video-studio textarea:focus-visible, .video-studio summary:focus-visible { outline: 2px solid var(--aito-ai-purple); outline-offset: 3px; }
@@ -1810,7 +2064,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__intro p { margin-top: 10px; color: var(--aito-ai-muted); }
 .video-studio__zip { display: grid; gap: 5px; justify-items: end; }
 .video-studio__grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, .82fr); align-items: start; gap: 14px; scroll-margin-top: calc(var(--video-header-height) + 6px); }
-.video-studio__panel { min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: var(--aito-ai-surface); }
+.video-studio__panel { min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: linear-gradient(145deg, #1835356b, transparent 58%), var(--aito-ai-surface); }
 .video-studio :deep(.video-studio__drawer) { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-color: var(--aito-ai-line); }
 .video-studio__drawer-content { display: flex; min-height: 100%; flex-direction: column; gap: 20px; padding: 20px 18px max(16px, env(safe-area-inset-bottom, 0px)); }
 .video-studio__drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -1828,14 +2082,18 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__tabs :deep(.q-tab__content) { flex-direction: row; gap: 6px; min-width: 0; }
 .video-studio__tabs :deep(.q-tab__icon) { width: 18px; height: 18px; font-size: 18px; }
 .video-studio__tabs :deep(.q-tab--active) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
+.video-studio__tabs--voice :deep(.q-tab--active) { color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
+.video-studio__tabs--ai :deep(.q-tab--active) { color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
+.video-studio__script-btn { color: var(--aito-ai-purple); border-radius: 8px; background: var(--aito-ai-purple-soft); }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
 .video-studio__preview { grid-column: 1; grid-row: 2; }
 .video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 3; }
+.video-studio__grid--generate .video-studio__editor { background: linear-gradient(140deg, #39305783, transparent 58%), var(--aito-ai-surface); }
 .video-studio__preview--clips { grid-column: 2; grid-row: 3; }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .video-studio h2 { font-size: 1.13rem; font-weight: 730; line-height: 1.2; }
 .video-studio h3 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
-.video-studio__preview header span, .video-studio__hint, .video-studio__script small { color: var(--aito-ai-muted); font-size: .84rem; }
+.video-studio__preview header span, .video-studio__hint { color: var(--aito-ai-muted); font-size: .84rem; }
 .video-studio__fields { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, .9fr); gap: 10px; }
 .video-studio__fields--clip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .video-studio__catalog { grid-column: 1 / -1; grid-row: 2; min-width: 0; display: grid; gap: 12px; }
@@ -1845,13 +2103,13 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__catalog-models :deep(.q-item) { min-height: 49px; padding: 8px 12px; }
 .video-studio__catalog-models :deep(.q-item__section--avatar) { min-width: 36px; color: var(--aito-ai-accent); }
 .video-studio__catalog-models :deep(.q-item__label--caption) { color: var(--aito-ai-accent); }
-.video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 5px 10px 10px; }
+.video-studio__model-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 5px 10px 10px; }
 .video-studio__model-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 13px; background: var(--aito-ai-surface); }
 .video-studio__model-card--selected, .video-studio__model-card:has(.video-studio__model-hit:not(:disabled):hover) { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-panel); }
-.video-studio__model-poster { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; background-color: var(--aito-ai-panel); background-image: url('/aitoia-model-posters.webp'); background-size: 200% 400%; }
+.video-studio__model-poster { position: relative; aspect-ratio: 2.35 / 1; max-height: 125px; overflow: hidden; border-radius: 8px; background-color: var(--aito-ai-panel); background-image: url('/aitoia-model-posters.webp'); background-size: 200% 400%; }
 .video-studio__model-type { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 6px; background: #281d3aeb; color: #f7dff9; font-size: .69rem; font-weight: 700; }
 .video-studio__model-type--image { background: #082f25eb; color: #d7ffed; }
-.video-studio__model-content { display: grid; flex: 1; grid-template-rows: auto 1fr auto; gap: 6px; padding: 9px 8px 6px; }
+.video-studio__model-content { display: grid; flex: 1; grid-template-rows: auto 1fr auto; gap: 5px; padding: 7px 7px 5px; }
 .video-studio__model-maker { color: var(--aito-ai-muted); font-size: .76rem; }
 .video-studio__model-content h3 { margin-top: 2px; overflow-wrap: anywhere; }
 .video-studio__model-content p { color: var(--aito-ai-muted); font-size: .82rem; line-height: 1.35; }
@@ -1866,10 +2124,6 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio input:not([type=range], .q-field__native), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio textarea { min-height: 60px; resize: vertical; }
 .video-studio input::placeholder, .video-studio textarea::placeholder { color: var(--aito-ai-muted); opacity: .75; }
-.video-studio__script { padding: 8px 10px; border: 1px solid var(--aito-ai-purple-line); border-radius: 9px; background: var(--aito-ai-purple-soft); }
-.video-studio__script summary { color: var(--aito-ai-purple); cursor: pointer; font-weight: 650; }
-.video-studio__script[open] summary, .video-studio__script label, .video-studio__script button { margin-bottom: 8px; }
-.video-studio__script small { display: block; }
 .video-studio__timeline { grid-column: 1 / -1; grid-row: 3; display: grid; min-width: 0; gap: 10px; padding: 12px clamp(13px, 2vw, 20px); }
 .video-studio__grid--generate .video-studio__timeline { grid-row: 4; }
 .video-studio__timeline .video-studio__master-toggle { display: none; }
@@ -1930,6 +2184,15 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__dialog { width: min(620px, 95vw); background: var(--aito-ai-surface); color: var(--aito-ai-text); }
 .video-studio__dialog h2 { margin: 0 0 8px; font-size: 1.15rem; }
 .video-studio__dialog-list { display: grid; gap: 10px; }
+.video-studio__plan { width: min(760px, 95vw); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--aito-ai-purple-line); }
+.video-studio__plan-header { display: flex; justify-content: space-between; align-items: flex-start; background: linear-gradient(130deg, var(--aito-ai-purple-soft), var(--aito-ai-panel)); }
+.video-studio__plan-header p { margin: 0; color: var(--aito-ai-muted); }
+.video-studio__plan-body { display: grid; gap: 16px; overflow-y: auto; max-height: min(72dvh, 760px); overscroll-behavior: contain; }
+.video-studio__plan-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.video-studio__plan-editor .q-btn, .video-studio__plan-actions .q-btn { color: var(--aito-ai-purple); }
+.video-studio__plan-actions { flex-wrap: wrap; }
+.video-studio__plan-card { display: grid; gap: 9px; padding: 12px; border: 1px solid var(--aito-ai-line); border-radius: 10px; background: var(--aito-ai-panel); }
+.video-studio__plan-card .video-studio__scene-heading { color: var(--aito-ai-accent); }
 .video-studio__dialog label { display: grid; gap: 5px; }
 .video-studio__dialog input, .video-studio__dialog textarea, .video-studio__dialog select { padding: 9px; min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio__inventory-item { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 8px 4px; border-bottom: 1px solid var(--aito-ai-line); }

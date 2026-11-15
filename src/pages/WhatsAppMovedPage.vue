@@ -10,7 +10,7 @@
           <p>Entre com a conta disponibilizada nessa plataforma. Contas, senhas e sessões deste site não são transferidas automaticamente.</p>
           <div class="moved-actions">
             <q-btn unelevated no-caps color="teal-7" label="Abrir atendimento" icon-right="mdi-open-in-new" href="/comunicacao/app/colaboradores" target="_blank" rel="noopener noreferrer" />
-            <q-btn flat no-caps label="Voltar ao site" to="/" />
+            <q-btn flat no-caps label="Voltar ao site" to="/sobre" />
             <q-btn flat no-caps label="Conhecer o BotBuilder" to="/whatsappbotbuilder" />
           </div>
           <small>A compra, os downloads e a gestão de licenças continuam na AitoSoftwares.</small>

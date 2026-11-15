@@ -96,7 +96,7 @@
         <div class="aito-dance__noise" aria-hidden="true"></div>
 
         <header class="aito-dance__header">
-          <router-link class="aito-dance__brand" to="/" aria-label="AitoSoftwares - inicio">
+          <router-link class="aito-dance__brand" to="/sobre" aria-label="AitoSoftwares - inicio">
             <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
             <span>AITO<span>SOFTWARES</span></span>
           </router-link>
@@ -332,7 +332,7 @@ function handleTouchEnd(event) {
 }
 
 function goBack() {
-  void router.push('/')
+  void router.push('/sobre')
 }
 
 function updateMotionPreference(event) {

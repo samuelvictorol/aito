@@ -11,6 +11,7 @@ const props = defineProps({
   cloudState: { type: String, default: 'local' },
   drawer: Boolean,
   canExport: Boolean,
+  colored: Boolean,
 })
 const emit = defineEmits(['create', 'open', 'remove', 'renew', 'import', 'export'])
 const deleting = ref(false)
@@ -23,6 +24,7 @@ const activeProject = computed(() => props.projects.find(project => project.id =
 const atLimit = computed(() => props.projects.length >= AITOIA_STUDIO_LIMIT)
 const canRenew = computed(() => canRenewStudio(activeProject.value?.expiresAt, now.value))
 const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+const projectColor = project => /^#[0-9a-f]{6}$/i.test(project?.projectColor || '') ? project.projectColor : '#13BC9D'
 function selectFile(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
@@ -33,13 +35,20 @@ function selectFile(event) {
 <template>
   <div class="aito-projects" :class="{ 'aito-projects--drawer': drawer }">
     <div class="aito-projects__controls">
-      <label>
-        <span><q-icon name="mdi-folder-multiple-outline" size="18px" /> Projetos · {{ projects.length }}/{{ AITOIA_STUDIO_LIMIT }}</span>
-        <select :value="activeId" :disabled="disabled || loading || !projects.length" @change="emit('open', $event.target.value)">
+      <div class="aito-projects__selector">
+        <span id="aito-project-list-title"><q-icon name="mdi-folder-multiple-outline" size="18px" /> Projetos · {{ projects.length }}/{{ AITOIA_STUDIO_LIMIT }}</span>
+        <q-select v-if="colored" class="aito-projects__color-select" :model-value="activeProject" :options="projects"
+          option-label="title" option-value="id" behavior="menu" dark outlined dense aria-label="Escolher projeto"
+          :disable="disabled || loading || !projects.length" :loading="loading" :display-value="activeProject?.title || 'Nenhum projeto salvo'"
+          @update:model-value="project => emit('open', project.id)">
+          <template v-if="activeProject" #selected><span class="aito-projects__color-option"><i :style="{ backgroundColor: projectColor(activeProject) }" aria-hidden="true" />{{ activeProject.title }}</span></template>
+          <template #option="{ itemProps, opt }"><q-item v-bind="itemProps"><q-item-section><span class="aito-projects__color-option"><i :style="{ backgroundColor: projectColor(opt) }" aria-hidden="true" />{{ opt.title }}</span></q-item-section></q-item></template>
+        </q-select>
+        <select v-else :value="activeId" aria-labelledby="aito-project-list-title" :disabled="disabled || loading || !projects.length" @change="emit('open', $event.target.value)">
           <option v-if="!projects.length" value="">{{ loading ? 'Carregando projetos…' : 'Nenhum projeto salvo' }}</option>
           <option v-for="project in projects" :key="project.id" :value="project.id">{{ project.title }}</option>
         </select>
-      </label>
+      </div>
       <button type="button" :disabled="disabled || loading || atLimit" @click="emit('create')"><q-icon name="mdi-plus" size="19px" /> Novo projeto</button>
       <button v-if="activeProject" type="button" aria-label="Excluir projeto" :disabled="disabled || loading" @click="deleting = true"><q-icon name="mdi-delete-outline" size="20px" /></button>
     </div>
@@ -69,17 +78,20 @@ function selectFile(event) {
 <style scoped>
 .aito-projects { display: grid; gap: 5px; min-width: 0; }
 .aito-projects__controls { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
-.aito-projects__controls label { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.aito-projects__controls label span { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.aito-projects__selector { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.aito-projects__selector > span { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
 .aito-projects__controls select, .aito-projects__controls button { min-height: 37px; border: 1px solid var(--aito-ai-line); border-radius: 8px; background: var(--aito-ai-panel); color: var(--aito-ai-text); padding: 5px 8px; font: inherit; }
 .aito-projects__controls select { min-width: 0; width: min(200px, 100%); text-overflow: ellipsis; }
+.aito-projects__color-select { width: 100%; min-width: 0; }
+.aito-projects__color-option { display: inline-flex; align-items: center; gap: 9px; min-width: 0; overflow-wrap: anywhere; }
+.aito-projects__color-option i { display: inline-block; width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; border: 1px solid #ffffff45; }
 .aito-projects__controls button { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .aito-projects__controls button:disabled { opacity: .54; cursor: not-allowed; }
 .aito-projects__controls button:focus-visible, .aito-projects__controls select:focus-visible { outline: 2px solid var(--aito-ai-accent); outline-offset: 2px; }
 .aito-projects--drawer { gap: 9px; }
 .aito-projects--drawer .aito-projects__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
-.aito-projects--drawer .aito-projects__controls label { display: grid; grid-column: 1 / -1; gap: 8px; }
-.aito-projects--drawer .aito-projects__controls label span { font-size: .9rem; }
+.aito-projects--drawer .aito-projects__selector { display: grid; grid-column: 1 / -1; align-items: stretch; gap: 8px; }
+.aito-projects--drawer .aito-projects__selector > span { font-size: .9rem; }
 .aito-projects--drawer .aito-projects__controls select { width: 100%; padding-inline: 11px; }
 .aito-projects--drawer .aito-projects__controls button { justify-content: center; padding-inline: 10px; }
 .aito-projects--drawer .aito-projects__controls :is(select, button) { min-height: 44px; }

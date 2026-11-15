@@ -43,6 +43,10 @@ export async function putImageReference(file, ticket, signal) {
   return putReference(file, checkImageReference(file), ticket, signal)
 }
 
+export async function putVoiceReference(file, ticket, signal) {
+  return putReference(file, 'audio/wav', ticket, signal)
+}
+
 export async function readGeneratedClip(url, signal) {
   const response = await fetch(safeVideoUrl(url), { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal })
   const type = (response.headers.get('Content-Type') || '').split(';')[0].trim()
