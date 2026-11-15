@@ -6,6 +6,7 @@ import { usd } from 'src/composables/useAitoIA'
 import { codexOfferDelay, codexOfferInterval, codexOfferStorageKey, codexOfficialUrl, codexProductPath, offersCodex } from 'src/services/aitoCodexInstall'
 import AuthDialog from 'components/AuthDialog.vue'
 import AitoCodexInstallDialog from './AitoCodexInstallDialog.vue'
+import AitoCodexInstallVideo from './AitoCodexInstallVideo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,6 +94,7 @@ onBeforeUnmount(() => {
         <q-btn unelevated no-caps icon="mdi-download" label="Baixar plugin e guia" class="codex-offer__primary" @click="openInstallGuide" />
         <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Baixar Codex oficial <q-icon name="mdi-arrow-top-right" /></a>
       </div>
+      <AitoCodexInstallVideo class="codex-offer__tutorial" />
       <div class="codex-offer__footer">
         <q-btn flat no-caps icon="mdi-key-outline" label="Obter minha AitoKey" @click="openProfile" />
         <router-link v-close-popup :to="codexProductPath" class="codex-offer__packs">Conhecer o plugin</router-link>
@@ -115,6 +117,7 @@ onBeforeUnmount(() => {
 .codex-offer__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .codex-offer__actions a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 7px 10px; border: 1px solid #cdaa6666; border-radius: 9px; text-decoration: none; font: inherit; font-weight: 700; }
 .codex-offer .codex-offer__primary { min-height: 42px; border-radius: 9px; color: #271a04; background: linear-gradient(125deg, #ffe9a9, #dba653); font-weight: 700; }
+.codex-offer__tutorial { margin: 1rem auto .75rem; }
 .codex-offer__footer { display: flex; flex-wrap: wrap; align-items: center; column-gap: 9px; margin-top: 9px; color: #f7d890; }
 .codex-offer__footer .q-btn { padding-inline: 0; }
 .codex-offer .codex-offer__packs { font-size: .75rem; color: #bdd3cb; text-underline-offset: 3px; }

@@ -23,6 +23,13 @@
       <main v-else-if="activeMenu === 'finance'" class="user-app__main user-app__wide"><UserFinancePanel /></main>
       <main v-else-if="activeMenu === 'aito-tokens'" class="user-app__main user-app__wide"><UserAitoTokensPanel /></main>
       <main v-else class="user-app__main user-app__wide"><SupportTicketsPanel /></main>
+      <router-link to="/" class="user-app__assistant" aria-label="Abrir AitoIA com modelos OpenAI">
+        <picture>
+          <source media="(prefers-reduced-motion: reduce)" srcset="/icons/aitoia-192.png" />
+          <img src="/ia.gif" alt="" width="40" height="40" />
+        </picture>
+        <span class="user-app__assistant-label"><strong>AitoIA</strong><span><img src="/chatgpt-mark.svg" alt="" width="13" height="13" /> Modelos OpenAI</span></span>
+      </router-link>
     </div></q-page></q-page-container>
   </q-layout>
 </template>
@@ -82,7 +89,7 @@ async function logout () { try { await api.post('/auth/logout',{}, {headers:{Aut
 
 <style scoped>
 .user-app { color: #effffb; background: #03090b; }
-.user-app__page { min-height: 100vh; background: radial-gradient(circle at 70% 18%, rgba(19,188,157,.16), transparent 25rem), #03090b; }
+.user-app__page { min-height: 100vh; padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); background: radial-gradient(circle at 70% 18%, rgba(19,188,157,.16), transparent 25rem), #03090b; }
 .user-app__shell { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; }
 .user-app__header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 0; border-bottom: 1px solid rgba(19,188,157,.18); }
 .user-app__session { display: flex; align-items: center; gap: .8rem; }.user-app__session>.user-app__identity { display: grid; gap: .12rem; text-align: right; }.user-app__session strong { color: #effffb; font-size: .78rem; }.user-app__session small { color: rgba(230,255,250,.58); font-size: .64rem; }
@@ -91,6 +98,14 @@ async function logout () { try { await api.post('/auth/logout',{}, {headers:{Aut
 .user-app__ai-link { display: inline-flex; align-items: center; gap: .4rem; padding: .55rem .75rem; border: 1px solid #e5c17266; border-radius: .5rem; color: #ffe3a6; background: #bd84341a; font-size: .72rem; font-weight: 700; text-decoration: none; }
 .user-app__ai-link:hover { background: #bd843435; }
 .user-app__ai-link:focus-visible { outline: 2px solid #ffe3a6; outline-offset: 2px; }
+.user-app__assistant { position: fixed; z-index: 20; inset-inline-end: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: .6rem; min-height: 3.3rem; padding: .35rem .8rem .35rem .5rem; border: 1px solid #73d9c0; border-radius: 999px; background: #0c2729; color: #f2fffa; box-shadow: 0 .35rem 1rem #0009; text-decoration: none; }
+.user-app__assistant:hover { background: #143c3c; }
+.user-app__assistant:focus-visible { outline: 2px solid #a4fce4; outline-offset: 3px; }
+.user-app__assistant picture { display: grid; place-items: center; width: 40px; height: 40px; }
+.user-app__assistant picture img { object-fit: contain; }
+.user-app__assistant-label { display: grid; gap: .125rem; }
+.user-app__assistant-label strong { font-size: .94rem; line-height: 1.15; }
+.user-app__assistant-label span { display: flex; align-items: center; gap: .3rem; color: #c6e6df; font-size: .69rem; white-space: nowrap; }
 .user-app__main { padding: 10vh 0; }.user-app__wide { padding-top: 4rem; }.user-app__eyebrow { color: #8fffee; font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }.user-app h1 { max-width: 12ch; margin: .8rem 0 0; font-size: clamp(2.4rem,6vw,5rem); line-height: .98; background: linear-gradient(135deg,#f3fffd,#13bc9d,#8fffee); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }.user-app p { max-width: 32rem; color: rgba(230,255,250,.72); line-height: 1.6; }.user-app__grid { display: grid; margin-top: 3rem; grid-template-columns: repeat(3,1fr); gap: .8rem; }.user-app__grid section { display: grid; gap: .5rem; padding: 1.2rem; border: 1px solid rgba(19,188,157,.25); border-radius: .8rem; background: rgba(4,24,25,.72); }.user-app__grid strong { color: #effffb; }.user-app__grid span { color: rgba(230,255,250,.58); font-size: .75rem; }.user-app__grid .q-icon { color: #13bc9d; }.user-app__grid .q-btn,.user-app__profile-form .q-btn { width: max-content; color: #03110f; background: linear-gradient(135deg,#8fffee,#13bc9d); font-weight: 800; }.user-app__profile-form { display: grid; max-width: 520px; gap: .8rem; margin-top: 2rem; }.user-app__profile-form :deep(.q-field__control) { color: #effffb; background: rgba(4,24,25,.78); }.user-app__profile-form :deep(.q-field__native),.user-app__profile-form :deep(.q-field__label) { color: rgba(239,255,251,.78); }
 @media (max-width: 700px) { .user-app__grid { grid-template-columns: 1fr; } .user-app__session>.user-app__identity { display: none; } }
 </style>

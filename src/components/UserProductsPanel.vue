@@ -18,9 +18,19 @@ const codexGuide = ref(false)
 const codexKey = ref(false)
 const $q=useQuasar(),data=ref(null),catalog=ref({}),cart=ref(null),busy=ref(false),downloading=ref(''),visible=ref({}),now=ref(Date.now())
 const reauthOpen=ref(false),reauthChallenge=ref(null),pendingRotation=ref(null),termsOpen=ref(false),selectedTerms=ref(null)
+const rotating = ref('')
+const replacement = ref(null)
+const replacementOpen = ref(false)
+const replacementVisible = ref(false)
+const replacementSteps = {
+  desktop: 'Quando o Desktop pedir a reativação, cole a chave na tela de licença e clique em Ativar chave.',
+  cloud: 'Entre como administrador na sua instalação Whitelabel. Abra Sistema e atualize a chave da licença.',
+  legacy: 'Abra a configuração de licença da instalação onde você usa esta chave e cole a nova chave.',
+}
 const headers=()=>({headers:{Authorization:'Bearer '+(localStorage.getItem('aito_user_token')||'')}})
 const date=value=>value?new Date(value).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—'
 const money=cents=>(Number(cents||0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
+const desktopProductImage = '/whatsapp-solutions/product-kit.webp'
 const definitions={desktop:{icon:'mdi-microsoft-windows',title:'Desktop · executável',tag:'PRONTO PARA USAR',description:'Instalador para Windows 10 e 11 de 64 bits, sem código-fonte.',link:'/whatsapp-solucoes'},cloud:{icon:'mdi-source-repository',title:'Whitelabel · código-fonte / Cloud',tag:'PRONTO PARA PERSONALIZAR',description:'Código-fonte editável e pacote para Cloud. Produto independente do executável Desktop.',link:'/whatsapp-solucoes-whitelabel'}}
 const licenses=computed(()=>data.value?.licenses||[])
 const licenseGroups = computed(() => [...PRODUCT_TYPES, 'legacy'].map(type => ({
@@ -90,9 +100,27 @@ async function renew(license) {
     $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível abrir a renovação.' })
   } finally { renewing.value = '' }
 }
-async function performRotate(license){try{await api.post('/products/aitonotify/licenses/'+license._id+'/rotate',{},headers());await load();$q.notify({type:'positive',message:'Token anterior revogado. Atualize a instalação deste produto.'})}catch(e){$q.notify({type:'negative',message:e.response?.data?.message||'Não foi possível substituir a chave.'})}}
+async function performRotate(license) {
+  if (rotating.value) return
+  rotating.value = license._id
+  try {
+    const response = await api.post(`/products/aitonotify/licenses/${encodeURIComponent(license._id)}/rotate`, {}, headers())
+    const updated = response.data.data
+    visible.value[license._id] = false
+    if (updated?.token) {
+      if (data.value) data.value.licenses = licenses.value.map(item => item._id === license._id ? updated : item)
+      replacementVisible.value = false
+      replacement.value = updated
+      replacementOpen.value = true
+    }
+    await load({ silent: true })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Não foi possível substituir a chave.' })
+  } finally { rotating.value = '' }
+}
 function rotate(license) {
-  $q.dialog({ title: 'Substituir chave deste produto?', message: 'A chave anterior será revogada. Os tokens dos outros produtos são independentes.', cancel: true, persistent: true }).onOk(async () => {
+  if (rotating.value) return
+  $q.dialog({ title: 'Substituir chave deste produto?', message: 'A chave anterior perde o acesso imediatamente. Cadastre a nova chave na instalação para retomar os recursos que exigem a licença.', cancel: true, persistent: true }).onOk(async () => {
     let claims
     try {
       const [, body] = (localStorage.getItem('aito_user_token') || '').split('.')
@@ -146,13 +174,28 @@ onBeforeUnmount(() => {
   <LoginMfaDialog v-model="reauthOpen" :challenge="reauthChallenge" @verified="verifiedRotation"/>
   <KitProductCart ref="cart" @catalog="applyCatalog" @purchased="load"/>
   <header class="products__top"><div><h1>Meus produtos</h1><p>Encontre os downloads e a chave de cada produto.</p></div><q-btn flat round icon="mdi-refresh" aria-label="Atualizar produtos" :loading="busy" @click="load"/></header>
+  <section class="products__group products__codex" aria-labelledby="products-codex-title">
+    <img src="/codex-app-icon.png" alt="" width="42" height="42" />
+    <div>
+      <h2 id="products-codex-title">AitoIA para Codex</h2>
+      <p class="products__group-help">Use a AitoKey vinculada à sua carteira para consumir AitoTokens no Codex. A chave pode ser gerada ou regenerada aqui.</p>
+      <div class="product-card__actions">
+        <q-btn unelevated no-caps color="teal-7" icon="mdi-key-outline" label="Gerenciar AitoKey" @click="codexKey = true" />
+        <q-btn flat no-caps icon="mdi-download" label="Baixar plugin e guia" @click="codexGuide = true" />
+        <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Baixar Codex oficial ↗</a>
+        <router-link :to="codexProductPath">Conhecer o plugin ↗</router-link>
+      </div>
+    </div>
+  </section>
   <section class="products__group" aria-labelledby="products-whatsapp-title">
   <h2 id="products-whatsapp-title">Soluções para WhatsApp</h2>
   <p class="products__group-help">Desktop e Whitelabel têm licenças de ativação independentes. Use a chave indicada em cada instalação.</p>
   <DesktopTrialOffer v-if="data && !hasActiveLicense" @claimed="load" />
   <div class="products__catalog">
     <article v-for="type in PRODUCT_TYPES" :key="type" :class="['product-card','product-card--'+type]">
-      <q-icon :name="definitions[type].icon" size="34px"/><q-badge :color="hasProduct(type)?'teal-7':'grey-8'" :label="hasProduct(type)?'Na sua biblioteca':'Compra separada'"/>
+      <img v-if="type === 'desktop'" :src="desktopProductImage" class="product-card__image" alt="" width="56" height="80" />
+      <q-icon v-else :name="definitions[type].icon" size="34px"/>
+      <q-badge :color="hasProduct(type)?'teal-7':'grey-8'" :label="hasProduct(type)?'Na sua biblioteca':'Compra separada'"/>
       <small>{{definitions[type].tag}}</small><h2>{{definitions[type].title}}</h2><p>{{definitions[type].description}} <template v-if="displayedOffer(type).priceCents != null"> Token {{ productTermLabel(displayedOffer(type)) }}.</template></p>
       <q-select
         v-if="type === 'desktop' && desktopPlanOptions.length"
@@ -173,7 +216,7 @@ onBeforeUnmount(() => {
     <section v-for="group in licenseGroups" :key="group.type" class="products__license-group">
     <h3>{{ group.type === 'legacy' ? 'Licenças anteriores' : `Licenças ${group.type === 'desktop' ? 'Desktop' : 'Whitelabel'}` }}</h3>
     <article v-for="license in group.licenses" :key="license._id" class="license-card">
-      <header><q-icon :name="definitions[licenseProductType(license)]?.icon||'mdi-license'" size="30px"/><div><small>AITOIA + KIT AITONOTIFY E WHATSAPP BOT BUILDER</small><h2>{{productLabel(licenseProductType(license))}}</h2></div><LicenseValidity :license="license"/></header>
+      <header><img v-if="group.type === 'desktop'" :src="desktopProductImage" class="product-card__image" alt="" width="38" height="54" /><q-icon v-else :name="definitions[group.type]?.icon||'mdi-license'" size="30px"/><div><small>AITOIA + KIT AITONOTIFY E WHATSAPP BOT BUILDER</small><h2>{{productLabel(group.type)}}</h2></div><LicenseValidity :license="license"/></header>
       <div v-if="canRenew(license)" class="license-card__renewal">
         <q-badge v-if="license.sourceId?.startsWith('desktop-trial:') && !license.renewedAt" color="amber-4" text-color="dark" label="Teste de 7 dias" />
         <p>Ao renovar antes do vencimento, o novo prazo é somado à validade atual. Se já venceu, ele começa na confirmação do pagamento.</p>
@@ -191,20 +234,25 @@ onBeforeUnmount(() => {
   </div>
   <q-banner v-else-if="data" rounded class="products__empty">Seus produtos aparecem aqui após resgatar um teste ou confirmar uma compra.</q-banner>
   </section>
-  <section class="products__group products__codex" aria-labelledby="products-codex-title">
-    <img src="/codex-app-icon.png" alt="" width="42" height="42" />
-    <div>
-      <h2 id="products-codex-title">AitoIA para Codex</h2>
-      <p class="products__group-help">Use a AitoKey vinculada à sua carteira para consumir AitoTokens no Codex. A chave pode ser gerada ou regenerada aqui.</p>
-      <div class="product-card__actions">
-        <q-btn unelevated no-caps color="teal-7" icon="mdi-key-outline" label="Gerenciar AitoKey" @click="codexKey = true" />
-        <q-btn flat no-caps icon="mdi-download" label="Baixar plugin e guia" @click="codexGuide = true" />
-        <a :href="codexOfficialUrl" target="_blank" rel="noopener noreferrer">Baixar Codex oficial ↗</a>
-        <router-link :to="codexProductPath">Conhecer o plugin ↗</router-link>
-      </div>
-    </div>
-  </section>
   <AitoCodexInstallDialog v-model="codexGuide" />
+  <q-dialog v-model="replacementOpen" @hide="replacement = null; replacementVisible = false">
+    <q-card v-if="replacement" dark class="products__key-dialog">
+      <q-card-section>
+        <h2 class="products__replacement-title">Nova chave · {{ productLabel(licenseProductType(replacement)) }}</h2>
+        <p>{{ replacementSteps[licenseProductType(replacement)] }}</p>
+        <q-input :model-value="replacement.token" readonly outlined dark label="Chave de ativação" :type="replacementVisible ? 'text' : 'password'">
+          <template #append>
+            <q-btn flat dense round :icon="replacementVisible ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+              :aria-label="replacementVisible ? 'Ocultar chave' : 'Mostrar chave'" @click="replacementVisible = !replacementVisible" />
+          </template>
+        </q-input>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn v-close-popup flat no-caps label="Fechar" />
+        <q-btn unelevated no-caps color="teal-7" icon="mdi-content-copy" label="Copiar chave" @click="copy(replacement.token)" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
   <q-dialog v-model="codexKey">
     <q-card v-if="codexKey" dark class="products__key-dialog">
       <div class="row justify-end"><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar gerenciamento da AitoKey" /></div>
@@ -218,6 +266,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .products{color:#edfff8}.products a{color:#a2ffe0}.products__top{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:28px}.products__top>div{flex:1;min-width:0}.products__box{object-fit:contain;align-self:flex-start}.products__top span{font-size:10px;letter-spacing:.14em;color:#a8ffdf}.products__top h1{font-size:clamp(27px,4vw,40px);line-height:1.25;margin:10px 0!important;max-width:none!important;background:none!important;-webkit-text-fill-color:#effff7!important}.products__top p{font-size:13px;line-height:1.8;color:#c2ddd2;max-width:none!important}.products__catalog{display:grid;grid-template-columns:1fr 1fr;gap:20px}.product-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:13px;padding:26px;border:1px solid #397c68;border-radius:21px;background:radial-gradient(ellipse at 0 0,#17694a55,transparent 75%),#082423}.product-card--cloud{border-color:#73639b;background:radial-gradient(ellipse at 0 0,#514c8955,transparent 75%),#141d2b}.product-card>.q-badge{position:absolute;right:18px;top:22px}.product-card>small{font-size:9px;letter-spacing:.12em;color:#b2e1cd}.product-card h2{font-size:23px;line-height:1.35;margin:0;color:white}.product-card p{font-size:13px;line-height:1.9;color:#d0e8dd!important;margin:0;max-width:none!important}.product-card__price{display:flex;gap:13px;align-items:center}.product-card__price s{font-size:13px;color:#b9cfc5}.product-card__price strong{font-size:26px;color:#bcffe6}.product-card__actions{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;margin-top:auto}.product-card__actions>a{font-size:11px}.product-card__actions>.q-btn{font-size:12px}.products__privacy{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:24px 0;font-size:11px;line-height:1.8;color:#b5d5c7}.products__licenses{display:grid;gap:25px}.license-card{border:1px solid #346756;border-radius:20px;background:#061e20;overflow:hidden}.license-card>header{display:flex;gap:15px;align-items:center;padding:24px;background:#10382e;border-bottom:1px solid #39634e;flex-wrap:wrap}.license-card>header>div:nth-child(2){flex:1}.license-card small{display:block;font-size:10px;line-height:1.8;color:#b7d8c9}.license-card h2{font-size:23px;line-height:1.4;margin:4px 0;color:white}.license-card__body{display:grid;grid-template-columns:1fr 1fr;gap:26px;padding:25px}.license-card__body section{min-width:0}.license-card h3{font-size:15px;line-height:1.5;margin:0 0 14px;display:flex;gap:8px;align-items:center;color:#ecfff6}.license-card__body p,.license-card__legacy{font-size:12px;line-height:1.8;color:#c5e0d3!important;max-width:none!important}.license-token{display:flex;align-items:center;gap:3px;background:#020f10;border:1px solid #4f7d69;border-radius:10px;padding:9px;margin:12px 0}.license-token code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#b9ffe4;font-size:12px}.license-token .q-btn{color:#c0ffe7}.license-card__body>section>.q-btn{margin-top:14px;font-size:11px}.download-card{display:flex;align-items:center;gap:12px;padding:15px 12px;background:#10342d;border:1px solid #507365;border-radius:12px;margin-bottom:12px}.download-card>div{flex:1;min-width:0}.download-card strong{font-size:13px;line-height:1.7}.download-card .q-btn{font-size:11px;min-height:38px}.license-card__details{border-top:1px solid #31554a;font-size:12px;color:#c3dfd0}.license-card__details :deep(.q-expansion-item__content)>div{padding:8px 24px;font-size:12px;line-height:1.9}.license-card__notice{background:#433f21;color:#fff0bb;margin:18px 24px;font-size:12px;line-height:1.8}.license-card__legacy{margin:16px 24px}.products__empty{background:#14372d;color:#e0f8eb;font-size:13px;line-height:1.9}.products__orders{margin-top:25px;border:1px solid #4e7364;border-radius:14px;color:#ddf7e9;overflow:hidden}.order{display:flex;align-items:center;gap:18px;padding:20px;border-top:1px solid #365749;flex-wrap:wrap}.order>div{flex:1;min-width:0}.order small{display:block;color:#c4dbcd;font-size:11px;line-height:1.9}.order a{font-size:12px}.products-terms{display:flex;flex-direction:column;width:790px;max-width:calc(100vw - 24px);max-height:90dvh;border:1px solid #528673;border-radius:19px;background:#08282a;color:#f1fff8}.products-terms h2{font-size:23px;line-height:1.4;overflow-wrap:anywhere;margin:9px 0 0}.products-terms small{font-size:10px;color:#c0ebda}.products-terms__body{overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;font-size:14px;color:#dfefe4}@media(max-width:850px){.products__catalog,.license-card__body{grid-template-columns:1fr}.license-card__body>section+section{padding-top:22px;border-top:1px solid #355749}}@media(max-width:500px){.product-card{padding:22px 18px}.product-card h2{font-size:21px}.license-card>header{padding:20px}.license-card>header :deep(.license-validity){width:100%}.license-card__body{padding:20px}.download-card{flex-wrap:wrap}.download-card>.q-btn{width:100%}.product-card__actions>.q-btn:first-child{width:100%}}
 .product-card__plan{width:min(100%,260px)}
+.product-card__image{flex-shrink:0;object-fit:contain}
 .license-card__renewal{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 24px;border-bottom:1px solid #31554a}.license-card__renewal p{flex:1 1 230px;max-width:none!important;margin:0;font-size:.75rem;line-height:1.6;color:#d6eee4}
 .products__group{margin-top:30px}.products__group h2{margin:0;font-size:clamp(1.25rem,3vw,1.65rem);font-weight:670;line-height:1.3}.products__group-help{margin:7px 0 16px;color:#c2ddd2;font-size:.9rem;line-height:1.5}.products__license-group{display:grid;gap:14px}.products__license-group h3{margin:0;font-size:1rem;line-height:1.25;color:#c0e4d7}.products__codex{display:flex;align-items:flex-start;gap:14px;padding:clamp(16px,4vw,26px);border:1px solid #39685e;border-radius:18px;background:#0e2929}.products__codex img{flex-shrink:0}.products__key-dialog{width:min(100%,558px);padding:14px;background:#0a1c1e}.products__key-dialog :deep(.codex-key){margin-top:0}
+.products__replacement-title{margin:0;font-size:1.2rem;font-weight:650;line-height:1.35}
 </style>

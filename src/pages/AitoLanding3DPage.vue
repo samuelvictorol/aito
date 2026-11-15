@@ -9,6 +9,7 @@
     :style="landingPageStyle"
   >
     <AitoThreeScene
+      hexagon-field
       :scroll-progress="scrollProgress"
       :reduced-motion="prefersReducedMotion"
       :section-count="landing3dSections.length"

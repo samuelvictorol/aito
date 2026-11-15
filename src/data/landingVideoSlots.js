@@ -28,6 +28,7 @@ export const landingVideoPages = [
   ] },
   { title: 'Plugin AitoIA para Codex', path: '/aitoia-codex', slots: [
     { id: 'codex-presentation', section: 'Demonstração do plugin no Codex', anchor: 'demonstracao' },
+    { id: 'codex-installation', section: 'Instalação do plugin', anchor: 'instalacao' },
   ] },
   { title: 'AitoLearn', path: '/aitolearn', slots: [
     { id: 'aitolearn-preview', section: 'Aula demonstrativa · A plataforma', anchor: 'metodo' },

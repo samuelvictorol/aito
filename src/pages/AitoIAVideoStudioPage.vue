@@ -1598,7 +1598,7 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 </script>
 
 <template>
-  <q-layout view="hHh Lpr fFf" class="aito-ai-theme video-studio" :style="{ '--video-header-height': headerHeight + 'px' }">
+  <q-layout view="hHh Lpr lFf" class="aito-ai-theme video-studio" :style="{ '--video-header-height': headerHeight + 'px' }">
     <q-header class="video-studio__header">
       <header ref="studioHeader" class="video-studio__bar">
         <div class="video-studio__header-start">
@@ -1725,40 +1725,6 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
           @busy="remakeBusy = $event; if (!$event) blockedExit = false"
           @recover="generationMode = 'remake'; tab = 'ai'"
           @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" />
-
-        <section class="video-studio__panel video-studio__timeline" :class="{ 'is-expanded': masterOpen }" aria-label="Vídeo master">
-          <div class="video-studio__scene-heading video-studio__master-desktop">
-            <h2>Vídeo master</h2>
-            <span class="video-studio__hint">{{ durationLabel(timeline.duration) }}</span>
-          </div>
-          <q-btn class="video-studio__master-toggle" flat no-caps align="left" :aria-expanded="masterOpen" aria-controls="video-studio-master-controls"
-            :aria-label="masterOpen ? 'Minimizar vídeo master' : 'Expandir vídeo master'" @click="masterOpen = !masterOpen">
-            <q-icon name="mdi-filmstrip" size="20px" />
-            <strong>Vídeo master</strong>
-            <span class="video-studio__master-count">{{ scenes.length }} {{ scenes.length === 1 ? 'cena' : 'cenas' }} · {{ durationLabel(timeline.duration) }}</span>
-            <q-icon :name="masterOpen ? 'mdi-chevron-down' : 'mdi-chevron-up'" size="23px" />
-          </q-btn>
-          <div id="video-studio-master-controls" class="video-studio__master-controls">
-          <div class="video-studio__actions">
-            <button class="video-studio__primary" type="button" :disabled="!mayEdit" @click="createForScene"><q-icon name="mdi-creation-outline" size="18px" /> Gerar cena</button>
-            <input ref="importInput" type="file" accept="video/*" hidden @change="fileFrom($event, importClip)" />
-            <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="importInput?.click()"><q-icon name="mdi-upload-outline" size="18px" /> Importar vídeo</button>
-            <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="openInventory"><q-icon name="mdi-folder-multiple-outline" size="18px" /> Adicionar do projeto</button>
-            <button class="video-studio__secondary" type="button" :disabled="!mayEdit || scenes.length >= maxStudioScenes" @click="addScene"><q-icon name="mdi-plus" size="18px" /> Cena vazia</button>
-            <button class="video-studio__icon" type="button" aria-label="Desfazer edição" :disabled="!mayEdit || !history.length" @click="undoEdit"><q-icon name="mdi-undo" size="20px" /></button>
-          </div>
-          <div v-if="scenes.length" class="video-studio__scenes" role="group" aria-label="Cenas" @dragover.prevent @drop.prevent="dragItem ? cancelDrag() : importClip($event.dataTransfer.files[0])">
-            <button v-for="({ scene, start, end }, index) in timeline.segments" :key="scene.id" type="button" :aria-pressed="sceneId === scene.id" :disabled="!mayEdit"
-              :draggable="mayEdit" :class="{ 'video-studio__scene-drop': dragTarget === scene.id && dragItem !== scene.id }"
-              @dragstart="dragItem = scene.id; $event.dataTransfer.setData('text/plain', scene.id)" @dragend="cancelDrag"
-              @dragover.prevent="dragTarget = scene.id" @drop="dragItem && finishDrag(scene.id)" @click="selectMasterScene(scene.id)">
-              <span class="video-studio__scene-thumb"><img v-if="scene.media?.poster || (scene.media && !scene.media.isVideo)" :src="scene.media.poster || scene.media.url" alt="" loading="lazy" /><q-icon v-else :name="scene.media ? 'mdi-filmstrip' : 'mdi-image-outline'" size="20px" /></span>
-              <span class="video-studio__scene-label"><strong>{{ scene.heading || (scene.kind === 'transition' ? 'Transição' : `Cena ${index + 1}`) }}</strong><small>{{ durationLabel(start) }} · {{ (end - start).toFixed(1) }} s</small><small v-if="unavailableScene(scene)">Mídia indisponível</small></span>
-            </button>
-          </div>
-          <p v-else class="video-studio__hint">Adicione uma cena ou gere um clipe com IA para começar.</p>
-          </div>
-        </section>
 
         <section v-if="tab !== 'ai' || !remakeMode" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
 
@@ -1965,6 +1931,37 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
       </div>
     </main>
     </q-page-container>
+    <q-footer class="video-studio__timeline" aria-label="Vídeo master" @paste="pasteStudioMedia">
+      <div class="video-studio__master-inner">
+        <q-btn class="video-studio__master-toggle" flat no-caps align="left" :aria-expanded="masterOpen" aria-controls="video-studio-master-controls"
+          :aria-label="masterOpen ? 'Minimizar vídeo master' : 'Expandir vídeo master'" @click="masterOpen = !masterOpen">
+          <q-icon name="mdi-filmstrip" size="20px" aria-hidden="true" />
+          <strong>Vídeo master</strong>
+          <span class="video-studio__master-count">{{ scenes.length }} {{ scenes.length === 1 ? 'cena' : 'cenas' }} · {{ durationLabel(timeline.duration) }}</span>
+          <q-icon :name="masterOpen ? 'mdi-chevron-down' : 'mdi-chevron-up'" size="23px" aria-hidden="true" />
+        </q-btn>
+        <div v-show="masterOpen" id="video-studio-master-controls" class="video-studio__master-controls">
+          <div class="video-studio__actions">
+            <button class="video-studio__primary" type="button" :disabled="!mayEdit" @click="createForScene"><q-icon name="mdi-creation-outline" size="18px" /> Gerar cena</button>
+            <input ref="importInput" type="file" accept="video/*" hidden @change="fileFrom($event, importClip)" />
+            <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="importInput?.click()"><q-icon name="mdi-upload-outline" size="18px" /> Importar vídeo</button>
+            <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="openInventory"><q-icon name="mdi-folder-multiple-outline" size="18px" /> Adicionar do projeto</button>
+            <button class="video-studio__secondary" type="button" :disabled="!mayEdit || scenes.length >= maxStudioScenes" @click="addScene"><q-icon name="mdi-plus" size="18px" /> Cena vazia</button>
+            <button class="video-studio__icon" type="button" aria-label="Desfazer edição" :disabled="!mayEdit || !history.length" @click="undoEdit"><q-icon name="mdi-undo" size="20px" /></button>
+          </div>
+          <div v-if="scenes.length" class="video-studio__scenes" role="group" aria-label="Cenas" @dragover.prevent @drop.prevent="dragItem ? cancelDrag() : importClip($event.dataTransfer.files[0])">
+            <button v-for="({ scene, start, end }, index) in timeline.segments" :key="scene.id" type="button" :aria-pressed="sceneId === scene.id" :disabled="!mayEdit"
+              :draggable="mayEdit" :class="{ 'video-studio__scene-drop': dragTarget === scene.id && dragItem !== scene.id }"
+              @dragstart="dragItem = scene.id; $event.dataTransfer.setData('text/plain', scene.id)" @dragend="cancelDrag"
+              @dragover.prevent="dragTarget = scene.id" @drop="dragItem && finishDrag(scene.id)" @click="selectMasterScene(scene.id)">
+              <span class="video-studio__scene-thumb"><img v-if="scene.media?.poster || (scene.media && !scene.media.isVideo)" :src="scene.media.poster || scene.media.url" alt="" loading="lazy" /><q-icon v-else :name="scene.media ? 'mdi-filmstrip' : 'mdi-image-outline'" size="20px" /></span>
+              <span class="video-studio__scene-label"><strong>{{ scene.heading || (scene.kind === 'transition' ? 'Transição' : `Cena ${index + 1}`) }}</strong><small>{{ durationLabel(start) }} · {{ (end - start).toFixed(1) }} s</small><small v-if="unavailableScene(scene)">Mídia indisponível</small></span>
+            </button>
+          </div>
+          <p v-else class="video-studio__hint">Adicione uma cena ou gere um clipe com IA para começar.</p>
+        </div>
+      </div>
+    </q-footer>
     <q-dialog v-model="inventoryOpen" persistent>
       <q-card class="aito-ai-theme video-studio__dialog">
         <q-card-section class="video-studio__scene-heading"><h2>Adicionar do projeto</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar lista de clipes" /></q-card-section>
@@ -2206,11 +2203,13 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio input:not([type=range], .q-field__native), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio textarea { min-height: 60px; resize: vertical; }
 .video-studio input::placeholder, .video-studio textarea::placeholder { color: var(--aito-ai-muted); opacity: .75; }
-.video-studio__timeline { grid-column: 1 / -1; grid-row: 3; display: grid; min-width: 0; gap: 10px; padding: 12px clamp(13px, 2vw, 20px); }
-.video-studio__grid--generate .video-studio__timeline { grid-row: 4; }
-.video-studio__timeline .video-studio__master-toggle { display: none; }
-.video-studio__master-controls { display: grid; gap: 10px; min-width: 0; }
-.video-studio__scenes { display: flex; overflow-x: auto; gap: 8px; padding: 3px 2px 5px; }
+.video-studio__timeline { padding-bottom: env(safe-area-inset-bottom, 0px); border-top: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); color: var(--aito-ai-text); box-shadow: 0 -6px 24px #0007; }
+.video-studio__master-inner { width: min(1660px, 100%); min-width: 0; margin: 0 auto; padding-inline: max(10px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-right, 0px)); }
+.video-studio__master-toggle { display: flex; width: 100%; min-height: 48px; color: var(--aito-ai-accent); }
+.video-studio__master-toggle :deep(.q-btn__content) { width: 100%; flex-wrap: nowrap; gap: 7px; }
+.video-studio__master-count { margin-inline-start: auto; color: var(--aito-ai-muted); white-space: nowrap; font-size: .76rem; }
+.video-studio__master-controls { display: grid; gap: 10px; min-width: 0; max-height: min(36dvh, 260px); padding: 7px 6px 10px; border-top: 1px solid var(--aito-ai-line); overflow: auto; overscroll-behavior: contain; }
+.video-studio__scenes { display: flex; overflow-x: auto; gap: 8px; padding: 3px 2px 5px; scroll-snap-type: x proximity; overscroll-behavior-inline: contain; }
 .video-studio__scenes button { display: flex; flex: 0 0 clamp(126px, 18vw, 178px); align-items: center; gap: 7px; min-width: 0; padding: 6px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); cursor: pointer; text-align: left; }
 .video-studio__scene-thumb { display: grid; flex: 0 0 43px; height: 34px; place-items: center; overflow: hidden; border-radius: 5px; background: var(--aito-ai-bg); }
 .video-studio__scene-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -2287,21 +2286,12 @@ onBeforeUnmount(() => { mounted = false; clearInterval(expireTimer); headerObser
 .video-studio__actions [aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
 .video-studio__draft { flex-wrap: wrap; }
 @media (max-width: 900px) {
-  .video-studio__main { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
   .video-studio__grid, .video-studio__grid--generate { grid-template-columns: minmax(0, 1fr); }
   .video-studio__grid > * { grid-column: 1 !important; grid-row: auto !important; }
   .video-studio__tabs { position: sticky; top: calc(var(--video-header-height) + 4px); z-index: 8; order: 1; width: 100%; box-shadow: 0 4px 14px #0009; }
   .video-studio__catalog { order: 2; }
   .video-studio__preview { order: 3; }
-  .video-studio__timeline { position: fixed; z-index: 15; inset: auto 0 0; padding: 0 max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px)); border-width: 1px 0 0; border-radius: 12px 12px 0 0; box-shadow: 0 -5px 16px #0009; }
-  .video-studio__timeline .video-studio__master-desktop { display: none; }
-  .video-studio__timeline .video-studio__master-toggle { display: flex; width: 100%; min-height: 46px; color: var(--aito-ai-accent); }
-  .video-studio__master-toggle :deep(.q-btn__content) { width: 100%; flex-wrap: nowrap; gap: 7px; }
-  .video-studio__master-count { margin-inline-start: auto; color: var(--aito-ai-muted); white-space: nowrap; font-size: .76rem; }
-  .video-studio__timeline:not(.is-expanded) .video-studio__master-controls { display: none; }
-  .video-studio__master-controls { max-height: min(35dvh, 260px); padding: 0 4px 10px; overflow: auto; overscroll-behavior: contain; }
   .video-studio__master-controls .video-studio__actions :is(button, a) { min-height: 41px; }
-  .video-studio__scenes { scroll-snap-type: x proximity; overscroll-behavior-inline: contain; }
   .video-studio__scenes button { min-height: 52px; scroll-snap-align: start; }
   .video-studio__editor { order: 5; }
   .video-studio__grid--generate .video-studio__editor { order: 3; }

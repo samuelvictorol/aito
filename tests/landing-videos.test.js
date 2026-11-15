@@ -28,9 +28,17 @@ test('missing, cleared and malformed overrides preserve the expected monitor beh
 
 test('each labeled landing slot is wired to a unique public monitor', async () => {
   const files = ['pages/AitoLanding3DPage.vue', 'pages/WhatsAppBotBuilderProductPage.vue', 'components/DesktopSolutionFeatures.vue',
-    'pages/WhatsAppWhitelabelProductPage.vue', 'pages/AitoTokensPage.vue', 'pages/AitoLearnLaunchPage.vue', 'pages/AitoCodexLandingPage.vue']
+    'pages/WhatsAppWhitelabelProductPage.vue', 'pages/AitoTokensPage.vue', 'pages/AitoLearnLaunchPage.vue', 'pages/AitoCodexLandingPage.vue',
+    'components/AitoCodexInstallVideo.vue']
   const sources = (await Promise.all(files.map(file => readFile(new URL('../src/' + file, import.meta.url), 'utf8')))).join('\n')
   const ids = landingVideoPages.flatMap(page => page.slots.map(slot => slot.id))
   assert.equal(ids.length, new Set(ids).size)
   for (const id of ids) assert.equal(sources.split(id).length - 1, 1, id)
+})
+
+test('both Codex dialogs reuse the same configurable installation monitor', async () => {
+  for (const file of ['AitoCodexOffer.vue', 'AitoCodexInstallDialog.vue']) {
+    const source = await readFile(new URL('../src/components/' + file, import.meta.url), 'utf8')
+    assert.match(source, /<AitoCodexInstallVideo\b/, file)
+  }
 })

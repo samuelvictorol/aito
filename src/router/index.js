@@ -23,7 +23,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
   const Router = createRouter({
     scrollBehavior: (to, _from, savedPosition) => {
       if (savedPosition) return savedPosition
-      if (/^#[a-z][a-z\d-]*$/i.test(to.hash) && ['landing-3d', 'whatsapp-solutions-product', 'whatsapp-solutions-source', 'aito-tokens-product', 'aitolearn-catalog'].includes(to.name)) {
+      if (/^#[a-z][a-z\d-]*$/i.test(to.hash) && ['landing-3d', 'whatsapp-solutions-product', 'whatsapp-solutions-source', 'aito-tokens-product', 'aito-codex-product', 'aitolearn-catalog'].includes(to.name)) {
         return { el: to.hash, top: 80 }
       }
       return { left: 0, top: 0 }

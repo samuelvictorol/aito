@@ -30,6 +30,7 @@ const props = defineProps({
     default: 9
   },
   caseFormation: { type: Number, default: 0 },
+  hexagonField: { type: Boolean, default: false },
   danceActive: {
     type: Boolean,
     default: false
@@ -886,11 +887,60 @@ function createThreadStarLayer(count, minLength, maxLength, opacity, spread) {
   return line
 }
 
+function createHexStarLayer(count, size, opacity, spread) {
+  const layer = createStarLayer(count, size, opacity, spread, 0xffffff)
+  const positions = layer.geometry.getAttribute('position')
+  positions.setUsage(THREE.DynamicDrawUsage)
+  const scale = new Float32Array(count)
+  const angle = new Float32Array(count)
+  const colors = new Float32Array(count * 3)
+  const color = new THREE.Color()
+  for (let index = 0; index < count; index += 1) {
+    scale[index] = 0.75 + Math.random() * 0.5
+    color.setHex(STAR_COLORS[index % STAR_COLORS.length]).toArray(colors, index * 3)
+  }
+  layer.geometry.setAttribute('particleScale', new THREE.BufferAttribute(scale, 1))
+  layer.geometry.setAttribute('particleAngle', new THREE.BufferAttribute(angle, 1).setUsage(THREE.DynamicDrawUsage))
+  layer.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  layer.material.vertexColors = true
+  layer.frustumCulled = false
+
+  const morph = { value: easeInOut(introTransitionMix) }
+  layer.userData.hexStars = { anchors: positions.array.slice(), angle, morph, opacity }
+  layer.material.customProgramCacheKey = () => 'aito-hex-particles'
+  layer.material.onBeforeCompile = shader => {
+    shader.uniforms.hexMorph = morph
+    shader.vertexShader = `attribute float particleScale;
+      attribute float particleAngle;
+      uniform float hexMorph;
+      varying float vParticleAngle;
+      ${shader.vertexShader}`.replace('gl_PointSize = size;', 'vParticleAngle = particleAngle; gl_PointSize = size * particleScale * mix(0.48, 1.15, hexMorph);')
+    shader.fragmentShader = `uniform float hexMorph;
+      varying float vParticleAngle;
+      ${shader.fragmentShader}`.replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
+        vec2 point = (gl_PointCoord - vec2(0.5)) * 2.0;
+        float c = cos(vParticleAngle), s = sin(vParticleAngle);
+        vec2 hex = abs(mat2(c, -s, s, c) * point);
+        float radius = length(point);
+        float hexEdge = max(hex.y * 1.154701, dot(hex, vec2(1.0, 0.577350)));
+        float shape = mix(radius, hexEdge, hexMorph);
+        float edge = 1.0 - smoothstep(0.77, 1.0, shape);
+        float fill = mix(1.0 - smoothstep(0.24, 0.94, radius), mix(0.60, 1.0, smoothstep(0.60, 0.78, shape)), hexMorph);
+        vec4 diffuseColor = vec4(diffuse, opacity * edge * fill);
+      `)
+  }
+  return layer
+}
+
 function createStarField() {
   const group = new THREE.Group()
   starFieldIsDesktop = window.innerWidth >= 768
 
-  if (starFieldIsDesktop) {
+  if (props.hexagonField) {
+    group.add(createHexStarLayer(starFieldIsDesktop ? 300 : 240, 0.14, 0.5, 32))
+    group.add(createHexStarLayer(starFieldIsDesktop ? 120 : 85, 0.22, 0.59, 28))
+    group.add(createHexStarLayer(starFieldIsDesktop ? 50 : 35, 0.26, 0.66, 24))
+  } else if (starFieldIsDesktop) {
     group.add(createThreadStarLayer(300, 0.05, 0.11, 0.52, 32))
     group.add(createThreadStarLayer(120, 0.08, 0.18, 0.62, 28))
     group.add(createThreadStarLayer(50, 0.12, 0.24, 0.78, 24))
@@ -901,6 +951,34 @@ function createStarField() {
   }
 
   return group
+}
+
+function updateHexStarLayer(layer, elapsedTime, targetX, targetY) {
+  const { anchors, angle, morph, opacity } = layer.userData.hexStars
+  const position = layer.geometry.getAttribute('position')
+  const motion = props.reducedMotion ? 0 : easeInOut(introTransitionMix)
+  const formation = props.caseFormation * motion
+  morph.value = easeInOut(introTransitionMix)
+  for (let index = 0; index < position.count; index += 1) {
+    const offset = index * 3
+    const phase = index * 2.39
+    const x = anchors[offset] + Math.sin(elapsedTime * 0.21 + phase) * 0.07 * motion
+    const y = anchors[offset + 1] + Math.cos(elapsedTime * 0.18 + phase) * 0.055 * motion
+    const dx = targetX - x
+    const dy = targetY - y
+    const attraction = motion * 0.21 / (1 + Math.hypot(dx, dy) * 0.18)
+    const row = Math.floor(index / 7) % 3
+    const hiveX = (index % 7 - 3 + (row % 2) * 0.5) * camera.aspect * 0.69
+    const hiveY = (1 - row) * 0.86 + 0.2
+    position.setXYZ(index,
+      lerp(x + dx * attraction, hiveX, formation),
+      lerp(y + dy * attraction, hiveY, formation),
+      lerp(anchors[offset + 2], -0.5, formation))
+    angle[index] = Math.atan2(-dy, dx) * motion
+  }
+  layer.material.opacity = opacity * (1 - formation)
+  position.needsUpdate = true
+  layer.geometry.getAttribute('particleAngle').needsUpdate = true
 }
 
 function updateThreadStarLayer(layer, elapsedTime, targetX, targetY) {
@@ -1343,11 +1421,12 @@ function updateScene(elapsedTime, deltaTime) {
     : -smoothProgress * (props.reducedMotion ? 0.25 : 1.35)
   starField.position.x = pointerCurrent.x * -0.22
 
-  if (starFieldIsDesktop) {
+  if (props.hexagonField || starFieldIsDesktop) {
     const targetX = pointerCurrent.x * 8 - starField.position.x
     const targetY = pointerCurrent.y * 4.2 - starField.position.y
     starField.children.forEach((layer) => {
-      updateThreadStarLayer(layer, elapsedTime, targetX, targetY)
+      if (props.hexagonField) updateHexStarLayer(layer, elapsedTime, targetX, targetY)
+      else updateThreadStarLayer(layer, elapsedTime, targetX, targetY)
     })
   }
 
