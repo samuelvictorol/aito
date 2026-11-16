@@ -81,7 +81,7 @@
 
             <q-tab-panel v-for="personType in ['users', 'customers']" :key="personType" :name="personType">
               <section class="admin-app__section"><div class="admin-app__section-head"><div><p class="admin-app__eyebrow">{{ personType === 'users' ? '02 / AITOLEARN' : '03 / OPERACAO' }}</p></div><q-btn unelevated no-caps class="admin-app__primary" icon="mdi-account-plus-outline" :label="personType === 'users' ? 'Cadastrar usuario' : 'Cadastrar cliente'" @click="openPersonDialog(personType === 'customers' ? 'customer' : 'user')" /></div>
-                <div class="admin-app__filters"><q-input v-model="personSearch" outlined dense clearable label="Buscar por nome, email ou telefone" @keyup.enter="loadPeople(personType === 'customers' ? 'customer' : 'user')"><template #prepend><q-icon name="mdi-magnify" /></template></q-input><q-btn outline no-caps icon="mdi-account-multiple-plus-outline" label="Exportar grupo para Comunicação" :disable="!(personType === 'users' ? users : customers).length" @click="exportContactGroup(personType)" /></div>
+                <div class="admin-app__filters"><q-input v-model="personSearch" outlined dense clearable label="Buscar por nome, email ou telefone" @keyup.enter="loadPeople(personType === 'customers' ? 'customer' : 'user')"><template #prepend><q-icon name="mdi-magnify" /></template></q-input><q-btn outline no-caps icon="mdi-account-multiple-plus-outline" label="Exportar grupo para Comunicação" :disable="!(personType === 'users' ? users : customers).length" @click="exportContactGroup(personType)" /><q-btn flat no-caps icon="mdi-account-sync-outline" label="Corrigir grupo já importado" @click="repairContactGroup" /></div>
                 <q-table flat bordered wrap-cells row-key="_id" class="admin-app__table" :rows="personType === 'users' ? users : customers" :columns="personColumns" :loading="loading[personType]" :pagination.sync="personPagination" no-data-label="Nenhum cadastro encontrado"><template #body-cell-role="props"><q-td :props="props"><span class="admin-app__tag">{{ props.row.role === 'customer' ? 'cliente' : 'usuario' }}</span></q-td></template><template #body-cell-active="props"><q-td :props="props"><q-icon :name="props.row.active ? 'mdi-check-circle' : 'mdi-close-circle'" :color="props.row.active ? 'positive' : 'negative'" /></q-td></template><template #body-cell-authentication="{ row }"><q-td><q-badge outline :color="row.googleAccount ? 'teal-8' : 'grey-8'" :label="row.googleAccount ? 'Google' : 'Senha'" /></q-td></template><template #body-cell-paid="props"><q-td :props="props"><LicensePaidAmount :licenses="props.row.botBuilderLicenses||[]" @changed="loadPeople(props.row.role)"/></q-td></template><template #body-cell-license="props"><q-td :props="props"><LicenseTokenList :licenses="props.row.botBuilderLicenses || []" @changed="loadPeople(props.row.role)" /><span v-if="!props.row.botBuilderLicenses?.length">—</span></q-td></template><template #body-cell-actions="props"><q-td :props="props"><q-btn flat round dense icon="mdi-gift-outline" aria-label="Notificar crédito de boas-vindas" :disable="!props.row.email || !props.row.active" @click="notifyWelcomeCredit(props.row)"><q-tooltip>Notificar crédito de boas-vindas</q-tooltip></q-btn><q-btn v-if="props.row.role==='customer'" flat round dense icon="mdi-key-plus" aria-label="Liberar licença" @click="licenseCustomer=props.row;licenseGrantOpen=true"><q-tooltip>Liberar licença e definir prazo</q-tooltip></q-btn><q-btn v-if="props.row.role==='customer'" flat round dense icon="mdi-email-fast-outline" aria-label="Reenviar boas-vindas" :disable="!props.row.email" @click="sendWelcome(props.row)"><q-tooltip>Reenviar boas-vindas e guia PDF</q-tooltip></q-btn><q-btn flat round dense icon="mdi-pencil" aria-label="Editar cadastro" @click="openPersonDialog(props.row.role, props.row)" /><q-btn v-if="props.row.role === 'customer' && !props.row.googleAccount" flat round dense icon="mdi-key-change" aria-label="Gerar nova senha" @click="generateCustomerPassword(props.row)"><q-tooltip>Gerar nova senha</q-tooltip></q-btn><q-btn flat round dense color="negative" icon="mdi-delete-outline" aria-label="Excluir cadastro" @click="deletePerson(props.row)" /></q-td></template></q-table>
               </section>
             </q-tab-panel>
@@ -224,14 +224,33 @@ export default {
       }
       this.$q.dialog({
         title: 'Exportar grupo para Comunicação',
-        message: `${rows.length} cadastros da lista atual. Informe o nome do grupo.`,
+        message: `${rows.length} cadastros ativos da lista atual. A exportação inclui e-mail, telefone válido e permissões dos canais. Informe o nome do grupo.`,
         prompt: { model: '', type: 'text', isValid: value => Boolean(value.trim()) && value.length <= 120 },
         cancel: true,
       }).onOk(async name => {
         try {
           const { data } = await api.post('/admin/communication/contact-group',
             { name, role: type === 'customers' ? 'customer' : 'user', ids: rows.map(row => row._id) }, this.headers)
-          this.$q.notify({ type: 'positive', message: `Grupo criado na Comunicação com ${data.data.count} contatos.` })
+          this.$q.notify({ type: 'positive', message: `Grupo criado com ${data.data.count} contatos, ${data.data.phoneCount} com telefone.` })
+        } catch (error) { this.notifyError(error) }
+      })
+    },
+    repairContactGroup () {
+      this.$q.dialog({
+        title: 'Corrigir grupo já importado',
+        message: 'Informe o nome exato do grupo na Comunicação. Os membros continuam no mesmo grupo.',
+        prompt: { model: '', type: 'text', isValid: value => Boolean(value.trim()) && value.trim().length <= 120 },
+        cancel: true,
+      }).onOk(async name => {
+        try {
+          const { data: { data } } = await api.post('/admin/communication/contact-group/repair', { name }, this.headers)
+          const summary = `${data.count} contatos conferidos, ${data.phoneCount} com telefone. WhatsApp Web: ${data.channels.whatsapp_web}, Cloud: ${data.channels.whatsapp_cloud}, e-mail: ${data.channels.email}.`
+          const skipped = [
+            data.conflictCount && `${data.conflictCount} conflitos de telefone`,
+            data.missingCount && `${data.missingCount} sem cadastro ativo correspondente`,
+          ].filter(Boolean)
+          const details = skipped.length ? ` ${skipped.join(' · ')}.` : ''
+          this.$q.notify({ type: skipped.length ? 'warning' : 'positive', message: summary + details, timeout: 9000 })
         } catch (error) { this.notifyError(error) }
       })
     },
