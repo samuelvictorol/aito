@@ -52,6 +52,7 @@ test('the Codex offer is available to clients and visitors at fifteen-minute int
   assert.equal(offersCodex({ name: 'aito-ia' }, false), true)
   assert.equal(offersCodex({ name: 'user-app', query: { tab: 'products' } }, false), true)
   assert.equal(offersCodex({ name: 'communication-admin' }, false), false)
+  assert.equal(offersCodex({ name: 'bio-links' }, false), false)
   assert.equal(offersCodex({ name: 'aito-ia' }, true), false)
   assert.equal(offersCodex({ name: 'aito-ia', query: { auth: 'login' } }, false), false)
   const now = 990_000

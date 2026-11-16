@@ -4,7 +4,7 @@ import 'src/css/aitoia-theme.css'
 
 useMeta({
   title: 'AitoSoftwares | Links',
-  meta: { description: { name: 'description', content: 'Encontre a Aito IA, os estúdios de criação, as soluções para WhatsApp e o Lembr.it.' } },
+  meta: { description: { name: 'description', content: 'Encontre a Aito IA, o AitoCodex, os estúdios de criação, as soluções para WhatsApp e o Lembr.it.' } },
   link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/links' } },
 })
 </script>
@@ -24,6 +24,11 @@ useMeta({
       <router-link class="bio-links__item" :to="{ name: 'aito-ia' }">
         <img src="/ia.gif" alt="" width="38" height="38">
         <span><strong>Aito IA</strong><small>Modelos GPT 6+ e Higgsfield Seedance + Genjutsu</small></span>
+        <q-icon name="mdi-arrow-right" size="21px" />
+      </router-link>
+      <router-link class="bio-links__item" :to="{ name: 'aito-codex-product' }">
+        <img src="/codex-app-icon.png" alt="" width="38" height="38">
+        <span><strong>AitoCodex</strong><small>Plugin do Codex com AitoTokens</small></span>
         <q-icon name="mdi-arrow-right" size="21px" />
       </router-link>
       <router-link class="bio-links__item bio-links__item--whatsapp" :to="{ name: 'whatsapp-solutions-product' }">

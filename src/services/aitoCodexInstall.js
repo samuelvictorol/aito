@@ -1,4 +1,4 @@
-export const codexPluginVersion = '0.2.13'
+export const codexPluginVersion = '0.2.14'
 export const codexPluginFilename = `PluginCodex-${codexPluginVersion}.zip`
 export const codexPluginZipPath = '/downloads/aitoia-codex.zip'
 export const codexPluginZipUrl = `${codexPluginZipPath}?v=${codexPluginVersion}`
@@ -17,7 +17,7 @@ export const codexOfferInterval = 15 * 60 * 1000
 const promotedRoutes = new Set([
   'landing-3d', 'aito-tokens-product', 'aito-codex-product', 'user-app', 'aito-ia',
   'aito-ia-video-studio', 'aito-ia-marketing-studio',
-  'whatsapp-solutions-product', 'whatsapp-solutions-source', 'bio-links',
+  'whatsapp-solutions-product', 'whatsapp-solutions-source',
 ])
 
 export function offersCodex(route, adminSession) {

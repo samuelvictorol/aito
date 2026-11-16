@@ -160,6 +160,7 @@ const siteLinks = [
   { route: 'aito-tokens-product', label: 'AitoTokens', icon: 'mdi-circle-multiple-outline' },
   { route: 'aito-ia', label: 'Chat AitoIA', icon: 'mdi-chat-processing-outline' },
   { route: 'aito-ia-video-studio', label: 'AitoIA VideoStudio', icon: 'mdi-movie-open-outline' },
+  { route: 'video-studio-tester', label: 'Estúdio de vídeo de testes', icon: 'mdi-code-tags' },
   { route: 'aito-ia-marketing-studio', label: 'Estúdio de Marketing', icon: 'mdi-image-edit-outline' },
   { route: 'aitolearn-catalog', label: 'AitoLearn', icon: 'mdi-school-outline' },
   { route: 'notification-generator', label: 'Gerador de notificações', icon: 'mdi-bell-plus-outline' },

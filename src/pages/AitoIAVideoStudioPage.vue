@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useMeta } from 'quasar'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoAboutLink from 'components/AitoAboutLink.vue'
@@ -31,25 +31,37 @@ import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
-useMeta({ title: 'AitoIA | Estúdio de vídeo', meta: { description: { name: 'description', content: 'Crie roteiros, narrações e vídeos com AitoIA. Monte cenas e exporte no navegador.' } } })
+const AitoStudioCodeRender = defineAsyncComponent(() => import('components/AitoStudioCodeRender.vue'))
 const wallet = useAitoIA({ chatHistory: false, allowAdmin: true })
 const { signedIn, adminMode, status, walletId, accountId, models } = wallet
 const route = useRoute()
+const router = useRouter()
+const testerMode = computed(() => route.name === 'video-studio-tester')
+useMeta(() => ({ title: testerMode.value ? 'AitoIA | Estúdio de vídeo de testes' : 'AitoIA | Estúdio de vídeo', meta: {
+  description: { name: 'description', content: 'Crie roteiros, narrações e vídeos com AitoIA. Monte cenas e exporte no navegador.' },
+  ...(testerMode.value && { robots: { name: 'robots', content: 'noindex, nofollow' } }),
+} }))
+watch(adminMode, current => {
+  if (!current && testerMode.value) router.replace({ name: 'admin-login', query: { redirect: route.fullPath } })
+})
 const authOpen = ref(false)
 const authMode = ref('register')
 const walletOpen = ref(false)
-const tabs = [
+const tabs = computed(() => [
   { id: 'scenes', label: 'Cenas', icon: 'mdi-view-dashboard-outline' },
   { id: 'voice', label: 'Locução', icon: 'mdi-waveform' },
   { id: 'ai', label: 'Vídeo com IA', icon: 'mdi-movie-open-play-outline' },
-]
+  ...(testerMode.value ? [{ id: 'code', label: 'Vídeo por código', icon: 'mdi-code-tags' }] : []),
+])
 const defaultProjectName = 'Projeto Sem Nome'
 const defaultProjectColor = '#13BC9D'
 const title = ref(defaultProjectName)
 const projectTitle = computed(() => title.value.trim() || defaultProjectName)
 const projectColor = ref(defaultProjectColor)
 const projectColorOpen = ref(false)
-const tab = ref(route.query.tab === 'ai' ? 'ai' : 'scenes')
+const startingTab = () => route.query.tab === 'ai' ? 'ai' : testerMode.value ? 'code' : 'scenes'
+const tab = ref(startingTab())
+watch(testerMode, () => { tab.value = startingTab() })
 const formatId = ref(videoFormats[0].id)
 const format = computed(() => videoFormats.find(item => item.id === formatId.value))
 const freshScene = (fields = {}) => ({ id: crypto.randomUUID(), duration: 5, offset: 0, heading: '', caption: '', media: null, ...fields })
@@ -66,6 +78,9 @@ const voicePreview = shallowRef(null)
 const recording = shallowRef(null)
 const generated = shallowRef(null)
 const clipLibrary = shallowRef([])
+const codeClips = computed(() => clipLibrary.value.filter(clip => clip.kind === 'code'))
+const codeClip = computed(() => codeClips.value.find(clip => clip.id === generated.value?.id) || codeClips.value[0])
+const codeSuggestion = shallowRef(null)
 const removedGeneratedIds = shallowRef([])
 const generatedDuration = ref(0)
 const activeJob = shallowRef(null)
@@ -581,7 +596,7 @@ async function report(cause) {
   if (cause.response?.status === 402) showWallet()
   if (cause.response?.status === 401) {
     await wallet.refreshStatus()
-    if (!signedIn.value) showAuth('login')
+    if (!signedIn.value && !testerMode.value) showAuth('login')
   }
   const body = cause.response?.data
   const response = body instanceof Blob ? await body.text().then(text => JSON.parse(text)).catch(() => ({})) : body
@@ -1132,6 +1147,63 @@ function storeClip(asset) {
   clipLibrary.value = [clip, ...clipLibrary.value.filter(item => item.id !== clip.id)]
   selectGenerated(clip)
   return clip
+}
+
+function renderCodeScene(scene, source = false) {
+  if (!testerMode.value || !adminMode.value || !mayEdit.value) return
+  const access = wallet.access()
+  const endpoint = '/aitoia/video/studio/code-render'
+  run(source ? 'code-source' : 'code-render', async signal => {
+    const { data } = await access.post(source ? `${endpoint}/source` : endpoint, scene,
+      { responseType: 'blob', timeout: 90000, signal })
+    signal.throwIfAborted()
+    if (!mounted || !access.current()) return
+    const mediaType = source ? 'application/octet-stream' : 'video/mp4'
+    if (!(data instanceof Blob) || !data.size || data.type.split(';')[0] !== mediaType) {
+      throw new Error(source ? 'O estúdio não recebeu um arquivo HTML válido.' : 'O estúdio não recebeu um vídeo MP4 válido.')
+    }
+    if (source) {
+      if (!/^<!doctype html>/i.test(await data.slice(0, 32).text())) {
+        throw new Error('O estúdio não recebeu um arquivo HTML válido.')
+      }
+      signal.throwIfAborted()
+      downloadAitoIAFile(data, 'index.html')
+      return
+    }
+    storeClip({ id: crypto.randomUUID(), file: new File([data], `${scene.preset}.mp4`, { type: mediaType }),
+      title: scene.title, kind: 'code', expiresAt: Date.now() + AITOIA_RETENTION_MS })
+    await saveProject()
+    if (!storageError.value) notice.value = 'Cena renderizada e disponível no projeto.'
+  })
+}
+
+function improveCodeScene({ title, subtitle }) {
+  const model = wallet.currentModel.value
+  if (!testerMode.value || !adminMode.value || !mayEdit.value || !model) return
+  const access = wallet.access()
+  run('code-text', async signal => {
+    try {
+      const { data } = await access.post('/aitoia/responses', {
+        model: model.id, walletId: walletId.value,
+        ...(wallet.efforts.value.includes(wallet.effort.value) && { reasoning: { effort: wallet.effort.value } }),
+        input: [
+          { role: 'developer', content: [{ type: 'input_text', text: 'Revise o texto de uma cena de vídeo. Mantenha o sentido e o idioma do rascunho. Use frases curtas, naturais e fáceis de ler em tela. O título deve ter até 100 caracteres e o complemento até 200. Preserve o complemento vazio quando o rascunho estiver vazio. Responda apenas com JSON válido no formato {"title":"","subtitle":""}.' }] },
+          { role: 'user', content: [{ type: 'input_text', text: JSON.stringify({ title, subtitle }) }] },
+        ],
+      }, { headers: { 'X-Aito-Request-Id': crypto.randomUUID() }, signal })
+      signal.throwIfAborted()
+      if (!mounted || !access.current()) return
+      const answer = readAnswer(data).trim().replace(/^```(?:json)?\s*|\s*```$/gi, '')
+      let fields
+      try { fields = JSON.parse(answer) } catch { throw new Error('A IA não retornou uma sugestão de texto válida.') }
+      if (typeof fields?.title !== 'string' || !fields.title.trim() || typeof fields?.subtitle !== 'string') {
+        throw new Error('A IA não retornou uma sugestão de texto válida.')
+      }
+      codeSuggestion.value = { title: fields.title.trim().slice(0, 100), subtitle: fields.subtitle.trim().slice(0, 200) }
+    } finally {
+      if (mounted && !signal.aborted) wallet.refreshStatus({ silent: true })
+    }
+  })
 }
 
 async function saveRemakeResult(asset) {
@@ -1986,21 +2058,21 @@ onBeforeUnmount(() => {
         <div class="video-studio__account">
           <AitoGenerationIndicator :state="wallet" />
           <button v-if="signedIn" class="video-studio__balance" type="button" :aria-label="adminMode ? 'Abrir saldo da plataforma' : 'Abrir carteira AitoTokens'" :disabled="guarded" @click="showWallet"><img src="/aitotokens.svg" width="26" height="26" alt="" /><span>{{ status ? `${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</span><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-plus'" size="16px" /></button>
-          <template v-else><button class="video-studio__login" type="button" @click="showAuth('login')">Entrar</button><button class="video-studio__primary" type="button" @click="showAuth()">Criar conta</button></template>
+          <template v-else-if="!testerMode"><button class="video-studio__login" type="button" @click="showAuth('login')">Entrar</button><button class="video-studio__primary" type="button" @click="showAuth()">Criar conta</button></template>
         </div>
       </header>
     </q-header>
     <q-drawer v-model="projectsOpen" show-if-above dark bordered :breakpoint="900" :width="306" class="video-studio__drawer">
       <aside id="video-studio-project-drawer" class="video-studio__drawer-content" aria-label="Projetos e componentes">
         <header class="video-studio__drawer-heading">
-          <div><span>Estúdio de vídeo</span><h2>Projetos e componentes</h2></div>
+          <div><span>{{ testerMode ? 'Estúdio de vídeo de testes' : 'Estúdio de vídeo' }}</span><h2>Projetos e componentes</h2></div>
           <q-btn flat round dense icon="mdi-close" aria-label="Fechar painel de projetos" @click="projectsOpen = false" />
         </header>
         <div class="video-studio__drawer-section">
           <AitoStudioProjectPicker v-if="signedIn" drawer colored :projects="projects" :active-id="activeId" :loading="projectLoading"
             :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)"
             @create="chooseProject()" @open="chooseProject" @remove="deleteProject" @renew="renewProject" @import="importArchive" />
-          <q-btn v-else outline no-caps color="teal-3" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
+          <q-btn v-else-if="!testerMode" outline no-caps color="teal-3" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
           <q-input v-if="signedIn && activeId" v-model="title" dark outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
           <q-btn outline no-caps class="video-studio__script-btn" icon="mdi-script-text-outline" label="Roteiro do projeto"
             :disable="!mayEdit || Boolean(busy)" @click="openProjectScript" />
@@ -2037,7 +2109,7 @@ onBeforeUnmount(() => {
             </q-btn>
             <h1>{{ projectTitle }}</h1>
           </div>
-          <p>Gere cenas, monte seu vídeo e exporte o resultado.</p>
+          <p>{{ testerMode ? 'Estúdio de testes • Área administrativa' : 'Gere cenas, monte seu vídeo e exporte o resultado.' }}</p>
         </div>
         <div class="video-studio__zip">
           <span v-if="missingArchiveItems" class="video-studio__hint">{{ missingArchiveItems }} mídia(s) indisponível(is) ficarão fora do ZIP.</span>
@@ -2045,7 +2117,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p v-if="route.query.maintenance === 'chat'" class="video-studio__notice" role="status"><img src="/ia.gif" width="30" height="30" alt="" /> O Chat AitoIA está em manutenção. Desculpe o transtorno. Estamos trazendo novas funcionalidades.</p>
-      <p v-if="!signedIn" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 50.000 AitoTokens no primeiro cadastro.</p>
+      <p v-if="!signedIn && !testerMode" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 50.000 AitoTokens no primeiro cadastro.</p>
       <p v-if="error" role="alert" class="video-studio__notice video-studio__notice--error"><q-icon name="mdi-alert-circle-outline" size="20px" /> {{ error }}</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
@@ -2061,7 +2133,7 @@ onBeforeUnmount(() => {
         <button type="button" class="video-studio__primary" :disabled="!draftReady || atLimit" @click="applyDraft(true)">Criar projeto</button>
       </div>
 
-      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai' }">
+      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code' }">
         <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
           <q-tabs :model-value="tab" dark dense no-caps align="justify" indicator-color="transparent" active-color="teal-2" @update:model-value="chooseEditorTab">
             <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label" :disable="!mayEdit" />
@@ -2099,6 +2171,11 @@ onBeforeUnmount(() => {
           @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
 
         <section v-if="tab !== 'ai' || !remakeMode" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
+          <div v-if="testerMode" v-show="tab === 'code'" class="video-studio__section">
+            <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit || !adminMode"
+              :can-improve="Boolean(wallet.currentModel.value)" :suggestion="codeSuggestion" @render="renderCodeScene"
+              @download-source="scene => renderCodeScene(scene, true)" @improve="improveCodeScene" />
+          </div>
 
           <div v-if="tab === 'scenes'" class="video-studio__section">
             <template v-if="selectedScene">
@@ -2171,7 +2248,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div v-else class="video-studio__section">
+          <div v-else-if="tab === 'ai'" class="video-studio__section">
             <div class="video-studio__scene-heading"><h2>{{ transitionMode ? 'Gerar transição' : 'Gerar clipe' }}</h2><span v-if="selectedModelName" class="video-studio__selected-model">{{ selectedModelName }}</span></div>
             <div v-if="selectedReferenceVariant && !maxImageReferences" class="video-studio__actions">
               <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="selectReferenceVariant"><q-icon name="mdi-image-multiple-outline" size="18px" /> Usar referências neste modelo</button>
@@ -2311,6 +2388,26 @@ onBeforeUnmount(() => {
               <p v-else-if="activeJob">Geração pendente. Clique em Verificar geração para acompanhar.</p>
               <p v-else>Os vídeos gerados aparecem aqui.</p>
             </div>
+        </section>
+
+        <section v-else-if="tab === 'code' && testerMode" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
+          <header><h2>Cenas renderizadas</h2><span>MP4</span></header>
+          <div v-if="codeClips.length > 1" class="video-studio__clip-list" role="group" aria-label="Selecionar cena renderizada">
+            <button v-for="clip in codeClips" :key="clip.id" class="video-studio__secondary video-studio__code-clip" type="button"
+              :aria-pressed="clip.id === codeClip?.id" :disabled="Boolean(busy)" @click="selectGenerated(clip)">Cena {{ clip.number }}</button>
+          </div>
+          <div v-if="busy === 'code-render' || !codeClip?.url || codeClip.expired" class="video-studio__clip-empty" role="status">
+            <q-spinner v-if="busy === 'code-render'" size="30px" /><q-icon v-else name="mdi-filmstrip" size="32px" />
+            <p>{{ busy === 'code-render' ? 'Renderizando os quadros da animação…' : codeClip?.expired ? 'Esta cena atingiu o prazo de retenção.' : 'A prévia aparece após renderizar a primeira cena.' }}</p>
+          </div>
+          <div v-else class="video-studio__generated">
+            <video :key="codeClip.id" :src="codeClip.url" controls playsinline preload="metadata" aria-label="Reproduzir cena renderizada" />
+            <strong class="video-studio__rendered-title">{{ codeClip.title }}</strong>
+            <div class="video-studio__actions">
+              <button type="button" class="video-studio__primary" :disabled="!mayEdit || Boolean(busy)" @click="addGeneratedSequence(codeClip)"><q-icon name="mdi-playlist-plus" size="18px" /> Adicionar ao vídeo master</button>
+              <button v-if="codeClip.file" type="button" class="video-studio__secondary" :disabled="Boolean(busy)" @click="downloadAitoIAFile(codeClip.file, codeClip.file.name)"><q-icon name="mdi-download-outline" size="18px" /> Baixar MP4</button>
+            </div>
+          </div>
         </section>
 
         <section v-else-if="tab !== 'ai'" class="video-studio__panel video-studio__preview" aria-labelledby="video-studio-preview">
@@ -2632,6 +2729,12 @@ onBeforeUnmount(() => {
 .video-studio__tabs :deep(.q-tab--active) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .video-studio__tabs--voice :deep(.q-tab--active) { color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .video-studio__tabs--ai :deep(.q-tab--active) { color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
+.video-studio__grid--code .video-studio__tabs { width: min(760px, 100%); }
+.video-studio__grid--code .video-studio__editor { grid-column: 1; }
+.video-studio__preview--code { grid-column: 2; border-color: #3a6367; background: radial-gradient(ellipse at top left, #244a56, transparent 72%), var(--aito-ai-surface); }
+.video-studio__preview--code .video-studio__clip-empty { min-height: 220px; }
+.video-studio__code-clip[aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
+.video-studio__rendered-title { overflow-wrap: anywhere; }
 .video-studio__script-btn { color: var(--aito-ai-purple); border-radius: 8px; background: var(--aito-ai-purple-soft); }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
 .video-studio__preview { grid-column: 1; grid-row: 2; }
@@ -2768,6 +2871,8 @@ onBeforeUnmount(() => {
   .video-studio__editor { order: 5; }
   .video-studio__grid--generate .video-studio__editor { order: 3; }
   .video-studio__preview--clips { order: 4; }
+  .video-studio__grid--code .video-studio__editor { order: 3; }
+  .video-studio__preview--code { order: 4; }
   .video-studio__screen canvas { max-height: min(42dvh, 390px); }
 }
 @media (max-width: 640px) {

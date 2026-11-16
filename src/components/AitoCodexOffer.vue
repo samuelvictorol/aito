@@ -74,7 +74,12 @@ watch(() => route.fullPath, () => {
   if (typeof window === 'undefined') return
   window.clearTimeout(timer)
   open.value = false
-  if (eligibleRoute.value) schedule(1500)
+  if (!eligibleRoute.value) {
+    authOpen.value = false
+    installGuide.value = false
+    return
+  }
+  schedule(1500)
 }, { immediate: true })
 
 onBeforeUnmount(() => {

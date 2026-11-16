@@ -37,6 +37,7 @@ const routes = [
   { path: '/', alias: '/aitoia', name: 'aito-ia', component: () => import('pages/AitoIAPage.vue') },
   { path: '/links', name: 'bio-links', component: () => import('pages/AitoLinksPage.vue') },
   { path: '/aitoia-video-studio', name: 'aito-ia-video-studio', component: () => import('pages/AitoIAVideoStudioPage.vue') },
+  { path: '/videostudio-tester', name: 'video-studio-tester', meta: { requiresAuth: 'admin' }, component: () => import('pages/AitoIAVideoStudioPage.vue') },
   { path: '/aitoia-marketing-studio', name: 'aito-ia-marketing-studio', component: () => import('pages/AitoIAMarketingStudioPage.vue') },
   { path: '/whatsapp-solucoes-whitelabel', name: 'whatsapp-solutions-source', component: () => import('pages/WhatsAppWhitelabelProductPage.vue') },
   { path: '/whatsappbotbuilder', name: 'whatsappbotbuilder-product', redirect: to => ({ path: '/whatsapp-solucoes', query: to.query, hash: to.hash }) },

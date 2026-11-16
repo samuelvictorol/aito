@@ -52,7 +52,7 @@ export default {
         localStorage.setItem('aito_admin_token', data.token)
         localStorage.setItem('aito_admin_user', JSON.stringify({ ...data.user, role: 'admin' }))
         const redirect = this.$route.query.redirect
-        const safeRedirect = typeof redirect === 'string' && /^\/admin(?:\/|[?#]|$)/.test(redirect) && !/[\\\r\n]/.test(redirect) && !redirect.startsWith('/admin/login') ? redirect : '/admin'
+        const safeRedirect = typeof redirect === 'string' && /^\/(?:admin(?:\/|[?#]|$)|videostudio-tester(?:[?#]|$))/.test(redirect) && !/[\\\r\n]/.test(redirect) && !redirect.startsWith('/admin/login') ? redirect : '/admin'
         this.$router.push(safeRedirect)
     },
     async restoreSession () {

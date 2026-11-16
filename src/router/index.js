@@ -5,6 +5,7 @@ import routes from './routes'
 import {installScreenLoading} from '../services/screen-loading'
 import { applySiteManifest } from '../services/siteManifest'
 import { landing3dSections } from '../data/landing3dSections'
+import { api } from '../boot/axios'
 
 /*
  * If not building with SSR mode, you can
@@ -42,7 +43,7 @@ export default defineRouter(function (/* { store, ssrContext } */) {
     Router.afterEach((route, _from, failure) => { if (!failure) applySiteManifest(route) })
   }
 
-  Router.beforeEach((to) => {
+  Router.beforeEach(async (to, from) => {
     if (process.env.SERVER) return true
 
     if (to.path === '/' && to.hash && landing3dSections.some(section => `#${section.id}` === to.hash)) {
@@ -72,8 +73,18 @@ export default defineRouter(function (/* { store, ssrContext } */) {
       return '/customer/login'
     }
 
-    if (to.meta?.requiresAuth === 'admin' && !localStorage.getItem('aito_admin_token')) {
-      return { name: 'admin-login', query: { redirect: to.fullPath } }
+    if (to.meta?.requiresAuth === 'admin') {
+      const adminToken = localStorage.getItem('aito_admin_token')
+      const login = { name: 'admin-login', query: { redirect: to.fullPath } }
+      if (!adminToken) return login
+      if (to.name === 'video-studio-tester' && from.name !== to.name) {
+        try {
+          await api.get('/auth/admin/credentials', { headers: { Authorization: `Bearer ${adminToken}` }, timeout: 10000 })
+          if (adminToken !== localStorage.getItem('aito_admin_token')) return login
+        } catch {
+          return login
+        }
+      }
     }
 
     if (to.meta?.requiresAuth === 'affiliate' && !affiliateToken) return '/affiliate/login'
