@@ -47,21 +47,23 @@ watch(adminMode, current => {
 const authOpen = ref(false)
 const authMode = ref('register')
 const walletOpen = ref(false)
-const tabs = computed(() => [
+const tabs = [
   { id: 'scenes', label: 'Cenas', icon: 'mdi-view-dashboard-outline' },
   { id: 'voice', label: 'Locução', icon: 'mdi-waveform' },
   { id: 'ai', label: 'Vídeo com IA', icon: 'mdi-movie-open-play-outline' },
-  ...(testerMode.value ? [{ id: 'code', label: 'Vídeo por código', icon: 'mdi-code-tags' }] : []),
-])
+  { id: 'code', label: 'Vídeo por código', icon: 'mdi-code-tags' },
+]
 const defaultProjectName = 'Projeto Sem Nome'
 const defaultProjectColor = '#13BC9D'
 const title = ref(defaultProjectName)
 const projectTitle = computed(() => title.value.trim() || defaultProjectName)
 const projectColor = ref(defaultProjectColor)
 const projectColorOpen = ref(false)
-const startingTab = () => route.query.tab === 'ai' ? 'ai' : testerMode.value ? 'code' : 'scenes'
+const startingTab = () => ['ai', 'code'].includes(route.query.tab) ? route.query.tab : testerMode.value ? 'code' : 'scenes'
 const tab = ref(startingTab())
+const codeControlsOpened = ref(tab.value === 'code')
 watch(testerMode, () => { tab.value = startingTab() })
+watch(tab, value => { if (value === 'code') codeControlsOpened.value = true })
 const formatId = ref(videoFormats[0].id)
 const format = computed(() => videoFormats.find(item => item.id === formatId.value))
 const freshScene = (fields = {}) => ({ id: crypto.randomUUID(), duration: 5, offset: 0, heading: '', caption: '', media: null, ...fields })
@@ -81,6 +83,35 @@ const clipLibrary = shallowRef([])
 const codeClips = computed(() => clipLibrary.value.filter(clip => clip.kind === 'code'))
 const codeClip = computed(() => codeClips.value.find(clip => clip.id === generated.value?.id) || codeClips.value[0])
 const codeSuggestion = shallowRef(null)
+const codeVideo = ref(null)
+const codePoster = ref('')
+watch([codeVideo, codeClip], ([video, clip], _, onCleanup) => {
+  if (!video || !clip?.file || clip.expired) return
+  const controller = new AbortController()
+  let posterUrl = ''
+  async function setPoster() {
+    if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) return
+    const ratio = video.videoWidth === video.videoHeight ? '1:1' : video.videoWidth < video.videoHeight ? '9:16' : '16:9'
+    try {
+      const frame = await captureTransitionFrame(clip.file, 'start', ratio, '480p',
+        AbortSignal.any([controller.signal, AbortSignal.timeout(4000)]), video.duration * .4)
+      if (controller.signal.aborted) return
+      posterUrl = URL.createObjectURL(frame)
+      codePoster.value = posterUrl
+    } catch { /* Keep the browser's native first frame when a poster is unavailable. */ }
+  }
+  video.addEventListener('loadedmetadata', setPoster, { once: true })
+  if (video.readyState >= 1) {
+    video.removeEventListener('loadedmetadata', setPoster)
+    void setPoster()
+  }
+  onCleanup(() => {
+    controller.abort()
+    video.removeEventListener('loadedmetadata', setPoster)
+    if (posterUrl) URL.revokeObjectURL(posterUrl)
+    codePoster.value = ''
+  })
+}, { flush: 'post' })
 const removedGeneratedIds = shallowRef([])
 const generatedDuration = ref(0)
 const activeJob = shallowRef(null)
@@ -1150,7 +1181,8 @@ function storeClip(asset) {
 }
 
 function renderCodeScene(scene, source = false) {
-  if (!testerMode.value || !adminMode.value || !mayEdit.value) return
+  if (!mayEdit.value || (testerMode.value && !adminMode.value)) return
+  if (!signedIn.value) return showAuth('login')
   const access = wallet.access()
   const endpoint = '/aitoia/video/studio/code-render'
   run(source ? 'code-source' : 'code-render', async signal => {
@@ -1179,7 +1211,7 @@ function renderCodeScene(scene, source = false) {
 
 function improveCodeScene({ title, subtitle }) {
   const model = wallet.currentModel.value
-  if (!testerMode.value || !adminMode.value || !mayEdit.value || !model) return
+  if (!mayEdit.value || !model || !useCredits()) return
   const access = wallet.access()
   run('code-text', async signal => {
     try {
@@ -1419,13 +1451,18 @@ async function submitStudioJob(quote, placement, { post, current }, signal) {
     if (current() && projectId === activeId.value && activeJob.value) scheduleStudioJob(500)
   }
 }
-function removeGenerated() {
-  if (!mayEdit.value || !generated.value) return
-  const id = generated.value.id
+function removeGenerated(target = generated.value) {
+  if (!mayEdit.value || !target) return
+  const { id } = target
   const project = activeId.value
-  const linked = scenes.value.filter(scene => scene.clipId === id).length
-  const message = linked ? `${linked} cena(s) do vídeo master continuam usando a mídia até expirar.` : 'O clipe sairá da biblioteca deste projeto.'
-  confirmStudioRemoval('Excluir clipe do projeto?', message, () => {
+  const onTimeline = scenes.value.some(scene => scene.clipId === id)
+  const inComponents = projectComponents.value.some(item => item.sourceClipId === id)
+  const message = [
+    'O clipe sairá da biblioteca deste projeto.',
+    onTimeline ? 'As cenas já inseridas no vídeo master serão mantidas.' : '',
+    inComponents ? 'Os componentes criados com este clipe serão mantidos.' : '',
+  ].filter(Boolean).join(' ')
+  confirmStudioRemoval('Excluir clipe do projeto?', message, async () => {
     if (!mounted || !mayEdit.value || project !== activeId.value) return
     const clip = clipLibrary.value.find(item => item.id === id)
     if (!clip) return
@@ -1433,6 +1470,8 @@ function removeGenerated() {
     clipLibrary.value = clipLibrary.value.filter(item => item.id !== id)
     if (isVideoGenerationId(id)) removedGeneratedIds.value = [...removedGeneratedIds.value.filter(removed => removed !== id), id].slice(-300)
     if (generated.value?.id === id) selectGenerated(clipLibrary.value[0] || null)
+    await saveProject()
+    if (mounted && project === activeId.value && !storageError.value) notice.value = 'Clipe removido da biblioteca.'
   }, 'Excluir')
 }
 function shareClip() {
@@ -1970,7 +2009,7 @@ async function restoreProject(project, signal) {
       try {
         const expiresAt = clip.expiresAt || project.expiresAt
         return [clip.expired || expiresAt <= Date.now()
-          ? { id: clip.id, number: clip.number, expiresAt, expired: true }
+          ? { id: clip.id, number: clip.number, kind: clip.kind, title: clip.title, expiresAt, expired: true }
           : localClip({ ...clip, expiresAt })]
       } catch { return [] }
     })
@@ -1995,7 +2034,7 @@ function expireCurrentMedia() {
     clipLibrary.value = clipLibrary.value.map(clip => {
       if (clip.expired || clip.expiresAt > time) return clip
       disposeClip(clip)
-      return { id: clip.id, number: clip.number, expiresAt: clip.expiresAt, expired: true }
+      return { id: clip.id, number: clip.number, kind: clip.kind, title: clip.title, expiresAt: clip.expiresAt, expired: true }
     })
     if (generated.value) selectGenerated(clipLibrary.value.find(clip => clip.id === generated.value.id) || null)
   }
@@ -2136,7 +2175,8 @@ onBeforeUnmount(() => {
       <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code' }">
         <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
           <q-tabs :model-value="tab" dark dense no-caps align="justify" indicator-color="transparent" active-color="teal-2" @update:model-value="chooseEditorTab">
-            <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label" :disable="!mayEdit" />
+            <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label"
+              :class="{ 'video-studio__code-tab': item.id === 'code' }" :disable="!mayEdit" />
           </q-tabs>
         </nav>
 
@@ -2171,8 +2211,8 @@ onBeforeUnmount(() => {
           @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
 
         <section v-if="tab !== 'ai' || !remakeMode" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
-          <div v-if="testerMode" v-show="tab === 'code'" class="video-studio__section">
-            <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit || !adminMode"
+          <div v-if="codeControlsOpened" v-show="tab === 'code'" class="video-studio__section">
+            <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit"
               :can-improve="Boolean(wallet.currentModel.value)" :suggestion="codeSuggestion" @render="renderCodeScene"
               @download-source="scene => renderCodeScene(scene, true)" @improve="improveCodeScene" />
           </div>
@@ -2378,7 +2418,7 @@ onBeforeUnmount(() => {
                 <button v-if="!generated.expired && generated.file?.type === 'video/mp4'" class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="clipVariation"><q-icon name="mdi-creation-outline" size="18px" /> Gerar variação</button>
                 <button v-if="!generated.expired" class="video-studio__icon" type="button" aria-label="Baixar clipe original"
                   :disabled="!mayEdit || Boolean(busy)" @click="downloadGenerated"><q-icon name="mdi-download-outline" size="20px" /><q-tooltip>Baixar clipe original</q-tooltip></button>
-                <button class="video-studio__icon" type="button" aria-label="Excluir clipe do projeto" :disabled="!mayEdit" @click="removeGenerated"><q-icon name="mdi-delete-outline" size="20px" /></button>
+                <button class="video-studio__icon" type="button" aria-label="Excluir clipe do projeto" :disabled="!mayEdit" @click="removeGenerated()"><q-icon name="mdi-delete-outline" size="20px" /></button>
               </div>
               <p v-if="generatedDuration > 15" class="video-studio__hint">Ao adicionar à sequência, o clipe é dividido em cenas de até 15 s.</p>
             </div>
@@ -2390,8 +2430,8 @@ onBeforeUnmount(() => {
             </div>
         </section>
 
-        <section v-else-if="tab === 'code' && testerMode" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
-          <header><h2>Cenas renderizadas</h2><span>MP4</span></header>
+        <section v-else-if="tab === 'code'" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
+          <header><h2><q-icon name="mdi-filmstrip" size="20px" /> Cenas renderizadas</h2><span v-if="codeClips.length">{{ codeClips.length }} {{ codeClips.length === 1 ? 'cena' : 'cenas' }}</span></header>
           <div v-if="codeClips.length > 1" class="video-studio__clip-list" role="group" aria-label="Selecionar cena renderizada">
             <button v-for="clip in codeClips" :key="clip.id" class="video-studio__secondary video-studio__code-clip" type="button"
               :aria-pressed="clip.id === codeClip?.id" :disabled="Boolean(busy)" @click="selectGenerated(clip)">Cena {{ clip.number }}</button>
@@ -2400,13 +2440,17 @@ onBeforeUnmount(() => {
             <q-spinner v-if="busy === 'code-render'" size="30px" /><q-icon v-else name="mdi-filmstrip" size="32px" />
             <p>{{ busy === 'code-render' ? 'Renderizando os quadros da animação…' : codeClip?.expired ? 'Esta cena atingiu o prazo de retenção.' : 'A prévia aparece após renderizar a primeira cena.' }}</p>
           </div>
-          <div v-else class="video-studio__generated">
-            <video :key="codeClip.id" :src="codeClip.url" controls playsinline preload="metadata" aria-label="Reproduzir cena renderizada" />
-            <strong class="video-studio__rendered-title">{{ codeClip.title }}</strong>
-            <div class="video-studio__actions">
-              <button type="button" class="video-studio__primary" :disabled="!mayEdit || Boolean(busy)" @click="addGeneratedSequence(codeClip)"><q-icon name="mdi-playlist-plus" size="18px" /> Adicionar ao vídeo master</button>
-              <button v-if="codeClip.file" type="button" class="video-studio__secondary" :disabled="Boolean(busy)" @click="downloadAitoIAFile(codeClip.file, codeClip.file.name)"><q-icon name="mdi-download-outline" size="18px" /> Baixar MP4</button>
-            </div>
+          <div v-else class="video-studio__code-screen">
+            <video ref="codeVideo" :key="codeClip.id" :src="codeClip.url" :poster="codePoster || undefined" controls playsinline preload="metadata" aria-label="Reproduzir cena renderizada" />
+          </div>
+          <div v-if="codeClip" class="video-studio__rendered-clip">
+            <strong class="video-studio__rendered-title">{{ codeClip.title || `Cena ${codeClip.number}` }}</strong>
+            <button type="button" class="video-studio__icon video-studio__delete-clip" aria-label="Excluir cena renderizada"
+              :disabled="!mayEdit || Boolean(busy)" @click="removeGenerated(codeClip)"><q-icon name="mdi-delete-outline" size="20px" /><q-tooltip>Excluir cena renderizada</q-tooltip></button>
+          </div>
+          <div v-if="codeClip?.url && !codeClip.expired" class="video-studio__actions">
+            <button type="button" class="video-studio__primary" :disabled="!mayEdit || Boolean(busy)" @click="addGeneratedSequence(codeClip)"><q-icon name="mdi-playlist-plus" size="18px" /> Adicionar ao vídeo master</button>
+            <button v-if="codeClip.file" type="button" class="video-studio__secondary" :disabled="Boolean(busy)" @click="downloadAitoIAFile(codeClip.file, codeClip.file.name)"><q-icon name="mdi-download-outline" size="18px" /> Baixar MP4</button>
           </div>
         </section>
 
@@ -2722,19 +2766,25 @@ onBeforeUnmount(() => {
 .video-studio__drawer-footer { padding-top: 4px; margin-top: auto; }
 .video-studio__drawer-footer .q-btn { width: 100%; border: 1px solid var(--aito-ai-line); color: var(--aito-ai-accent); }
 .video-studio__editor { grid-column: 2; grid-row: 2; overflow: hidden; }
-.video-studio__tabs { grid-column: 1 / -1; grid-row: 1; width: min(620px, 100%); padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
+.video-studio__tabs { grid-column: 1 / -1; grid-row: 1; width: min(760px, 100%); padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
 .video-studio__tabs :deep(.q-tab) { min-height: 40px; min-width: 0; padding: 0 5px; color: var(--aito-ai-muted); border-radius: 8px; }
 .video-studio__tabs :deep(.q-tab__content) { flex-direction: row; gap: 6px; min-width: 0; }
 .video-studio__tabs :deep(.q-tab__icon) { width: 18px; height: 18px; font-size: 18px; }
 .video-studio__tabs :deep(.q-tab--active) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .video-studio__tabs--voice :deep(.q-tab--active) { color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .video-studio__tabs--ai :deep(.q-tab--active) { color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
-.video-studio__grid--code .video-studio__tabs { width: min(760px, 100%); }
-.video-studio__grid--code .video-studio__editor { grid-column: 1; }
-.video-studio__preview--code { grid-column: 2; border-color: #3a6367; background: radial-gradient(ellipse at top left, #244a56, transparent 72%), var(--aito-ai-surface); }
+.video-studio__tabs :deep(.video-studio__code-tab:not(.q-tab--active)) { color: #9fe9db; }
+.video-studio__grid--code > .video-studio__editor { grid-area: 2 / 1; }
+.video-studio__grid--code > .video-studio__preview--code { grid-area: 2 / 2; border-color: #3a6367; background: radial-gradient(ellipse at top left, #244a56, transparent 72%), var(--aito-ai-surface); }
+.video-studio__preview--code header .q-icon { color: var(--aito-ai-accent); vertical-align: .05em; }
 .video-studio__preview--code .video-studio__clip-empty { min-height: 220px; }
 .video-studio__code-clip[aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
+.video-studio__code-screen { display: grid; place-items: center; overflow: hidden; border-radius: 10px; background: #060c11; }
+.video-studio__code-screen video { display: block; width: 100%; max-height: min(49dvh, 460px); min-height: 96px; object-fit: contain; }
+.video-studio__rendered-clip { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .video-studio__rendered-title { overflow-wrap: anywhere; }
+.video-studio__delete-clip { flex: none; color: #ffb7bc; }
+.video-studio__delete-clip:hover:not(:disabled) { color: #fff0f2; border-color: #a75865; background: #763644; }
 .video-studio__script-btn { color: var(--aito-ai-purple); border-radius: 8px; background: var(--aito-ai-purple-soft); }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
 .video-studio__preview { grid-column: 1; grid-row: 2; }
