@@ -1,6 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from '../src/services/aitoiaVideoRemote.js'
+import { checkImageReference, checkVideoReference, normalizeVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob } from '../src/services/aitoiaVideoRemote.js'
+
+test('accepts a 9 MB MP4 with a generic browser MIME and separates format and size errors', () => {
+  const bytes = new Uint8Array(9 * 1024 * 1024)
+  const file = new File([bytes], 'video-base.MP4', { type: 'application/octet-stream', lastModified: 123 })
+  const normalized = normalizeVideoReference(file)
+  assert.equal(normalized.type, 'video/mp4')
+  assert.equal(normalized.size, file.size)
+  assert.equal(normalized.name, file.name)
+  assert.equal(normalized.lastModified, file.lastModified)
+  assert.equal(normalizeVideoReference(normalized), normalized)
+  assert.equal(checkVideoReference({ name: 'camera.mp4', type: 'video/quicktime', size: bytes.length }), 'video/mp4')
+  assert.throws(() => checkVideoReference(new File([bytes], 'camera.mov', { type: 'video/quicktime' })), /^Error: O vídeo-base precisa estar no formato MP4\.$/)
+  assert.throws(() => checkVideoReference({ name: 'camera.mp4', size: 60 * 1024 * 1024 + 1 }), /limite de 60 MB/)
+  assert.throws(() => checkVideoReference(new File([], 'camera.mp4')), /vazio/)
+})
 
 test('accepts supported image types and resolves a blank browser MIME from the filename', () => {
   assert.equal(checkImageReference(new File(['image'], 'cena.JPG')), 'image/jpeg')

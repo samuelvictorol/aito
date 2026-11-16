@@ -1,6 +1,6 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { useMeta } from 'quasar'
+import { useMeta, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
@@ -27,7 +27,7 @@ import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, v
 import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia,
   recordStudioVideo, sceneSeconds, splitStudioClip, studioFrame, studioNarration, studioRenderSize, studioSubtitles, studioTimeline, studioVideoExports, videoFormats } from 'src/services/aitoiaVideo'
 import { cleanSceneScript, normalizeVoiceReference, parseVideoPlan, sceneScriptSeconds, studioAiSeconds, voiceComponentType } from 'src/services/aitoiaVideoPlan'
-import { captureTransitionFrame, checkImageReference, checkVideoReference, putImageReference, putVideoReference, putVoiceReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
+import { captureTransitionFrame, checkImageReference, normalizeVideoReference, putImageReference, putVideoReference, putVoiceReference, readGeneratedClipForJob, safeVideoUrl, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -203,6 +203,10 @@ const transitionFileInput = ref(null)
 const progress = ref(0)
 const busy = ref('')
 const error = ref('')
+const { notify } = useQuasar()
+watch(error, message => {
+  if (message) notify({ type: 'negative', position: 'top', message, timeout: 6000, closeBtn: 'Fechar' })
+}, { flush: 'sync' })
 const notice = ref('')
 const options = shallowRef(null)
 const optionsLoading = ref(false)
@@ -1640,11 +1644,11 @@ async function createTimelineTransition() {
 }
 function chooseReference(file) {
   if (!file || !mayEdit.value) return
+  error.value = ''
   try {
-    checkVideoReference(file)
+    const mp4 = normalizeVideoReference(file)
     clearReference()
-    reference.value = { file, url: URL.createObjectURL(file) }
-    error.value = ''
+    reference.value = { file: mp4, url: URL.createObjectURL(mp4) }
   } catch (cause) { error.value = cause.message }
 }
 function clearReference() {
@@ -1654,13 +1658,13 @@ function clearReference() {
 }
 function setTransitionClip(index, file) {
   if (!mayEdit.value) return
+  error.value = ''
   try {
-    if (file) checkVideoReference(file)
+    const mp4 = file ? normalizeVideoReference(file) : null
     const old = transitionClips.value[index]
-    const clip = file ? { file, url: URL.createObjectURL(file) } : null
+    const clip = mp4 ? { file: mp4, url: URL.createObjectURL(mp4) } : null
     if (old) URL.revokeObjectURL(old.url)
     transitionClips.value = transitionClips.value.map((item, position) => position === index ? clip : item)
-    error.value = ''
   } catch (cause) { error.value = cause.message }
 }
 
@@ -2162,7 +2166,6 @@ onBeforeUnmount(() => {
         <q-icon name="mdi-information-outline" size="20px" /> A geração de vídeo com IA está em manutenção. Você pode continuar na aba Vídeo por código.
       </p>
       <p v-if="!signedIn && !testerMode" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 50.000 AitoTokens no primeiro cadastro.</p>
-      <p v-if="error" role="alert" class="video-studio__notice video-studio__notice--error"><q-icon name="mdi-alert-circle-outline" size="20px" /> {{ error }}</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
       <div v-if="activeJob?.timelineTransition && !transitionDialogOpen && !busy" class="video-studio__notice video-studio__draft">

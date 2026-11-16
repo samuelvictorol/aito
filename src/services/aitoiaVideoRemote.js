@@ -9,10 +9,19 @@ export function safeVideoUrl(value) {
 }
 
 export function checkVideoReference(file) {
-  if (!file || !file.size || file.size > MAX_CLIP_BYTES || (file.type !== 'video/mp4' && (file.type || !/\.mp4$/i.test(file.name)))) {
-    throw new Error('Escolha um arquivo MP4 de até 60 MB.')
+  if (!file || !Number.isSafeInteger(file.size) || file.size < 1) throw new Error('O arquivo de vídeo está vazio.')
+  if (file.size > MAX_CLIP_BYTES) throw new Error('O vídeo excede o limite de 60 MB.')
+  const type = String(file.type || '').toLowerCase().split(';')[0].trim()
+  const extension = /\.mp4$/i.test(file.name || '')
+  if (type !== 'video/mp4' && !(extension && ['', 'application/octet-stream', 'application/mp4', 'video/x-mp4', 'video/quicktime', 'video/x-m4v'].includes(type))) {
+    throw new Error('O vídeo-base precisa estar no formato MP4.')
   }
   return 'video/mp4'
+}
+
+export function normalizeVideoReference(file) {
+  const type = checkVideoReference(file)
+  return file.type === type ? file : new File([file], file.name, { type, lastModified: file.lastModified })
 }
 
 export function checkImageReference(file) {
