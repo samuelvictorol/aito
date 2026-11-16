@@ -178,21 +178,25 @@ export async function prepareRemakeVideoReference(file, { signal } = {}) {
   }
 }
 
-export async function extractRemakeAudio(file, { signal } = {}) {
+export function extractRemakeAudio(file, options) {
+  return extractVideoAudio(file, maxRemakeSceneSeconds, options)
+}
+
+export async function extractVideoAudio(file, maxSeconds, { signal } = {}) {
   signal?.throwIfAborted()
   const media = await import('mediabunny')
   const input = mediaInput(media, file)
   try {
     const audioTrack = await input.getPrimaryAudioTrack()
     if (!audioTrack) return null
-    const end = Math.min(maxRemakeSceneSeconds, await audioTrack.computeDuration())
+    const end = Math.min(maxSeconds, await audioTrack.computeDuration())
     if (!Number.isFinite(end) || end <= 0) return null
     const buffer = await executeConversion(media, input, new media.WavOutputFormat(), {
       trim: { start: 0, end }, tracks: 'primary', tags: {}, copy: false, video: { discard: true },
       audio: { codec: 'pcm-s16', numberOfChannels: 1, sampleRate: 16000 },
     }, { signal, requireAudio: audioTrack })
-    if (buffer.byteLength > 322000) throw new Error('O trecho de áudio ficou acima do limite para análise.')
-    return new File([buffer], 'audio-da-cena.wav', { type: 'audio/wav' })
+    if (buffer.byteLength > maxSeconds * 32000 + 2000) throw new Error('O áudio ficou acima do limite para análise.')
+    return new File([buffer], 'audio-do-video.wav', { type: 'audio/wav' })
   } finally {
     input.dispose()
   }

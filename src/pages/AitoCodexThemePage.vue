@@ -21,10 +21,27 @@ useMeta({
         </picture>
       </div>
       <h1 id="codex-theme-title">AitoCodex Theme</h1>
-      <p>Anexe a pasta no codex e dê enter</p>
+      <p>Aplique as cores da AitoSoftwares e instale o mascote animado AitoIA no app do Codex.</p>
       <a class="codex-theme__download" href="/downloads/AitoCodex-Theme.zip" download="AitoCodex-Theme.zip">
         <q-icon name="mdi-download" size="21px" aria-hidden="true" /> Baixar tema
       </a>
+      <section class="codex-theme__guide" aria-labelledby="codex-theme-guide">
+        <h2 id="codex-theme-guide">Como instalar no Windows</h2>
+        <ol>
+          <li>Baixe e extraia o ZIP. Abra o app do Codex e pressione <kbd>Ctrl</kbd> + <kbd>,</kbd> para abrir as configurações.</li>
+          <li>
+            Em <strong>Aparência</strong>, selecione o modo escuro e aplique as cores:
+            <ul class="codex-theme__palette">
+              <li><span style="--swatch: #0070FA"></span> Destaque <code>#0070FA</code></li>
+              <li><span style="--swatch: #062C29"></span> Fundo <code>#062C29</code></li>
+              <li><span style="--swatch: #FFFFFF"></span> Primeiro plano <code>#FFFFFF</code></li>
+            </ul>
+          </li>
+          <li>Copie <code>pet.json</code> e <code>spritesheet.webp</code> da pasta <code>pet</code> do ZIP para <code>%USERPROFILE%\.codex\pets\aitoia</code>. Crie a pasta se ela ainda não existir. Se você configurou um <code>CODEX_HOME</code> personalizado, use a pasta <code>pets\aitoia</code> desse local.</li>
+          <li>Em <strong>Configurações → Pets</strong>, atualize a lista e selecione <strong>AitoIA</strong>. Use <code>/pet</code> para mostrar o mascote.</li>
+        </ol>
+        <a href="https://learn.chatgpt.com/docs/reference/settings" target="_blank" rel="noopener noreferrer">Guia oficial de configurações</a>
+      </section>
     </section>
   </main>
 </template>
@@ -146,4 +163,20 @@ useMeta({
 
 .codex-theme__download:hover { background: linear-gradient(#fffedf, #dcf9a8 48%, #9de8a5 50%, #bceec9); }
 .codex-theme__download:focus-visible { outline: 2px solid #005e8e; outline-offset: 4px; }
+.codex-theme__guide {
+  width: 100%;
+  margin-top: .7rem;
+  padding: clamp(.85rem, 4vw, 1.35rem);
+  border: 1px solid #a9d5cb;
+  border-radius: 1.15rem;
+  background: #f8fffcdd;
+  text-align: start;
+}
+.codex-theme__guide h2 { margin: 0 0 .7rem; font-size: 1.12rem; line-height: 1.3; }
+.codex-theme__guide ol { display: grid; gap: .6rem; margin: 0 0 .8rem; padding-inline-start: 1.2rem; line-height: 1.5; }
+.codex-theme__guide code { overflow-wrap: anywhere; color: #064b44; }
+.codex-theme__guide a { color: #035f66; font-weight: 700; }
+.codex-theme__palette { display: flex; flex-wrap: wrap; gap: .35rem .7rem; margin: .35rem 0 0; padding: 0; list-style: none; }
+.codex-theme__palette li { display: inline-flex; align-items: center; gap: .25rem; }
+.codex-theme__palette span { width: .8rem; height: .8rem; border: 1px solid #4a776d; border-radius: .22rem; background: var(--swatch); }
 </style>

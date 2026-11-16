@@ -24,7 +24,7 @@ test('assistant output files are available as references without being resent as
   assert.deepEqual(input[0].content, [{ type: 'input_text', text: 'Sua imagem está pronta.' }])
 })
 
-test('chat samples timestamped video frames within the shared image limit without uploading the original', async t => {
+test('chat combines timestamped video frames and a reusable transcript without uploading the original', async t => {
   const times = []
   class Video extends EventTarget {
     readyState = 2
@@ -44,12 +44,26 @@ test('chat samples timestamped video frames within the shared image limit withou
   const attachment = { name: 'cenas.mp4', type: 'video/mp4', blob: new Blob(['source-video'], { type: 'video/mp4' }) }
   assert.equal(fileKind(attachment), 'video')
   assert.equal(checkAttachment({ ...attachment, size: 49 * 1024 * 1024 }), 'O vídeo pode ter até 48 MB.')
-  const { input } = await requestMessages([{ role: 'user', text: 'Resuma as cenas', attachments: [attachment] }])
+  const messages = [{ role: 'user', text: 'Resuma as cenas', attachments: [attachment] }]
+  const transcribeVideo = t.mock.fn(async file => {
+    assert.equal(file, attachment)
+    return 'Bem-vindo ao nosso vídeo!'
+  })
+  const { input } = await requestMessages(messages, { transcribeVideo })
   const content = input[0].content
   assert.equal(content.filter(part => part.type === 'input_image').length, 5)
   assert.equal(content.filter(part => part.type === 'input_file').length, 0)
   assert.equal(canvas.width, 768)
-  assert.deepEqual(times, [0.8, 2.4, 4, 5.6, 7.2])
-  assert.match(content[1].text, /Áudio e quadros intermediários não foram enviados/)
+  assert.deepEqual(times.map(time => +time.toFixed(3)), [1.995, 3.99, 5.985, 7.98])
+  assert.match(content[1].text, /amostras em ordem cronológica/)
+  assert.match(content[2].text, /Quadro em 0.00 s/)
+  assert.match(content.at(-1).text, /Bem-vindo ao nosso vídeo!/)
+  assert.equal(transcribeVideo.mock.callCount(), 1)
   assert.equal(revoked.mock.callCount(), 1)
+
+  attachment.videoTranscript = 'Transcrição já disponível.'
+  times.length = 0
+  const followUp = await requestMessages([...messages, { role: 'user', text: 'O que foi dito?' }], { transcribeVideo })
+  assert.match(followUp.input[0].content.at(-1).text, /Transcrição já disponível/)
+  assert.equal(transcribeVideo.mock.callCount(), 1)
 })

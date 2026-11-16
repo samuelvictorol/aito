@@ -2,7 +2,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { api } from 'boot/axios'
 import { AITOIA_CHAT_LIMIT, createAitoIALocalStore } from 'src/services/aitoiaLocal'
 import { downloadAitoIAFile, exportAitoIAJson, exportAitoIAZip } from 'src/services/aitoiaArchive'
-import { checkAttachment, checkoutLink, fileKind, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages } from 'src/services/aitoiaChat'
+import { checkAttachment, checkoutLink, fileKind, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, readAnswer, requestMessages, videoAudioBase64 } from 'src/services/aitoiaChat'
 import { artifactReferences, fileFromArtifact, fileFromImage, prepareArtifactReferences } from 'src/services/aitoiaArtifacts'
 import { followGeneration } from 'src/services/aitoiaGenerationActivity'
 
@@ -371,6 +371,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     const parameters = { model: sentModel, service_tier: speed.value, walletId: walletId.value,
       ...(effort.value && { reasoning: { effort: effort.value } }), ...(webSearch.value && { webSearch: true }) }
     let imageMessage
+    let audioCost = 0
     request.value = { chatId: chat.id, controller, id }
     error.value = ''
     contextShortened.value = false
@@ -390,7 +391,26 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
         chats.value = [next, ...chats.value.filter(item => item.id !== next.id)]
       }
       scrollToEnd()
-      const { input, shortened } = await requestMessages(messages, { signal: controller.signal })
+      const { input, shortened } = await requestMessages(messages, { signal: controller.signal, transcribeVideo: async video => {
+        try {
+          const audio = await videoAudioBase64(video.blob, controller.signal)
+          if (!owner.current()) return
+          if (!audio) video.videoTranscript = ''
+          else {
+            const response = await owner.post('/aitoia/video-analysis/transcription', { audio, walletId: parameters.walletId },
+              { headers: { 'X-Aito-Request-Id': crypto.randomUUID() }, signal: controller.signal, timeout: 135000 })
+            if (!owner.current()) return
+            video.videoTranscript = response.data.data.transcript
+            audioCost = Number(response.data.data.billedUsdCents) || 0
+          }
+          const current = chats.value.find(item => item.id === chat.id)
+          if (current) await saveChat(current)
+          return video.videoTranscript
+        } catch (cause) {
+          if (controller.signal.aborted || statusOf(cause) === 401) throw cause
+          return undefined
+        }
+      } })
       if (controller.signal.aborted || sessionEpoch !== epoch || !owner.current()) return
       contextShortened.value = shortened
       const body = { input, ...parameters, artifacts: true }
@@ -420,7 +440,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
       if (current) {
         const reply = { id: crypto.randomUUID(), role: 'assistant', text: answer, model: sentLabel || sentModel, createdAt: now,
           ...(imagePlan && { imagePlan }), ...(attachment && { attachments: [attachment], artifactContext: artifact.content.slice(0, 8000) }),
-          billedUsdCents: Number.isFinite(data?.aito?.billedUsdCents) ? data.aito.billedUsdCents : undefined }
+          billedUsdCents: Number.isFinite(data?.aito?.billedUsdCents) || audioCost ? (data?.aito?.billedUsdCents || 0) + audioCost : undefined }
         await saveChat({ ...current, updatedAt: now, messages: [...current.messages, reply] })
         if (imagePlan) imageMessage = reply
       }

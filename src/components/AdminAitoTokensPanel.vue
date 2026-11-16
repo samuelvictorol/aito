@@ -7,12 +7,16 @@ import AitoTokenHistory from './AitoTokenHistory.vue'
 import AdminAitoProviderKeys from './AdminAitoProviderKeys.vue'
 import AdminAitoTokenProjects from './AdminAitoTokenProjects.vue'
 import AdminAitoTokenUsage from './AdminAitoTokenUsage.vue'
+import AdminAitoTokenWallets from './AdminAitoTokenWallets.vue'
+import AdminAitoPaymentLogs from './AdminAitoPaymentLogs.vue'
+import AdminHiggsfieldQueue from './AdminHiggsfieldQueue.vue'
 import LoginMfaDialog from './LoginMfaDialog.vue'
 
 const emit = defineEmits(['reauthenticated', 'open-projects'])
 const $q = useQuasar()
 const root = '/aito-tokens/admin'
 const tab = ref('usage')
+const logTab = ref('requests')
 const wallets = ref([])
 const search = ref('')
 const pagination = ref({ page: 1, rowsPerPage: 100, rowsNumber: 0 })
@@ -292,10 +296,15 @@ async function applyGrant(session) {
 }
 
 function changeTab(value) {
+  if (value === 'logs' && logTab.value === 'licenses' && !loaded.value && !loading.value) load()
   if (value !== 'licenses') return
-  if (!loaded.value) load()
+  if (!loaded.value && !loading.value) load()
   if (!modelCatalog.value.length && !modelsLoading.value) loadModels()
   if (!billingLoading.value) loadBilling()
+}
+
+function changeLogTab(value) {
+  if (value === 'licenses' && !loaded.value && !loading.value) load()
 }
 
 onMounted(() => changeTab(tab.value))
@@ -311,12 +320,25 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
     </header>
     <q-tabs v-model="tab" dense align="left" no-caps active-color="teal-3" indicator-color="teal-3" class="token-admin__tabs" @update:model-value="changeTab">
       <q-tab name="usage" label="Uso e custos" />
+      <q-tab name="logs" label="Logs" />
+      <q-tab name="wallets" label="Carteiras" />
       <q-tab name="projects" label="AitoKeys de projetos" />
       <q-tab name="licenses" label="Licenças e configurações" />
     </q-tabs>
-    <AdminAitoTokenUsage v-if="tab === 'usage'" @reauthenticated="emit('reauthenticated', $event)" />
+    <AdminAitoTokenUsage v-if="tab === 'usage'" key="overview" @reauthenticated="emit('reauthenticated', $event)" />
     <AdminAitoTokenProjects v-else-if="tab === 'projects'" @reauthenticated="emit('reauthenticated', $event)" @open-projects="emit('open-projects')" />
-    <template v-else>
+    <AdminAitoTokenWallets v-else-if="tab === 'wallets'" />
+    <template v-else-if="tab === 'logs'">
+      <q-tabs v-model="logTab" dense align="left" no-caps active-color="teal-3" indicator-color="teal-3"
+        class="token-admin__tabs" @update:model-value="changeLogTab">
+        <q-tab name="requests" label="Requisições e custos" />
+        <q-tab name="licenses" label="Consumo por licença" />
+        <q-tab name="payments" label="Logs de pagamento" />
+      </q-tabs>
+      <AdminAitoTokenUsage v-if="logTab === 'requests'" key="logs" mode="logs" @reauthenticated="emit('reauthenticated', $event)" />
+      <AdminAitoPaymentLogs v-else-if="logTab === 'payments'" />
+    </template>
+    <template v-else-if="tab === 'licenses'">
     <q-banner v-if="loadError" rounded class="bg-red-10 text-white" role="alert">{{ loadError }}</q-banner>
     <div v-if="loaded" class="token-admin__forms">
       <q-form class="token-admin__box" @submit.prevent="saveExchangeRate">
@@ -395,6 +417,13 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
       </q-form>
     </div>
     <AdminAitoProviderKeys :checkout-state="config.checkoutState" @updated="refreshLicenseSettings" @reauthenticated="emit('reauthenticated', $event)" />
+    <AdminHiggsfieldQueue />
+    </template>
+    <template v-if="tab === 'logs' && logTab === 'licenses'">
+    <q-banner v-if="loadError" rounded class="bg-red-10 text-white" role="alert">{{ loadError }}
+      <template #action><q-btn flat no-caps label="Tentar novamente" @click="load()" /></template>
+    </q-banner>
+    <q-linear-progress v-if="loading && !loaded" indeterminate color="teal-4" aria-label="Carregando consumo por licença" />
     <q-table
       v-if="loaded" v-model:pagination="pagination" flat bordered dark wrap-cells row-key="licenseId" :rows="wallets" :columns="columns"
       :rows-per-page-options="[pagination.rowsPerPage]" no-data-label="Nenhuma licença encontrada."

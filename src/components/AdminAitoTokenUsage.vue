@@ -3,9 +3,10 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
-import AdminHiggsfieldQueue from './AdminHiggsfieldQueue.vue'
 import LoginMfaDialog from './LoginMfaDialog.vue'
 
+const props = defineProps({ mode: { type: String, default: 'overview' } })
+const showLogs = computed(() => props.mode === 'logs')
 const emit = defineEmits(['reauthenticated'])
 const $q = useQuasar()
 
@@ -80,7 +81,7 @@ const logs = ref([])
 const providerTotals = ref([])
 const projects = ref([])
 const clients = ref([])
-const pagination = ref({ page: 1, rowsPerPage: 50, rowsNumber: 0 })
+const pagination = ref({ page: 1, rowsPerPage: 10, rowsNumber: 0 })
 const simulatedCost = ref('')
 const simulatedTariff = ref('openai')
 const simulationOptions = computed(() => Number.isFinite(funding.value?.codexMultiplier)
@@ -214,10 +215,13 @@ const simulatedCents = computed(() => {
   const cents = usdCents(simulatedCost.value)
   return Number.isSafeInteger(cents) && cents >= 0 && cents <= 1000000 ? cents : 0
 })
-const simulatedMultiplier = computed(() => simulatedTariff.value === 'codex'
-  ? funding.value?.codexMultiplier
-  : providerBalances.value.find(row => row.provider === simulatedTariff.value)?.multiplier ?? funding.value?.multiplier ?? 2)
-const simulatedCharge = computed(() => Math.round(simulatedCents.value * simulatedMultiplier.value * 10000) / 10000)
+const simulatedMultiplier = computed(() => ({
+  openai: funding.value?.multiplier,
+  codex: funding.value?.codexMultiplier,
+  higgsfield: funding.value?.higgsfieldMultiplier,
+})[simulatedTariff.value])
+const simulatedCharge = computed(() => Number.isFinite(simulatedMultiplier.value)
+  ? Math.round(simulatedCents.value * simulatedMultiplier.value * 10000) / 10000 : null)
 const liveStatus = computed(() => {
   if (!liveEnabled.value) return 'Atualização automática pausada'
   if (needsReview.value) return 'Revise a consulta para retomar'
@@ -281,7 +285,7 @@ function updateLogs(result, page) {
   liveError.value = false
 }
 
-async function load(page = 1, applyFilters = false, background = false) {
+async function load(page = 1, applyFilters = false, background = false, rowsPerPage = pagination.value.rowsPerPage) {
   if (applyFilters || !submitted) {
     if (!filters.from || !filters.to || filters.from > filters.to) {
       error.value = 'Informe um período válido.'
@@ -299,11 +303,10 @@ async function load(page = 1, applyFilters = false, background = false) {
     error.value = ''
   }
   try {
-    refreshTreasury(request.signal)
-    const { rowsPerPage } = pagination.value
+    if (!showLogs.value) refreshTreasury(request.signal)
     const { data } = await api.get('/aito-tokens/admin/usage', {
       ...financeHeaders(true), signal: request.signal, timeout: 12000,
-      params: { ...submitted, offset: (page - 1) * rowsPerPage },
+      params: { ...submitted, offset: (page - 1) * rowsPerPage, limit: rowsPerPage },
     })
     if (request.signal.aborted || (background && !liveEnabled.value)) return
     const result = data.data
@@ -340,7 +343,7 @@ async function refreshTreasury(signal) {
 
 async function pollLive() {
   if (!liveEnabled.value || document.hidden || pagination.value.page !== 1 || controller || liveController || !submitted || needsReview.value) return
-  if (Date.now() - fullUpdatedAt >= 3 * liveRefreshMs) {
+  if (!showLogs.value || Date.now() - fullUpdatedAt >= 3 * liveRefreshMs) {
     await load(1, false, true)
     return
   }
@@ -348,7 +351,7 @@ async function pollLive() {
   liveController = request
   try {
     const { data } = await api.get('/aito-tokens/admin/usage/live', {
-      ...financeHeaders(true), signal: request.signal, timeout: 8000, params: submitted,
+      ...financeHeaders(true), signal: request.signal, timeout: 8000, params: { ...submitted, limit: pagination.value.rowsPerPage },
     })
     if (!request.signal.aborted) updateLogs(data.data, 1)
   } catch (cause) {
@@ -536,7 +539,7 @@ onBeforeUnmount(() => {
   <section class="token-usage" aria-labelledby="token-usage-title">
     <header class="token-usage__header">
       <div>
-        <h3 id="token-usage-title">Consumo de IA</h3>
+        <h3 id="token-usage-title">{{ showLogs ? 'Logs de consumo' : 'Consumo de IA' }}</h3>
         <p>Acompanhe chamadas, custos e margem por origem, cliente e provedor.</p>
       </div>
       <div class="token-usage__live">
@@ -547,7 +550,7 @@ onBeforeUnmount(() => {
         </small>
       </div>
     </header>
-    <section v-if="treasury" class="token-usage__treasury token-usage__metrics" aria-label="Saldo geral da plataforma">
+    <section v-if="!showLogs && treasury" class="token-usage__treasury token-usage__metrics" aria-label="Saldo geral da plataforma">
       <article class="token-usage__metric token-usage__treasury-main">
         <img src="/aitotokens.svg" alt="" width="38" height="38" />
         <h4>Saldo geral da plataforma</h4><strong>{{ money(treasury.balanceUsdCents) }}</strong>
@@ -555,6 +558,12 @@ onBeforeUnmount(() => {
         <small>{{ money(treasury.customerBalanceUsdCents) }} em carteiras · {{ money(treasury.reservedUsdCents) }} reservados</small>
         <small>{{ money(treasury.promoGrantedUsdCents) }} em boas-vindas · {{ money(treasury.reclaimedUsdCents) }} devolvidos</small>
         <small v-if="treasury.unallocatedPaidUsdCents > 0" class="text-orange-3">{{ money(treasury.unallocatedPaidUsdCents) }} em recargas pagas sem carteira ativa</small>
+      </article>
+      <article v-if="treasury.adminBalanceUsdCents != null" class="token-usage__metric token-usage__metric--internal">
+        <q-icon name="mdi-shield-account-outline" size="23px" />
+        <h4>Saldo administrativo</h4><strong>{{ money(treasury.adminBalanceUsdCents) }}</strong>
+        <small>{{ money(treasury.adminBalanceBrlCents, reais) }} · ≈ {{ numbers.format(treasury.adminApproximateTokens) }} AitoTokens</small>
+        <small>Disponível para uso no AitoIA e nos estúdios.</small>
       </article>
       <article v-for="row in treasury.providers" :key="row.provider" class="token-usage__metric">
         <q-icon :name="providerIcons[row.provider]" size="23px" />
@@ -564,8 +573,64 @@ onBeforeUnmount(() => {
         <small>Até {{ money(row.coveredAitoUsdCents) }} em uso de AitoTokens</small>
       </article>
     </section>
-    <q-banner v-else-if="treasuryError" rounded class="bg-yellow-10 text-white" role="status">O saldo geral está indisponível. Atualize para tentar novamente.</q-banner>
-    <AdminHiggsfieldQueue :live="liveEnabled" />
+    <q-banner v-else-if="!showLogs && treasuryError" rounded class="bg-yellow-10 text-white" role="status">O saldo geral está indisponível. Atualize para tentar novamente.</q-banner>
+    <section v-if="!showLogs && funding" class="token-usage__box token-usage__funding" aria-labelledby="token-forecast-title">
+      <div class="token-usage__provider-head">
+        <div>
+          <h4 id="token-forecast-title">Caixa dos provedores</h4>
+          <p>Registre o saldo exibido em cada provedor após reabastecer. O consumo registrado a partir desse valor atualiza a estimativa.</p>
+        </div>
+      </div>
+      <div class="token-usage__funding-grid">
+        <q-form v-for="row in providerBalances" :key="row.provider" class="token-usage__funding-provider" @submit.prevent="saveProviderBalance(row)">
+          <header class="token-usage__provider-head">
+            <h4><q-icon :name="providerIcons[row.provider]" color="teal-3" size="20px" /> {{ providerName(row.provider) }}</h4>
+            <div class="token-usage__tariffs">
+              <q-badge v-if="alertLimitReached(row)" outline color="amber-4" label="Saldo baixo" />
+              <template v-if="row.provider === 'openai'">
+                <q-badge outline color="teal-3" :label="`AitoIA web ${numbers.format(row.multiplier ?? funding.multiplier)}×`" />
+                <q-badge v-if="Number.isFinite(funding.codexMultiplier)" outline color="teal-3" :label="`Codex ${numbers.format(funding.codexMultiplier)}×`" />
+              </template>
+              <q-badge v-else outline color="teal-3" :label="`${numbers.format(row.multiplier ?? funding.multiplier)}× sobre o custo`" />
+            </div>
+          </header>
+          <dl class="token-usage__amounts">
+            <div><dt>Saldo estimado</dt><dd>{{ money(estimatedBalance(row)) }}</dd></div>
+            <div v-if="row.alertThresholdUsdCents != null"><dt>Limite de alerta</dt><dd>{{ money(row.alertThresholdUsdCents) }}</dd></div>
+          </dl>
+          <q-input :model-value="balanceValue(row)" dark outlined dense :label="`Saldo de referência ${providerName(row.provider)}`" prefix="US$"
+            type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required :disable="Boolean(savingFunding)"
+            :rules="[value => validBalance(value) || 'Informe um valor válido em dólares.']" hide-bottom-space
+            @update:model-value="fundingDraft[row.provider] = $event ?? ''" />
+          <small v-if="row.asOf">Saldo de referência registrado em {{ formatEvent(row.asOf) }}.</small>
+          <dl class="token-usage__amounts">
+            <div><dt>Capacidade em AitoTokens</dt><dd>{{ money(row.coveredAitoUsdCents) }}</dd></div>
+            <div v-if="row.projectedCostUsdCents != null"><dt>Custo estimado</dt><dd>{{ money(row.projectedCostUsdCents) }}</dd></div>
+            <div v-if="row.topUpUsdCents != null"><dt>Recarga sugerida</dt><dd>{{ money(row.topUpUsdCents) }}</dd></div>
+          </dl>
+          <small v-if="row.provider === 'openai' && Number.isFinite(row.capacityMultiplier)">AitoIA web e Codex consomem do mesmo saldo OpenAI, com tarifas próprias. A estimativa de capacidade usa a menor tarifa ({{ numbers.format(row.capacityMultiplier) }}×).</small>
+          <q-btn outline no-caps color="teal-3" type="submit" icon="mdi-content-save-outline" label="Atualizar saldo de referência"
+            :loading="savingFunding === row.provider" :disable="Boolean(savingFunding)" />
+        </q-form>
+      </div>
+      <dl class="token-usage__forecast">
+        <div v-for="item in coverageMetrics" :key="item.label">
+          <dt>{{ item.label }}</dt>
+          <dd>{{ money(item.value) }}</dd>
+          <dd v-if="typeof item.value === 'number' && exchangeRate?.rate" class="token-usage__conversion">{{ money(item.value * exchangeRate.rate, reais) }}</dd>
+        </div>
+      </dl>
+      <p class="token-usage__note">Os saldos dos provedores ficam em contas separadas e os clientes usam a mesma carteira AitoTokens. {{ funding.splitBasis === 'historical' ? 'A projeção por provedor usa a proporção de custos do período filtrado.' : 'A projeção por provedor aparece na consulta geral quando há histórico de custos.' }}</p>
+      <details>
+        <summary>Simular uma cobrança</summary>
+        <div class="token-usage__reserve-input">
+          <q-select v-model="simulatedTariff" :options="simulationOptions" label="Tarifa" emit-value map-options dark outlined dense />
+          <q-input v-model="simulatedCost" dark outlined dense label="Custo do provedor" prefix="US$" type="number" min="0" max="10000" step="0.01" />
+          <p v-if="simulatedCharge != null">Débito AitoTokens <strong>{{ money(simulatedCharge) }}</strong> · Margem bruta <strong>{{ money(simulatedCharge - simulatedCents) }}</strong></p>
+          <p v-else>Tarifa indisponível.</p>
+        </div>
+      </details>
+    </section>
     <q-form class="token-usage__filters" @submit.prevent="load(1, true)">
       <q-input v-model="filters.from" dark outlined dense stack-label label="De" type="date" required />
       <q-input v-model="filters.to" dark outlined dense stack-label label="Até" type="date" required />
@@ -583,11 +648,11 @@ onBeforeUnmount(() => {
       <q-btn unelevated no-caps type="submit" color="teal-7" icon="mdi-filter-variant" label="Aplicar filtros" :loading="loading" />
       <q-btn outline no-caps type="button" color="teal-3" icon="mdi-wallet-plus-outline" label="Adicionar saldo"
         :disable="!filters.clientId || !supportsClientFilter" @click="openClientGrant()" />
-      <q-btn outline no-caps type="button" color="amber-4" icon="mdi-wallet-minus-outline" label="Devolver saldo"
+      <q-btn outline no-caps type="button" color="amber-4" icon="mdi-cash-refund" label="Devolver saldo"
         :disable="!filters.clientId || !supportsClientFilter" @click="openClientGrant('reclaim')" />
     </q-form>
     <q-banner v-if="error" rounded class="bg-red-10 text-white" role="alert">{{ error }}</q-banner>
-    <template v-if="summary">
+    <template v-if="summary && !showLogs">
       <div class="token-usage__metrics">
         <article v-for="metric in metrics" :key="metric.label" class="token-usage__metric" :class="{ 'token-usage__metric--internal': metric.internal }">
           <q-icon :name="metric.icon" size="22px" aria-hidden="true" />
@@ -619,58 +684,12 @@ onBeforeUnmount(() => {
         </article>
       </section>
       <p v-if="summary.estimatedRequests" class="token-usage__note">{{ numbers.format(summary.estimatedRequests) }} chamadas têm custo ou conversão em reais estimados.</p>
-      <section v-if="funding" class="token-usage__box token-usage__funding" aria-labelledby="token-forecast-title">
-        <div class="token-usage__provider-head">
-          <div>
-            <h4 id="token-forecast-title">Caixa dos provedores</h4>
-            <p>Registre o saldo exibido em cada provedor após reabastecer. O consumo registrado a partir desse valor atualiza a estimativa.</p>
-          </div>
-        </div>
-        <div class="token-usage__funding-grid">
-          <q-form v-for="row in providerBalances" :key="row.provider" class="token-usage__funding-provider" @submit.prevent="saveProviderBalance(row)">
-            <header class="token-usage__provider-head">
-              <h4><q-icon :name="providerIcons[row.provider]" color="teal-3" size="20px" /> {{ providerName(row.provider) }}</h4>
-              <q-badge outline :color="alertLimitReached(row) ? 'amber-4' : 'teal-3'" :label="alertLimitReached(row) ? 'Saldo baixo' : `${numbers.format(row.multiplier ?? funding.multiplier)}× sobre o custo`" />
-            </header>
-            <dl class="token-usage__amounts">
-              <div><dt>Saldo estimado</dt><dd>{{ money(estimatedBalance(row)) }}</dd></div>
-              <div v-if="row.alertThresholdUsdCents != null"><dt>Limite de alerta</dt><dd>{{ money(row.alertThresholdUsdCents) }}</dd></div>
-            </dl>
-            <q-input :model-value="balanceValue(row)" dark outlined dense :label="`Saldo de referência ${providerName(row.provider)}`" prefix="US$"
-              type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required :disable="Boolean(savingFunding)"
-              :rules="[value => validBalance(value) || 'Informe um valor válido em dólares.']" hide-bottom-space
-              @update:model-value="fundingDraft[row.provider] = $event ?? ''" />
-            <small v-if="row.asOf">Saldo de referência registrado em {{ formatEvent(row.asOf) }}.</small>
-            <dl class="token-usage__amounts">
-              <div><dt>Capacidade em AitoTokens</dt><dd>{{ money(row.coveredAitoUsdCents) }}</dd></div>
-              <div v-if="row.projectedCostUsdCents != null"><dt>Custo estimado</dt><dd>{{ money(row.projectedCostUsdCents) }}</dd></div>
-              <div v-if="row.topUpUsdCents != null"><dt>Recarga sugerida</dt><dd>{{ money(row.topUpUsdCents) }}</dd></div>
-            </dl>
-            <small v-if="row.provider === 'openai' && Number.isFinite(row.capacityMultiplier)">AitoIA e Codex compartilham este saldo. A capacidade considera a menor das duas tarifas ({{ numbers.format(row.capacityMultiplier) }}×).</small>
-            <q-btn outline no-caps color="teal-3" type="submit" icon="mdi-content-save-outline" label="Atualizar saldo de referência"
-              :loading="savingFunding === row.provider" :disable="Boolean(savingFunding)" />
-          </q-form>
-        </div>
-        <dl class="token-usage__forecast">
-          <div v-for="item in coverageMetrics" :key="item.label">
-            <dt>{{ item.label }}</dt>
-            <dd>{{ money(item.value) }}</dd>
-            <dd v-if="typeof item.value === 'number' && exchangeRate?.rate" class="token-usage__conversion">{{ money(item.value * exchangeRate.rate, reais) }}</dd>
-          </div>
-        </dl>
-        <p class="token-usage__note">Os saldos dos provedores ficam em contas separadas e os clientes usam a mesma carteira AitoTokens. {{ funding.splitBasis === 'historical' ? 'A projeção por provedor usa a proporção de custos do período filtrado.' : 'A projeção por provedor aparece na consulta geral quando há histórico de custos.' }}</p>
-        <details>
-          <summary>Simular uma cobrança</summary>
-          <div class="token-usage__reserve-input">
-            <q-select v-model="simulatedTariff" :options="simulationOptions" label="Tarifa" emit-value map-options dark outlined dense />
-            <q-input v-model="simulatedCost" dark outlined dense label="Custo do provedor" prefix="US$" type="number" min="0" max="10000" step="0.01" />
-            <p>Débito AitoTokens <strong>{{ money(simulatedCharge) }}</strong> · Margem bruta <strong>{{ money(simulatedCharge - simulatedCents) }}</strong></p>
-          </div>
-        </details>
-      </section>
+    </template>
+    <template v-else-if="summary">
       <q-table v-model:pagination="pagination" flat bordered dark wrap-cells row-key="rowKey" :rows="logs" :columns="logColumns"
-        :rows-per-page-options="[pagination.rowsPerPage]" :loading="loading" class="token-usage__table" title="Logs por requisição"
-        no-data-label="Nenhuma chamada encontrada." @request="load($event.pagination.page)"
+        :rows-per-page-options="[10, 25, 50, 100]" :loading="loading" class="token-usage__table" title="Logs por requisição"
+        no-data-label="Nenhuma chamada encontrada." rows-per-page-label="Registros por página"
+        @request="load($event.pagination.page, false, false, $event.pagination.rowsPerPage)"
       >
         <template #body-cell-source="props">
           <q-td :props="props"><q-badge v-if="adminUsage(props.row)" color="amber-4" text-color="dark" class="token-usage__admin-badge"><q-icon name="mdi-shield-account-outline" size="15px" /> Uso administrativo</q-badge><span v-else>{{ props.value }}</span></q-td>
@@ -834,6 +853,7 @@ onBeforeUnmount(() => {
 .token-usage__funding, .token-usage__funding-grid, .token-usage__funding-provider { display: grid; gap: .8rem; }
 .token-usage__funding-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); align-items: start; }
 .token-usage__funding-provider { padding: .85rem; border: 1px solid #345857; border-radius: .6rem; }
+.token-usage__tariffs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
 .token-usage__funding-provider > .q-btn { justify-self: start; }
 .token-usage__funding-provider .token-usage__amounts { margin: 0; }
 .token-usage__forecast { margin: .1rem 0; }

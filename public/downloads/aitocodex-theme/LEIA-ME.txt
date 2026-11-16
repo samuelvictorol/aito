@@ -1,24 +1,9 @@
 AitoCodex Theme
 
-1. Extraia o ZIP e abra a pasta AitoCodex Theme no Codex para Windows. Use Ctrl+O para abrir uma pasta.
-2. Anexe PROMPT.txt à conversa ou cole seu conteúdo e pressione Enter. Se já abriu a pasta como projeto, envie “Aplique o AitoCodex Theme seguindo PROMPT.txt”.
-3. Confirme no próprio Codex apenas a opção de acesso que você decidir usar. Também dá para aplicar o tema e instalar o mascote pelos passos abaixo.
+1. Baixe e extraia o ZIP. No app do Codex, pressione Ctrl+, para abrir Configurações.
+2. Em Aparência, selecione o modo escuro. Defina o destaque como #0070FA, o fundo como #062C29 e o primeiro plano como #FFFFFF.
+3. Copie pet.json e spritesheet.webp da pasta pet para %USERPROFILE%\.codex\pets\aitoia. Crie a pasta se ela ainda não existir. Se você usa um CODEX_HOME personalizado, copie para a pasta pets\aitoia dele.
+4. No app, abra Configurações → Pets, atualize a lista e selecione AitoIA. Use /pet na conversa para mostrar o mascote.
 
-Aparência
-
-Em Configurações → Aparência, selecione Escuro e use as cores abaixo. O atalho para abrir Configurações é Ctrl+, no Windows.
-
-Destaque personalizado  #0070FA
-Fundo                  #062C29
-Primeiro plano         #FFFFFF
-Fonte                  Sistema
-
-Mascote animado AitoIA
-
-Use este link para abrir a instalação do mascote no aplicativo Codex. Se seu navegador pedir, confirme a abertura do aplicativo.
-
-codex://pets/install?name=AitoIA&imageUrl=https%3A%2F%2Faitosoftwares.com%2Fdownloads%2Faitocodex-theme%2Fpet%2Fspritesheet.webp&spriteVersionNumber=1
-
-Se preferir instalar localmente, coloque pet.json e spritesheet.webp da pasta pet em %USERPROFILE%\.codex\pets\aitoia. Se você usa outro CODEX_HOME, use a pasta pets dele. No Codex, abra Configurações → Pets, atualize a lista e selecione AitoIA. Use /pet na conversa para exibi-lo.
-
-AitoIA.gif é a prévia animada. AitoIA.png é a versão estática. O aplicativo usa o spritesheet.webp para animar o mascote.
+AitoIA.gif é uma prévia animada. AitoIA.png é uma prévia estática.
+Guia oficial: https://learn.chatgpt.com/docs/reference/settings

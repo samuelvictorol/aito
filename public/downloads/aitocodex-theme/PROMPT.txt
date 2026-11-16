@@ -1,11 +1,1 @@
-Quero configurar o AitoCodex Theme e o mascote animado AitoIA no aplicativo oficial do Codex para Windows. Use os arquivos da pasta AitoCodex Theme que anexei ou abri neste projeto.
-
-1. Antes de mexer nos arquivos, peça minha confirmação para usar temporariamente o modo Acesso total pelo seletor de permissões do Codex, se ele estiver disponível. Explique a confirmação na conversa e deixe a mudança de modo comigo. Se eu preferir aprovações pontuais, solicite só a autorização de escrita para a pasta do mascote. Se eu não autorizar, mostre os passos manuais do LEIA-ME.txt. Trate a confirmação como autorização apenas para este tema e este mascote.
-
-2. Abra comigo Configurações → Aparência. Oriente-me a escolher o modo Escuro e, se aparecer, o tema base ChatGPT. Defina o destaque personalizado como #0070FA, o fundo como #062C29, o primeiro plano como #FFFFFF e a fonte como Sistema. Aplique pelos controles oficiais quando estiverem acessíveis. Se a interface não puder ser operada daqui, guie-me pelos quatro campos e espere eu confirmar. Use as cores exatas da captura de referência.
-
-3. Instale o pet AitoIA fornecido na pasta pet. Use o link nativo do LEIA-ME.txt ou, com a autorização acima, copie apenas pet.json e spritesheet.webp para a subpasta aitoia de pets no CODEX_HOME já em uso. No Windows, o caminho padrão é %USERPROFILE%\.codex\pets\aitoia. Se esse mascote já existir com arquivos diferentes, peça confirmação antes de substituir. O GIF é uma prévia do mascote.
-
-4. Oriente-me a abrir Configurações → Pets, atualizar a lista se for preciso e selecionar AitoIA. Peça que eu use /pet na conversa para exibir o mascote e conferir as animações. Se o aplicativo não apresentar o recurso Pets, mostre onde conferir a versão e indique o caminho oficial disponível. Mantenha as mudanças restritas à aparência e ao pet.
-
-5. Diga quais passos foram concluídos e quais dependem de mim. Depois da instalação, lembre-me de restaurar o modo de permissões anterior se eu tiver ativado Acesso total.
+Me guie pela instalação manual do AitoCodex Theme no Windows, conforme os passos do LEIA-ME.txt. Vou aplicar as cores em Configurações → Aparência e copiar os arquivos do mascote. Responda em português, um passo de cada vez.

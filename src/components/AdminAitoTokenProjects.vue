@@ -180,7 +180,7 @@ onBeforeUnmount(() => {
             />
             <q-btn v-if="props.row.active" flat dense round icon="mdi-key-remove" color="orange-4" aria-label="Revogar chave" @click="selectAction('revoke', props.row)"><q-tooltip>Revogar chave</q-tooltip></q-btn>
             <q-btn v-if="props.row.active && projectActive(props.row)" flat dense round icon="mdi-wallet-plus-outline" color="teal-3" aria-label="Adicionar créditos" @click="selectAction('grant', props.row)"><q-tooltip>Adicionar créditos</q-tooltip></q-btn>
-            <q-btn v-if="props.row.balanceUsdCents > 0" flat dense round icon="mdi-wallet-minus-outline" color="amber-4" aria-label="Devolver saldo" @click="selectAction('reclaim', props.row)"><q-tooltip>Devolver saldo</q-tooltip></q-btn>
+            <q-btn v-if="props.row.balanceUsdCents > 0" flat dense round icon="mdi-cash-refund" color="amber-4" aria-label="Devolver saldo" @click="selectAction('reclaim', props.row)"><q-tooltip>Devolver saldo</q-tooltip></q-btn>
             <q-btn v-if="props.row.issued" flat dense round icon="mdi-history" color="teal-3" aria-label="Histórico de recargas" @click="historyProject = props.row"><q-tooltip>Histórico de recargas</q-tooltip></q-btn>
           </div>
         </q-td>

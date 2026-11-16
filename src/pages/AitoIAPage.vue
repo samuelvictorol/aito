@@ -63,7 +63,7 @@ const effortIndex = computed({ get: () => Math.max(0, efforts.value.indexOf(effo
 const promptIdeas = [
   { icon: 'mdi-code-braces', title: 'Revisar código', text: 'Revise este código e sugira melhorias de legibilidade, desempenho e testes. Explique suas decisões.' },
   { icon: 'mdi-file-document-outline', title: 'Analisar um documento', text: 'Analise o documento que vou anexar. Resuma os pontos principais e liste as decisões ou ações que merecem atenção.' },
-  { icon: 'mdi-file-video-outline', title: 'Analisar um vídeo', text: 'Analise os quadros do vídeo que vou anexar. Resuma as principais cenas e indique em que momento elas aparecem.' },
+  { icon: 'mdi-file-video-outline', title: 'Analisar um vídeo', text: 'Analise o vídeo que vou anexar. Resuma as principais cenas com seus horários e relacione as falas ao que acontece na tela.' },
   { icon: 'mdi-image-plus-outline', title: 'Criar uma imagem', text: 'Gere uma imagem quadrada de ' },
   { icon: 'mdi-file-pdf-box', title: 'Criar um PDF', text: 'Crie um PDF para baixar sobre ' },
 ]
@@ -282,7 +282,7 @@ onMounted(() => {
         <AitoIAChatVideo v-if="videoOpen" :state="state" :initial-prompt="draft" :initial-video="videoFile" :initial-images="videoImages" @busy="videoBusy = $event" @close="videoOpen = false; videoFile = null; focusComposer()" @login="showAuth('login')" @wallet="showWallet" />
         <form v-else class="aito-studio__composer" @submit.prevent="requestSend">
           <div v-if="attachments.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in attachments" :key="file.id" :attachment="file" removable @remove="attachments = attachments.filter(item => item.id !== file.id)" /></div>
-          <div v-if="attachedVideo && !isVideoRequest" class="aito-studio__privacy">Análise visual de até 5 quadros do vídeo, sem áudio.</div>
+          <div v-if="attachedVideo && !isVideoRequest" class="aito-studio__privacy">Análise de até cinco quadros com horários e transcrição das falas, quando disponível. A transcrição também usa AitoTokens.</div>
           <textarea ref="composer" v-model="draft" rows="2" :maxlength="MAX_PROMPT_LENGTH" aria-label="Mensagem" placeholder="Escreva uma mensagem ou solte um arquivo…" @keydown="onKey" @paste="pasteFiles" />
           <div class="aito-studio__tools">
             <input ref="fileInput" type="file" multiple hidden @change="pickFiles" />

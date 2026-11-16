@@ -8,7 +8,7 @@
         <q-btn-dropdown flat no-caps icon="mdi-web" label="Site" class="header-landings" aria-label="Abrir páginas do site">
           <q-list class="admin-landing-menu">
             <q-item v-close-popup clickable @click="openDetail('landing-videos')">
-              <q-item-section avatar><q-icon name="mdi-monitor-play" /></q-item-section>
+              <q-item-section avatar><q-icon name="mdi-movie-open-play-outline" /></q-item-section>
               <q-item-section>Vídeos das landing pages</q-item-section>
             </q-item>
             <q-item v-close-popup clickable @click="openDetail('codex-install-prompt')">

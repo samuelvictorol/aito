@@ -34,6 +34,7 @@ const pendingLifetime = AITOIA_RETENTION_MS
 const maxReferences = 6
 const selectedFile = shallowRef(null)
 const subtitleScene = shallowRef(null)
+const referencePreview = shallowRef(null)
 const splitDuration = ref(remakeSplitDurations[0])
 const input = ref(null)
 const inputError = ref('')
@@ -612,9 +613,12 @@ onBeforeUnmount(() => {
           </label>
         </div>
         <ul v-if="referenceIds.length" class="aito-remake__references" aria-label="Referências do vídeo">
-          <li v-for="item in selectedReferences(referenceIds)" :key="item.id"><img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-account-outline" size="22px" />{{ item.title }}</li>
+          <li v-for="item in selectedReferences(referenceIds)" :key="item.id">
+            <button v-if="item.url" type="button" class="aito-remake__reference" :aria-label="`Ampliar imagem de ${item.title}`"
+              @click="referencePreview = item"><img :src="item.url" alt="" />{{ item.title }}</button>
+            <span v-else class="aito-remake__reference"><q-icon name="mdi-image-outline" size="22px" />{{ item.title }}</span>
+          </li>
         </ul>
-        <p class="aito-remake__help">A divisão é gratuita e preserva a duração do último trecho. Na cotação, a Higgsfield recebe apenas a cena selecionada e suas referências.</p>
       </div>
     </section>
 
@@ -659,7 +663,11 @@ onBeforeUnmount(() => {
             </template>
           </q-select>
           <ul v-if="referencesFor(scene).length" class="aito-remake__references" aria-label="Referências da cena">
-            <li v-for="item in referencesFor(scene)" :key="item.id"><img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-image-outline" size="22px" />{{ item.title }}</li>
+            <li v-for="item in referencesFor(scene)" :key="item.id">
+              <button v-if="item.url" type="button" class="aito-remake__reference" :aria-label="`Ampliar imagem de ${item.title}`"
+                @click="referencePreview = item"><img :src="item.url" alt="" />{{ item.title }}</button>
+              <span v-else class="aito-remake__reference"><q-icon name="mdi-image-outline" size="22px" />{{ item.title }}</span>
+            </li>
           </ul>
           <q-btn v-if="scene.referenceIds !== null" flat dense no-caps label="Usar referências do prompt master"
             :disable="lockedScene(scene)" @click="patchScene(scene, { referenceIds: null })" />
@@ -701,7 +709,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="aito-remake__actions">
           <q-btn v-if="!scene.recovered && !scene.job && !scene.submitted" no-caps flat icon="mdi-creation-outline"
-            :label="scene.planQuote ? 'Confirmar preparação' : 'Preparar com IA'" :disable="lockedScene(scene)"
+            :label="scene.planQuote ? 'Confirmar preparação' : 'Melhorar Prompt de Cena'" :disable="lockedScene(scene)"
             :loading="isWorking(scene, 'prepare') || isWorking(scene, 'plan-price')" @click="planScene(scene)" />
           <q-btn v-if="scene.quote || scene.job || scene.submitted" no-caps unelevated color="teal-8" icon="mdi-movie-open-play-outline"
             :label="scene.job || scene.submitted ? 'Verificar cena' : scene.quote?.estimated ? 'Confirmar reserva e refazer' : 'Confirmar e refazer'"
@@ -742,6 +750,18 @@ onBeforeUnmount(() => {
     </section>
     <AitoRemakeSubtitleRegion v-if="subtitleScene" :url="subtitleScene.url" :duration="subtitleScene.duration"
       :region="subtitleScene.subtitleRegion" @close="subtitleScene = null" @save="saveSubtitleRegion" />
+    <q-dialog :model-value="Boolean(referencePreview)" aria-labelledby="remake-reference-preview-title"
+      @update:model-value="open => { if (!open) referencePreview = null }">
+      <q-card v-if="referencePreview" class="aito-ai-theme aito-remake__reference-preview">
+        <q-card-section class="row items-center justify-between no-wrap q-gutter-sm">
+          <h3 id="remake-reference-preview-title" class="text-subtitle1 q-my-none">{{ referencePreview.title }}</h3>
+          <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar prévia da imagem" />
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <img :src="referencePreview.url" :alt="referencePreview.title" />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </section>
 </template>
 
@@ -773,8 +793,13 @@ onBeforeUnmount(() => {
 .aito-remake :is(button, textarea, select):focus-visible { outline: 2px solid var(--aito-ai-accent); outline-offset: 2px; }
 .aito-remake__quality { display: grid; gap: 4px; }
 .aito-remake__references { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.aito-remake__references li { display: flex; gap: 6px; align-items: center; max-width: 100%; padding: 3px 8px 3px 3px; border: 1px solid var(--aito-ai-line); border-radius: 6px; font-size: .84rem; }
-.aito-remake__references img { width: 30px; height: 30px; border-radius: 4px; object-fit: cover; }
+.aito-remake__references li { min-width: 0; max-width: 100%; }
+.aito-remake__reference { display: flex; gap: 6px; align-items: center; max-width: 100%; padding: 3px 8px 3px 3px; border: 1px solid var(--aito-ai-line); border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: .84rem; }
+button.aito-remake__reference { cursor: zoom-in; text-align: left; }
+button.aito-remake__reference:hover { border-color: var(--aito-ai-accent); }
+.aito-remake__reference img { flex: 0 0 30px; width: 30px; height: 30px; border-radius: 4px; object-fit: cover; }
+.aito-remake__reference-preview { width: min(620px, 100%); color: var(--aito-ai-text); background: var(--aito-ai-surface); }
+.aito-remake__reference-preview img { display: block; width: 100%; max-height: 70dvh; border-radius: 8px; background: var(--aito-ai-bg); object-fit: contain; }
 .aito-remake__column--results { background: linear-gradient(145deg, #16433870, transparent 400px), var(--aito-ai-surface); }
 .aito-remake__scene { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
 .aito-remake__scene-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
