@@ -17,7 +17,7 @@
       <main v-else-if="activeMenu === 'wpp-colab'" class="user-app__main user-app__wide"><UserWhatsappCollaboratorsPanel /></main>
       <main v-else-if="activeMenu === 'profile'" class="user-app__main user-app__profile">
         <span class="user-app__eyebrow">Meu perfil</span><h1>Seu acesso, do seu jeito.</h1>
-        <q-form class="user-app__profile-form" @submit.prevent="saveProfile"><q-input v-model="profile.name" outlined label="Nome" /><q-input v-model="profile.email" outlined label="E-mail" readonly /><q-input v-model="profile.phone" outlined label="Telefone" readonly /><q-btn unelevated no-caps type="submit" label="Salvar nome" icon="mdi-content-save" :loading="saving" /></q-form>
+        <q-form class="user-app__profile-form" @submit.prevent="saveProfile"><q-input v-model="profile.name" outlined label="Nome" /><q-input v-model="profile.email" outlined label="E-mail" readonly /><q-input v-model="profile.phone" outlined label="Telefone com DDI e DDD" /><q-btn unelevated no-caps type="submit" label="Salvar perfil" icon="mdi-content-save" :loading="saving" /></q-form>
         <UserCodexKey />
       </main>
       <main v-else-if="activeMenu === 'finance'" class="user-app__main user-app__wide"><UserFinancePanel /></main>
@@ -32,6 +32,17 @@
       </router-link>
       <AitoCodexThemeShortcut class="user-app__theme" />
     </div></q-page></q-page-container>
+    <q-dialog v-model="phoneRequired" persistent>
+      <q-card class="user-app__phone-dialog">
+        <q-form @submit.prevent="savePhone">
+          <q-card-section><h2>Cadastre seu telefone</h2><p>Informe seu número com DDI e DDD para completar o perfil.</p>
+            <q-input v-model="phoneDraft" outlined label="Telefone com DDI e DDD" type="tel" autocomplete="tel"
+              autofocus :disable="saving" :error="Boolean(phoneError)" :error-message="phoneError" /></q-card-section>
+          <q-card-actions align="right"><q-btn unelevated color="teal-8" no-caps type="submit"
+            label="Salvar telefone" :loading="saving" :disable="!phoneDraft.trim()" /></q-card-actions>
+        </q-form>
+      </q-card>
+    </q-dialog>
   </q-layout>
 </template>
 
@@ -58,6 +69,27 @@ const $q = useQuasar()
 const sessionUser = ref({})
 const sessionToken = localStorage.getItem('aito_user_token')
 const saving = ref(false)
+const phoneRequired = ref(false)
+const phoneDraft = ref('')
+const phoneError = ref('')
+const hasPhone = value => /^[1-9]\d{9,14}$/.test(String(value || '').replace(/[+().\s-]/g, ''))
+function acceptProfile(user) {
+  sessionUser.value = user
+  Object.assign(profile, user, { phone: hasPhone(user.phone) ? user.phone : '' })
+  localStorage.setItem('aito_user', JSON.stringify(user))
+  phoneRequired.value = !hasPhone(user.phone)
+}
+async function savePhone() {
+  saving.value = true
+  phoneError.value = ''
+  try {
+    const { data } = await api.patch('/products/aitonotify/profile', { phone: phoneDraft.value },
+      { headers: { Authorization: 'Bearer ' + localStorage.getItem('aito_user_token') } })
+    acceptProfile(data.data)
+  } catch (error) {
+    phoneError.value = error.response?.data?.message || 'Não foi possível salvar o telefone.'
+  } finally { saving.value = false }
+}
 const profile = reactive({ name: '', email: '', phone: '' })
 const menu = [
   { id: 'products', label: 'Meus produtos', icon: 'mdi-shield-key-outline' },
@@ -83,13 +115,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('storage', refreshChangedAccount)
   window.removeEventListener('aito:session-expired', refreshChangedAccount)
 })
-onMounted(async () => { if(sessionStorage.getItem('aito.productClaim')){router.replace('/produto/acesso');return} try { const response=await api.get('/products/aitonotify/profile',{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});localStorage.setItem('aito_user',JSON.stringify(response.data.data)); sessionUser.value = JSON.parse(localStorage.getItem('aito_user') || '{}'); Object.assign(profile, sessionUser.value) } catch (error) { sessionUser.value = {} } })
-async function saveProfile () { saving.value = true; try { const response=await api.patch('/products/aitonotify/profile',{name:profile.name.trim()},{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});sessionUser.value=response.data.data;localStorage.setItem('aito_user',JSON.stringify(sessionUser.value));$q.notify({type:'positive',message:'Perfil salvo.'}) }catch(error){$q.notify({type:'negative',message:error.response?.data?.message || 'Não foi possível salvar.'})}finally{saving.value=false} }
+onMounted(async () => { if(sessionStorage.getItem('aito.productClaim')){router.replace('/produto/acesso');return} try { const response=await api.get('/products/aitonotify/profile',{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});acceptProfile(response.data.data) } catch (error) { sessionUser.value = {} } })
+async function saveProfile () { saving.value = true; try { const response=await api.patch('/products/aitonotify/profile',{name:profile.name.trim(),phone:profile.phone},{headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')}});acceptProfile(response.data.data);$q.notify({type:'positive',message:'Perfil salvo.'}) }catch(error){$q.notify({type:'negative',message:error.response?.data?.message || 'Não foi possível salvar.'})}finally{saving.value=false} }
 
 async function logout () { try { await api.post('/auth/logout',{}, {headers:{Authorization:'Bearer '+localStorage.getItem('aito_user_token')},withCredentials:true}); localStorage.removeItem('aito_user_token'); localStorage.removeItem('aito_user'); router.push('/sobre') } catch { $q.notify({type:'negative',message:'Não foi possível encerrar o acesso neste dispositivo. Tente novamente.'}) } }
 </script>
 
 <style scoped>
+.user-app__phone-dialog { width: min(440px, 94vw); background: #f3faf6; color: #173e32; border-radius: 18px; }
+.user-app__phone-dialog h2 { font-size: 1.4rem; margin: 0; }
 .user-app { color: #effffb; background: #03090b; }
 .user-app__page { min-height: 100vh; padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); background: radial-gradient(circle at 70% 18%, rgba(19,188,157,.16), transparent 25rem), #03090b; }
 .user-app__shell { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; }
