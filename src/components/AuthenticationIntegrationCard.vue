@@ -17,7 +17,7 @@ onMounted(load)
 <template>
   <section class="access-security">
     <header>
-      <div><span class="access-security__eyebrow">SEGURANÇA DO ACESSO</span><h2>Multifator por e-mail e WhatsApp</h2><p>Administradores e contas internas elegíveis recebem o mesmo código pelos canais disponíveis. O primeiro cadastro interno confirma o endereço pelo e-mail. O acesso com Google usa a autenticação do Google.</p></div>
+      <div><span class="access-security__eyebrow">SEGURANÇA DO ACESSO</span><h2>Multifator por e-mail e WhatsApp</h2><p>O acesso administrativo exige código pelos canais disponíveis. Usuários e clientes entram com senha ou com a conta Google.</p></div>
       <q-badge :color="status.configured ? 'positive' : 'negative'" :label="loading ? 'Verificando…' : status.configured ? 'Integração configurada' : 'Configuração necessária'" />
     </header>
     <div class="access-security__facts">

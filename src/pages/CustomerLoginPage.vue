@@ -10,18 +10,19 @@
             </div>
           </div>
 
+          <q-btn unelevated no-caps class="full-width customer-login__google" icon="mdi-google" label="Entrar com Google"
+            type="button" :disable="loading" @click="continueWithGoogle" />
+          <div class="customer-login__separator"><span>ou</span></div>
 
           <q-input v-model="form.identifier" outlined dense label="E-mail ou telefone" autocomplete="username" :rules="[requiredRule]" />
           <q-input v-model="form.password" outlined dense label="Senha" type="password" autocomplete="current-password" class="q-mt-sm" :rules="[requiredRule]" />
 
           <q-btn unelevated no-caps class="full-width q-mt-md customer-login__button" icon="mdi-briefcase-outline" label="Entrar no portal" type="submit" :loading="loading" />
-          <q-btn outline no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-google" label="Continuar com Google" type="button" @click="continueWithGoogle" />
           <q-btn flat no-caps class="full-width customer-login__forgot q-mt-md" icon="mdi-lock-reset" label="Esqueci minha senha" type="button" @click="forgotOpen = true" />
           <q-btn flat no-caps class="full-width q-mt-sm customer-login__back" icon="mdi-arrow-left" label="Voltar para a AitoSoftwares" type="button" @click="$router.push('/sobre')" />
         </q-form>
       </q-page>
     </q-page-container>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="mfaChallenge" @verified="completeLogin" />
     <PasswordResetDialog v-model="forgotOpen" audience="customer" :initial-email="form.identifier.includes('@') ? form.identifier : ''" @completed="handlePasswordResetCompleted" />
   </q-layout>
 </template>
@@ -30,16 +31,13 @@
 import { api } from 'boot/axios'
 import { beginGoogleLogin } from 'src/services/google-login'
 import PasswordResetDialog from 'components/PasswordResetDialog.vue'
-import LoginMfaDialog from 'components/LoginMfaDialog.vue'
 
 export default {
   name: 'CustomerLoginPage',
-  components: { PasswordResetDialog, LoginMfaDialog },
+  components: { PasswordResetDialog },
   data () {
     return {
       loading: false,
-      mfaOpen:false,
-      mfaChallenge:null,
       forgotOpen: false,
       form: { identifier: '', password: '' }
     }
@@ -53,6 +51,7 @@ export default {
         ;['aito_admin_token', 'aito_admin_user', 'aito_user_token', 'aito_user', 'aito_seller_token', 'aito_seller_user'].forEach((key) => localStorage.removeItem(key))
         localStorage.setItem('aito_user_token', data.token)
         localStorage.setItem('aito_user', JSON.stringify({ ...data.user, role: 'customer' }))
+        window.dispatchEvent(new Event('aito:session-changed'))
         this.$q.notify({ type: 'positive', message: 'Acesso do cliente confirmado.' })
         this.$router.push('/customer')
     },
@@ -60,7 +59,10 @@ export default {
       this.loading = true
       try {
         const { data } = await api.post('/auth/customer/login', this.form)
-        if(data.requiresMfa){this.mfaChallenge=data;this.mfaOpen=true;return}
+        if (!data.token) {
+          this.$q.notify({ type: 'negative', message: 'Não foi possível entrar no portal.' })
+          return
+        }
         this.completeLogin(data)
       } catch (error) {
         this.$q.notify({ type: 'negative', message: error.response?.data?.message || 'Nao foi possivel entrar no portal.' })
@@ -86,6 +88,9 @@ export default {
 .customer-login__intro { margin: 0 0 1.2rem; color: rgba(229,255,250,.68); font-size: .8rem; line-height: 1.55; }
 .customer-login__panel :deep(.q-field__control) { color: #effffb; background: rgba(7,40,40,.7); }
 .customer-login__panel :deep(.q-field__native), .customer-login__panel :deep(.q-field__label) { color: rgba(239,255,251,.82); }
+.customer-login__google { min-height: 2.7rem; background: #effffb; color: #092521; font-weight: 800; }
+.customer-login__separator { display: flex; align-items: center; gap: .65rem; margin: 1rem 0; color: rgba(229,255,250,.7); font-size: .75rem; }
+.customer-login__separator::before, .customer-login__separator::after { flex: 1; height: 1px; content: ''; background: rgba(19,188,157,.25); }
 .customer-login__button { color: #03110f; background: linear-gradient(135deg, #8fffee, #13bc9d); font-weight: 800; }
 .customer-login__forgot { color: #8fffee; font-size: .75rem; }
 .customer-login__back { color: #8fffee; }

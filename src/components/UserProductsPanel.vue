@@ -4,7 +4,6 @@ import { api, apiBaseURL } from 'boot/axios'
 import { io } from 'socket.io-client'
 import { useQuasar } from 'quasar'
 import KitProductCart from './KitProductCart.vue'
-import LoginMfaDialog from './LoginMfaDialog.vue'
 import LicenseValidity from './LicenseValidity.vue'
 import DesktopTrialOffer from './DesktopTrialOffer.vue'
 import { licenseValidity } from 'src/services/license-validity'
@@ -22,7 +21,12 @@ function openCodexGuide(autoDownload) {
   codexGuide.value = true
 }
 const $q=useQuasar(),data=ref(null),catalog=ref({}),cart=ref(null),busy=ref(false),downloading=ref(''),visible=ref({}),now=ref(Date.now())
-const reauthOpen=ref(false),reauthChallenge=ref(null),pendingRotation=ref(null),termsOpen=ref(false),selectedTerms=ref(null)
+const termsOpen = ref(false)
+const selectedTerms = ref(null)
+const passwordDialogOpen = ref(false)
+const pendingRotation = ref(null)
+const rotationPassword = ref('')
+const rotationError = ref('')
 const rotating = ref('')
 const replacement = ref(null)
 const replacementOpen = ref(false)
@@ -105,12 +109,27 @@ async function renew(license) {
     $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível abrir a renovação.' })
   } finally { renewing.value = '' }
 }
-async function performRotate(license) {
+function requestGoogleLogin() {
+  $q.dialog({
+    title: 'Confirme seu acesso pelo Google',
+    message: 'Depois de entrar, volte a esta licença para substituir a chave.',
+    ok: 'Continuar com Google',
+    cancel: true,
+  }).onOk(async () => {
+    const { beginGoogleLogin } = await import('src/services/google-login')
+    beginGoogleLogin('/app?tab=products')
+  })
+}
+
+async function performRotate(license, password) {
   if (rotating.value) return
   rotating.value = license._id
+  rotationError.value = ''
   try {
-    const response = await api.post(`/products/aitonotify/licenses/${encodeURIComponent(license._id)}/rotate`, {}, headers())
+    const response = await api.post(`/products/aitonotify/licenses/${encodeURIComponent(license._id)}/rotate`,
+      password === undefined ? {} : { password }, headers())
     const updated = response.data.data
+    passwordDialogOpen.value = false
     visible.value[license._id] = false
     if (updated?.token) {
       if (data.value) data.value.licenses = licenses.value.map(item => item._id === license._id ? updated : item)
@@ -120,37 +139,41 @@ async function performRotate(license) {
     }
     await load({ silent: true })
   } catch (error) {
-    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Não foi possível substituir a chave.' })
-  } finally { rotating.value = '' }
-}
-function rotate(license) {
-  if (rotating.value) return
-  $q.dialog({ title: 'Substituir chave deste produto?', message: 'A chave anterior perde o acesso imediatamente. Cadastre a nova chave na instalação para retomar os recursos que exigem a licença.', cancel: true, persistent: true }).onOk(async () => {
-    let claims
-    try {
-      const [, body] = (localStorage.getItem('aito_user_token') || '').split('.')
-      claims = JSON.parse(atob(body.replace(/-/g, '+').replace(/_/g, '/')))
-    } catch { /* The API validates the current session. */ }
-    const cutoff = Date.now() / 1000 - 300
-    if (claims?.amr === 'google') {
-      if (Number(claims.authAt) > cutoff) return performRotate(license)
-      $q.dialog({ title: 'Confirme seu acesso pelo Google', message: 'Depois de entrar, volte a esta licença para substituir a chave.', ok: 'Continuar com Google', cancel: true }).onOk(async () => {
-        const { beginGoogleLogin } = await import('src/services/google-login')
-        beginGoogleLogin('/app?tab=products')
-      })
+    const failure = error.response?.data
+    if (failure?.code === 'GOOGLE_REAUTH_REQUIRED') return requestGoogleLogin()
+    if (password === undefined && failure?.code === 'PASSWORD_REAUTH_REQUIRED') {
+      pendingRotation.value = license
+      passwordDialogOpen.value = true
       return
     }
-    if (claims?.mfa && Number(claims.mfaAt) > cutoff) return performRotate(license)
-    try {
-      pendingRotation.value = license
-      reauthChallenge.value = (await api.post('/auth/mfa/reauth', {}, headers())).data
-      reauthOpen.value = true
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error.response?.data?.message || 'Não foi possível solicitar a confirmação por e-mail.' })
-    }
-  })
+    const message = failure?.message || 'Não foi possível substituir a chave.'
+    if (passwordDialogOpen.value) rotationError.value = message
+    else $q.notify({ type: 'negative', message })
+  } finally {
+    rotating.value = ''
+  }
 }
-async function verifiedRotation(result){localStorage.setItem('aito_user_token',result.token);localStorage.setItem('aito_user',JSON.stringify(result.user));if(pendingRotation.value)await performRotate(pendingRotation.value);pendingRotation.value=null}
+
+function rotate(license) {
+  if (rotating.value) return
+  $q.dialog({
+    title: 'Substituir chave deste produto?',
+    message: 'A chave anterior perde o acesso imediatamente. Cadastre a nova chave na instalação para retomar os recursos que exigem a licença.',
+    cancel: true,
+    persistent: true,
+  }).onOk(() => performRotate(license))
+}
+
+function confirmRotation() {
+  if (pendingRotation.value && rotationPassword.value) return performRotate(pendingRotation.value, rotationPassword.value)
+}
+
+function clearRotation() {
+  pendingRotation.value = null
+  rotationPassword.value = ''
+  rotationError.value = ''
+}
+
 let socket, timer, clock
 const refresh = () => void load({ silent: true })
 onMounted(() => {
@@ -176,7 +199,22 @@ onBeforeUnmount(() => {
 </script>
 <template>
 <section class="products">
-  <LoginMfaDialog v-model="reauthOpen" :challenge="reauthChallenge" @verified="verifiedRotation"/>
+  <q-dialog v-model="passwordDialogOpen" :persistent="Boolean(rotating)" @hide="clearRotation">
+    <q-card dark class="products__key-dialog">
+      <q-form @submit.prevent="confirmRotation">
+        <q-card-section>
+          <h2 class="products__replacement-title">Confirme sua senha</h2>
+          <q-input v-model="rotationPassword" type="password" label="Senha atual" autocomplete="current-password" outlined dark
+            autofocus :disable="Boolean(rotating)" :error="Boolean(rotationError)" :error-message="rotationError" />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat no-caps label="Cancelar" :disable="Boolean(rotating)" />
+          <q-btn type="submit" unelevated no-caps color="teal-7" label="Substituir chave"
+            :loading="Boolean(rotating)" :disable="!rotationPassword" />
+        </q-card-actions>
+      </q-form>
+    </q-card>
+  </q-dialog>
   <KitProductCart ref="cart" @catalog="applyCatalog" @purchased="load"/>
   <header class="products__top"><div><h1>Meus produtos</h1><p>Encontre os downloads e a chave de cada produto.</p></div><q-btn flat round icon="mdi-refresh" aria-label="Atualizar produtos" :loading="busy" @click="load"/></header>
   <section class="products__group products__codex" aria-labelledby="products-codex-title">

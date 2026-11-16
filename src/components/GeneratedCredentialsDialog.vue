@@ -7,9 +7,9 @@
       </q-card-section>
       <q-card-section class="generated-credentials-card__body">
         <p>Guarde ou compartilhe estas informações com o cliente. A senha só será exibida novamente se uma nova senha for gerada.</p>
-        <q-banner v-if="!customer?.email" rounded class="bg-orange-1 text-orange-10 q-mb-md">Este cadastro contém apenas telefone. Cadastre um e-mail no perfil do cliente para habilitar o login com validação multifator.</q-banner><div class="generated-credentials-card__welcome">Seja Bem Vindo(a) à AitoSoftwares!</div>
+        <div class="generated-credentials-card__welcome">Seja Bem Vindo(a) à AitoSoftwares!</div>
         <div class="generated-credentials-card__field"><span>Cliente</span><strong>{{ customer?.name || '-' }}</strong></div>
-        <div class="generated-credentials-card__field"><span>E-mail</span><strong>{{ customer?.email || '-' }}</strong></div>
+        <div class="generated-credentials-card__field"><span>{{ customer?.email ? 'E-mail' : 'Telefone' }}</span><strong>{{ customer?.email || customer?.phone || '-' }}</strong></div>
         <div class="generated-credentials-card__field"><span>Senha temporária</span><code>{{ password || '-' }}</code></div>
         <div class="generated-credentials-card__field"><span>Login</span><a :href="loginUrl" target="_blank" rel="noopener noreferrer">{{ loginUrl }}</a></div>
         <div class="generated-credentials-card__actions">
@@ -34,7 +34,7 @@ const emit = defineEmits(['update:modelValue'])
 const $q = useQuasar()
 const isOpen = computed({ get: () => props.modelValue, set: (value) => emit('update:modelValue', value) })
 const loginUrl = computed(() => `${window.location.origin}/customer/login`)
-const shareText = computed(() => `Seja Bem Vindo(a) à AitoSoftwares!\n\nAqui estão suas credenciais:\nE-mail: ${props.customer?.email || '-'}\nSenha: ${props.password || '-'}\n\nFaça login em: ${loginUrl.value}`)
+const shareText = computed(() => `Seja Bem Vindo(a) à AitoSoftwares!\n\nAqui estão suas credenciais:\n${props.customer?.email ? 'E-mail' : 'Telefone'}: ${props.customer?.email || props.customer?.phone || '-'}\nSenha: ${props.password || '-'}\n\nFaça login em: ${loginUrl.value}`)
 
 async function copy() {
   try {
