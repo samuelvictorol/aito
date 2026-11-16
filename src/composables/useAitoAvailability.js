@@ -3,7 +3,7 @@ import { api } from 'boot/axios'
 
 const areas = {
   'aito-ia': 'chat',
-  'aito-ia-video-studio': 'video',
+  'aito-ia-video-studio': 'system',
   'aito-ia-marketing-studio': 'marketing',
 }
 const outage = { system: false, chat: false, video: false, marketing: false }

@@ -18,6 +18,7 @@ import { readAnswer } from 'src/services/aitoiaChat'
 import { downloadAitoIAFile, zipAitoIAFiles } from 'src/services/aitoiaArchive'
 import { readStudioProject } from 'src/services/aitoiaStudioArchive'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
+import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 import { createVideoProjectLinks, isVideoGenerationId } from 'src/services/aitoiaVideoProjectLinks'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
@@ -33,6 +34,7 @@ const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const AitoStudioCodeRender = defineAsyncComponent(() => import('components/AitoStudioCodeRender.vue'))
 const wallet = useAitoIA({ chatHistory: false, allowAdmin: true })
+const { videoInMaintenance } = useAitoAvailability()
 const { signedIn, adminMode, status, walletId, accountId, models } = wallet
 const route = useRoute()
 const router = useRouter()
@@ -2156,6 +2158,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p v-if="route.query.maintenance === 'chat'" class="video-studio__notice" role="status"><img src="/ia.gif" width="30" height="30" alt="" /> O Chat AitoIA está em manutenção. Desculpe o transtorno. Estamos trazendo novas funcionalidades.</p>
+      <p v-if="videoInMaintenance && tab === 'ai'" class="video-studio__notice" role="status">
+        <q-icon name="mdi-information-outline" size="20px" /> A geração de vídeo com IA está em manutenção. Você pode continuar na aba Vídeo por código.
+      </p>
       <p v-if="!signedIn && !testerMode" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 50.000 AitoTokens no primeiro cadastro.</p>
       <p v-if="error" role="alert" class="video-studio__notice video-studio__notice--error"><q-icon name="mdi-alert-circle-outline" size="20px" /> {{ error }}</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
