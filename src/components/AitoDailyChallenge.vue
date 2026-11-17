@@ -13,14 +13,15 @@ const challenge = ref(null)
 const complete = computed(() => challenge.value?.completed === true)
 const rewarded = computed(() => challenge.value?.rewarded === true)
 const streak = computed(() => challenge.value?.streak || 0)
+const remaining = computed(() => 3 - streak.value)
 const title = computed(() => complete.value ? 'Você completou os 3 dias!' : streak.value === 1 ? 'Seu primeiro dia está valendo' : 'Dois dias. Falta só mais um!')
 const description = computed(() => {
   if (complete.value) return rewarded.value
     ? 'Mais 25.000 AitoTokens já estão na sua carteira. Hora de dar vida à próxima ideia.'
     : 'Seus três dias foram confirmados. Os 25.000 AitoTokens estão aguardando liberação e serão creditados automaticamente.'
-  return streak.value === 1
-    ? 'Você começou com 25.000 AitoTokens. Volte nos próximos dois dias para ganhar mais 25.000.'
-    : 'Seu acesso de hoje foi registrado. Volte amanhã para completar o desafio e ganhar mais 25.000 AitoTokens.'
+  return remaining.value === 1
+    ? 'Falta 1 dia para seu bônus. Volte amanhã para completar o desafio.'
+    : `Faltam ${remaining.value} dias para seu bônus. Volte amanhã para manter a sequência.`
 })
 
 let tracker
@@ -68,7 +69,7 @@ onBeforeUnmount(() => {
 
       <ol class="daily-challenge__days" :aria-label="`${streak} de 3 dias consecutivos concluídos`">
         <li v-for="day in 3" :key="day" :class="{ 'is-done': day <= streak, 'is-next': day === streak + 1 }" :aria-current="day === streak ? 'step' : undefined">
-          <span class="daily-challenge__step"><q-icon v-if="day <= streak" name="mdi-check" size="22px" aria-hidden="true" /><span v-else>{{ day }}</span></span>
+          <span class="daily-challenge__step"><q-icon :name="day <= streak ? 'mdi-check' : day === streak + 1 ? 'mdi-calendar-clock-outline' : 'mdi-calendar-blank-outline'" size="22px" aria-hidden="true" /></span>
           <strong>Dia {{ day }}</strong>
           <small>{{ day <= streak ? 'Concluído' : day === streak + 1 ? 'Amanhã' : 'Na sequência' }}</small>
         </li>
@@ -81,7 +82,7 @@ onBeforeUnmount(() => {
       </div>
 
       <p v-if="challenge?.reset && !complete" class="daily-challenge__reset" role="status"><q-icon name="mdi-refresh" size="18px" aria-hidden="true" /> Um dia ficou de fora. Sua sequência recomeçou hoje; o bônus continua disponível.</p>
-      <p v-if="!complete" class="daily-challenge__rule">Entre em 3 dias seguidos. Se faltar um dia, a contagem recomeça. Cada dia segue o horário de Brasília.</p>
+      <p v-if="!complete" class="daily-challenge__rule">O bônus vale uma vez por conta. Entre em 3 dias seguidos no horário de Brasília. Se faltar um dia, a contagem recomeça.</p>
       <p v-else-if="!rewarded" class="daily-challenge__rule">Você não precisa refazer o desafio. A recompensa será liberada na mesma carteira.</p>
       <button type="button" class="daily-challenge__continue" @click="open = false">{{ complete ? 'Continuar criando' : 'Combinado, até amanhã!' }}<q-icon name="mdi-arrow-right" size="20px" aria-hidden="true" /></button>
     </q-card>

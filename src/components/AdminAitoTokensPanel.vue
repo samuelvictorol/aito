@@ -95,19 +95,24 @@ function notify(error, fallback) {
   $q.notify({ type: 'negative', message: error.response?.data?.message || fallback })
 }
 
-async function saveFinancial(path, changes, apply, message) {
+async function saveFinancial(path, changes, apply, message, requireConfirmation = false) {
   if (pendingFinancial || financialConfirming.value || financialSaving.value) throw Error('Conclua a confirmação financeira antes de iniciar outra alteração.')
   financialSaving.value = true
   try {
-    const { data } = await api.put(path, changes, financeHeaders(true))
-    apply(data.data)
-    $q.notify({ type: 'positive', message })
-  } catch (error) {
-    if (error.response?.data?.code !== 'REAUTH_REQUIRED') throw error
+    if (!requireConfirmation) {
+      try {
+        const { data } = await api.put(path, changes, financeHeaders(true))
+        apply(data.data)
+        $q.notify({ type: 'positive', message })
+        return
+      } catch (error) {
+        if (error.response?.data?.code !== 'REAUTH_REQUIRED') throw error
+      }
+    }
     // Keep the values the administrator reviewed, even if the form changes
     // while the access code is being delivered.
     const operation = { path, changes: { ...changes }, apply, message }
-    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
     pendingFinancial = operation
     pendingGrant = null
     grantChallenge.value = data
@@ -232,7 +237,7 @@ async function saveMultiplier() {
   billingError.value = ''
   try {
     const changes = Object.fromEntries(Object.entries(multipliers).map(([key, value]) => [key, parseMultiplier(value)]))
-    await saveFinancial(`${root}/billing`, changes, setMultipliers, 'Multiplicadores de cobrança atualizados.')
+    await saveFinancial(`${root}/billing`, changes, setMultipliers, 'Multiplicadores de cobrança atualizados.', true)
   } catch (error) {
     notify(error, 'Não foi possível salvar os multiplicadores.')
   } finally {
@@ -307,7 +312,7 @@ async function requestGrantMfa() {
   }
   editing.grant = true
   try {
-    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
     grantChallenge.value = data
     mfaOpen.value = true
   } catch (error) {
@@ -322,7 +327,7 @@ async function applyGrant(session) {
   emit('reauthenticated', session)
   editing.grant = true
   try {
-    await api.post(`${root}/grants`, pendingGrant, financeHeaders(true))
+    await api.post(`${root}/grants`, pendingGrant, { headers: { Authorization: `Bearer ${session.token}` } })
     $q.notify({ type: 'positive', message: 'Créditos adicionados à licença.' })
     grantWallet.value = null
     pendingGrant = null
@@ -497,13 +502,13 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" :disable="editing.grant || mfaOpen" v-close-popup />
-            <q-btn unelevated no-caps label="Confirmar por e-mail" color="teal-7" type="submit" :loading="editing.grant" :disable="mfaOpen" />
+            <q-btn unelevated no-caps label="Solicitar código" color="teal-7" type="submit" :loading="editing.grant" :disable="mfaOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
     </q-dialog>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="grantChallenge" @verified="applyConfirmation" />
     </template>
+    <LoginMfaDialog v-model="mfaOpen" :challenge="grantChallenge" @verified="applyConfirmation" />
   </section>
 </template>
 

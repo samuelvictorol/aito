@@ -67,6 +67,19 @@ test('canceling financial confirmation and unrelated failures never perform a fi
   assert.equal(failed.mfaOpen.value, false)
 })
 
+test('multipliers open a fresh confirmation even when the current session could save directly', async () => {
+  const actions = []
+  const component = panel({
+    async put(path, body, config) { actions.push([path, body, config.headers.Authorization]); return { data: { data: body } } },
+    async post(path, body) { actions.push([path, body]); return { data: { challengeId: 'fixture' } } },
+  })
+  await component.saveFinancial('/billing', { multiplier: 1.3 }, () => {}, 'Salvo', true)
+  assert.equal(component.mfaOpen.value, true)
+  assert.deepEqual(actions, [['/auth/mfa/reauth', { purpose: 'financial' }]])
+  await component.applyConfirmation({ token: 'fresh' })
+  assert.deepEqual(actions[1], ['/billing', { multiplier: 1.3 }, 'Bearer fresh'])
+})
+
 test('provider funding confirmation preserves the reviewed amount and does not reapply on duplicate events', async () => {
   const source = fs.readFileSync(new URL('../src/components/AdminAitoTokenUsage.vue', import.meta.url), 'utf8').split('<script setup>')[1].split('</script>')[0]
   const ast = parse(source, { sourceType: 'module' })
@@ -76,10 +89,13 @@ test('provider funding confirmation preserves the reviewed amount and does not r
   const api = {
     async put(path, body, config) {
       writes.push({ path, body: structuredClone(body), config })
-      if (writes.length === 1) throw { response: { data: { code: 'REAUTH_REQUIRED' } } }
       return {}
     },
-    async post() { return { data: { challengeId: 'fixture' } } },
+    async post(path, body) {
+      assert.equal(path, '/auth/mfa/reauth')
+      assert.deepEqual(body, { purpose: 'financial' })
+      return { data: { challengeId: 'fixture' } }
+    },
   }
   const component = new Function('api', `${functions}
     let pendingFunding=null;
@@ -89,15 +105,17 @@ test('provider funding confirmation preserves the reviewed amount and does not r
     const balanceValue=row=>fundingDraft[row.provider],validBalance=Number.isFinite,usdCents=v=>Math.round(v*100);
     const financeHeaders=()=>({headers:{Authorization:'Bearer old'}}),providerName=v=>v;
     const $q={notify(){}},emit=()=>{},load=async()=>true;
-    return {saveProviderBalance,applyFunding,fundingDraft};
+    return {saveProviderBalance,applyFunding,fundingDraft,fundingMfaOpen};
   `)(api)
   await component.saveProviderBalance({ provider: 'openai' })
+  assert.equal(component.fundingMfaOpen.value, true)
+  assert.equal(writes.length, 0)
   component.fundingDraft.openai = 999
   await component.applyFunding({ token: 'fresh' })
   await component.applyFunding({ token: 'fresh' })
-  assert.equal(writes.length, 2)
-  assert.deepEqual(writes[1].body, { openaiBalanceUsdCents: 1234 })
-  assert.equal(writes[1].config.headers.Authorization, 'Bearer fresh')
+  assert.equal(writes.length, 1)
+  assert.deepEqual(writes[0].body, { openaiBalanceUsdCents: 1234 })
+  assert.equal(writes[0].config.headers.Authorization, 'Bearer fresh')
 })
 
 test('different financial forms cannot race while the initial write or confirmation request is in flight', async () => {

@@ -96,7 +96,7 @@ async function confirm() {
   }
   busy.value = true
   try {
-    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
     challenge.value = data
     mfaOpen.value = true
   } catch (cause) {
@@ -204,7 +204,7 @@ onBeforeUnmount(() => {
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" :disable="busy || mfaOpen" v-close-popup />
-            <q-btn unelevated no-caps label="Confirmar por e-mail" color="teal-7" type="submit" :loading="busy" :disable="mfaOpen" />
+            <q-btn unelevated no-caps label="Solicitar código" color="teal-7" type="submit" :loading="busy" :disable="mfaOpen" />
           </q-card-actions>
         </q-form>
       </q-card>

@@ -263,7 +263,6 @@ onBeforeUnmount(() => videoSwitch?.abort())
         <div class="aito-studio__orb"><img src="/ia.gif" alt="" width="88" height="88" /></div>
         <h1 id="aito-ia-title">No que vamos trabalhar?</h1>
         <p>Converse, crie imagens e prepare arquivos para baixar.</p>
-        <p v-if="!signedIn && !sessionLoading"><button type="button" class="aito-studio__tool" @click="showAuth()"><q-icon name="mdi-gift-outline" /> Ganhe 25.000 AitoTokens com Google e mais 25.000 ao voltar por 3 dias seguidos</button></p>
         <div class="aito-studio__ideas">
           <button v-for="idea in promptIdeas" :key="idea.title" type="button" @click="selectIdea(idea)"><q-icon :name="idea.icon" size="19px" /> {{ idea.title }}<q-icon name="mdi-arrow-top-right" size="13px" /></button>
         </div>

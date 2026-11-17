@@ -395,21 +395,14 @@ async function saveProviderBalance(row) {
   const amount = balanceValue(row)
   if (!key || savingFunding.value || fundingMfaOpen.value || !validBalance(amount)) return
   savingFunding.value = row.provider
+  const operation = { provider: row.provider, body: { [key]: usdCents(amount) } }
   try {
-    await api.put('/aito-tokens/admin/billing', { [key]: usdCents(amount) }, financeHeaders(true))
-    if (await load(pagination.value.page)) fundingDraft[row.provider] = undefined
-    $q.notify({ type: 'positive', message: `Saldo de referência da ${providerName(row.provider)} atualizado.` })
+    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
+    pendingFunding = operation
+    fundingChallenge.value = data
+    fundingMfaOpen.value = true
   } catch (cause) {
-    if (cause.response?.data?.code === 'REAUTH_REQUIRED') {
-      try {
-        const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
-        pendingFunding = { provider: row.provider, body: { [key]: usdCents(amount) } }
-        fundingChallenge.value = data
-        fundingMfaOpen.value = true
-        return
-      } catch (error) { cause = error }
-    }
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível atualizar o saldo de referência.' })
+    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível enviar o código de confirmação do ajuste de saldo.' })
   } finally {
     savingFunding.value = ''
   }
@@ -481,7 +474,7 @@ async function requestClientGrantMfa() {
   }
   grantBusy.value = true
   try {
-    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
     grantChallenge.value = data
     grantMfaOpen.value = true
   } catch (cause) {
@@ -521,7 +514,7 @@ async function requestReconciliationMfa() {
   const decision = { entryId: reconciliation.value._id, providerUsdMicros }
   reconciliationBusy.value = true
   try {
-    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
     verifiedDecision = decision
     challenge.value = data
     mfaOpen.value = true
@@ -825,7 +818,7 @@ onBeforeUnmount(() => {
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" v-close-popup :disable="reconciliationBusy" />
-            <q-btn unelevated no-caps color="teal-7" type="submit" label="Confirmar por e-mail" :loading="reconciliationBusy" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Solicitar código" :loading="reconciliationBusy" />
           </q-card-actions>
         </q-form>
       </q-card>

@@ -56,6 +56,7 @@ export function createDailyChallengeTracker({ getSession, request, storage, visi
   function present(challenge, session) {
     const previous = readSeen(session.accountId)
     if (!visible() || !challenge.eligible || previous?.completed || previous?.day === challenge.today) return
+    if (challenge.completed && !challenge.rewardGranted && (challenge.rewarded || !challenge.visitedToday)) return
     remember(session.accountId, challenge)
     onChange({ challenge, open: true })
   }

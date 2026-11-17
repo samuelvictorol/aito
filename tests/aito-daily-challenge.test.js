@@ -108,6 +108,18 @@ test('a prize refreshes the wallet only from an explicit server grant, never fro
   assert.equal(context.changes.at(-1).challenge.rewarded, true)
 })
 
+test('a device without local history does not reopen a challenge already completed on the account', async () => {
+  const context = setup()
+  context.setReply(response({ streak: 3, completed: true, rewarded: true }))
+  await context.tracker.enter()
+  assert.equal(context.changes.some(change => change.open === true), false)
+
+  context.setNow('2026-11-18T14:00:00Z')
+  context.setReply(response({ today: '2026-11-18', streak: 3, completed: true, rewardPending: true, visitedToday: false }))
+  await context.tracker.enter()
+  assert.equal(context.changes.some(change => change.open === true), false)
+})
+
 test('responses for a logged-out or switched account cannot open its modal or announce its reward', async () => {
   const resolvers = []
   const context = setup({ request: () => new Promise(done => resolvers.push(done)) })

@@ -3,13 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { aitoTokens, brl, usd } from 'src/composables/useAitoIA'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { checkoutLink } from 'src/services/aitoiaChat'
+import { aitoTokenPackagePresentation } from 'src/services/aitoTokenPackagePresentation'
 
 const props = defineProps({ modelValue: Boolean, state: { type: Object, required: true }, initialPackage: Number })
 const { isDark } = useAitoIATheme()
 defineEmits(['update:modelValue'])
 const { adminMode, status, walletId, walletLoading, walletError, pending, history, historyLoading, historyOffset, historyLimit,
   historyTotal, checkoutBusy, paymentBusy, paymentNotice } = props.state
-const plans = computed(() => status.value?.plans || [])
+const plans = computed(() => (status.value?.plans || []).map(plan => ({ ...plan, display: aitoTokenPackagePresentation(plan) })))
 const defaultPackage = () => props.initialPackage || 1500
 const selectedAmount = ref(defaultPackage())
 const selected = computed(() => plans.value.find(plan => plan.usdCents === selectedAmount.value))
@@ -47,8 +48,14 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
         <h3 id="aito-wallet-recharge">Recarregar</h3>
         <div v-if="status?.checkoutConfigured === false" class="aito-wallet__notice">{{ status.checkoutState === 'missing_exchange_rate' ? 'A recarga aguarda uma cotação atualizada.' : 'A recarga aguarda a configuração da InfinitePay.' }}</div>
         <div class="aito-wallet__plans" role="group" aria-label="Pacotes de recarga">
-          <button v-for="plan in plans" :key="plan.usdCents" type="button" :aria-pressed="selected?.usdCents === plan.usdCents" :disabled="status?.checkoutConfigured === false" @click="selectedAmount = plan.usdCents">
-            <strong>{{ usd(plan.usdCents) }} <q-icon :name="selected?.usdCents === plan.usdCents ? 'mdi-check-circle' : 'mdi-circle-outline'" aria-hidden="true" /></strong><span>{{ brl(plan.brlCents) }}</span><small v-if="plan.approximateTokens">≈ {{ aitoTokens(plan.approximateTokens) }} AitoTokens</small>
+          <button v-for="plan in plans" :key="plan.usdCents" type="button" :class="`aito-wallet__plan--${plan.display.tone}`"
+            :aria-pressed="selected?.usdCents === plan.usdCents" :disabled="status?.checkoutConfigured === false" @click="selectedAmount = plan.usdCents">
+            <span class="aito-wallet__usage"><span>{{ plan.display.usage }}</span><q-icon :name="selected?.usdCents === plan.usdCents ? 'mdi-check-circle' : 'mdi-circle-outline'" aria-hidden="true" /></span>
+            <strong v-if="plan.display.totalTokens">{{ aitoTokens(plan.display.baseTokens) }} AitoTokens</strong>
+            <span class="aito-wallet__plan-price">{{ brl(plan.brlCents) }}</span>
+            <span v-if="plan.display.bonusTokens" class="aito-wallet__bonus">+{{ aitoTokens(plan.display.bonusTokens) }} AitoTokens de bônus</span>
+            <small v-if="plan.display.totalTokens">{{ aitoTokens(plan.display.totalTokens) }} no total</small>
+            <small>{{ usd(plan.usdCents) }}</small>
           </button>
         </div>
         <div v-if="selected" class="aito-wallet__checkout"><div>Total <strong>{{ brl(selected.brlCents) }}</strong></div><button type="button" class="aito-wallet__action" :aria-busy="checkoutBusy" :disabled="checkoutBusy || walletLoading || status?.checkoutConfigured === false" @click="state.checkout(selected)"><q-spinner v-if="checkoutBusy" size="18px" /><q-icon v-else name="mdi-credit-card-outline" size="19px" />{{ checkoutBusy ? 'Preparando…' : 'Gerar pagamento' }}</button></div>
@@ -96,7 +103,17 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
 .aito-wallet__plans button { display: grid; gap: 4px; min-width: 0; padding: 9px 6px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-panel); text-align: left; cursor: pointer; }
 .aito-wallet__plans button[aria-pressed=true] { border-color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .aito-wallet__plans strong { display: flex; justify-content: space-between; align-items: center; gap: 3px; color: var(--aito-ai-gold); font-size: .91rem; }
-.aito-wallet__plans button:not([aria-pressed=true]) strong .q-icon { opacity: .55; }
+.aito-wallet__plans button { --package-tone: #bc8a39; border-top: 3px solid var(--package-tone); }
+.aito-wallet__plans .aito-wallet__plan--jade { --package-tone: #45a68d; }
+.aito-wallet__plans .aito-wallet__plan--lavender { --package-tone: #9e7ccc; }
+.aito-wallet__plans .aito-wallet__plan--azure { --package-tone: #5497c8; }
+.aito-wallet__plans .aito-wallet__plan--rose { --package-tone: #cc748d; }
+.aito-wallet__plans .aito-wallet__plan--amber { --package-tone: #cf912c; }
+.aito-wallet__usage { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.aito-wallet__usage span { padding: 2px 5px; background: color-mix(in srgb, var(--package-tone) 22%, var(--aito-ai-panel)); border-radius: 5px; font-weight: 700; }
+.aito-wallet__usage .q-icon { color: var(--aito-ai-gold); }
+.aito-wallet__plan-price { font-weight: 750; }
+.aito-wallet__plans .aito-wallet__bonus { width: fit-content; padding: 2px 5px; border-radius: 5px; color: #302007; background: var(--aito-ai-gold-gradient); font-size: .66rem; font-weight: 750; }
 .aito-wallet__plans span { font-size: .8rem; }
 .aito-wallet__plans small { color: var(--aito-ai-muted); font-size: .64rem; overflow-wrap: anywhere; }
 .aito-wallet__checkout { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0; color: var(--aito-ai-muted); font-size: .77rem; }
