@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import AitoVideoProgress from './AitoVideoProgress.vue'
 import AitoVideoModelSelect from './AitoVideoModelSelect.vue'
 import AitoRemakeSubtitleRegion from './AitoRemakeSubtitleRegion.vue'
@@ -7,6 +7,7 @@ import { aitoTokens } from 'src/composables/useAitoIA'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
+import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { burnRemakeCaptions, maxRemakeInputBytes, maxRemakeSceneSeconds, prepareRemakeVideoReference,
@@ -29,7 +30,7 @@ const props = defineProps({
   exportResults: { type: Function, required: true },
   exportProgress: { type: Number, default: 0 },
 })
-const emit = defineEmits(['busy', 'balance', 'wallet', 'login', 'append', 'recover', 'draft', 'component'])
+const emit = defineEmits(['busy', 'balance', 'wallet', 'login', 'append', 'recover', 'draft', 'component', 'ready'])
 const root = '/aitoia/video/studio/remakes'
 const pendingStorageKey = 'aitoia-video-remakes-pending'
 const pendingLifetime = AITOIA_RETENTION_MS
@@ -55,6 +56,7 @@ let discoverJobs = true
 let disposed = false
 const discardedJobs = ref([])
 const previousJobs = shallowRef([])
+const resultElements = new Map()
 const projectId = computed(() => props.projectScope?.split(':').at(-1))
 
 const locked = computed(() => Boolean(action.value || props.blocked))
@@ -380,6 +382,9 @@ async function saveFinishedScene(scene, job, signal, get, current) {
   if (!current()) return
   clearJob(scene)
   scene.error = warning
+  emit('ready')
+  await nextTick()
+  if (!disposed && current()) revealGeneratedVideo(resultElements.get(job.id))
   emit('balance')
 }
 
@@ -736,7 +741,7 @@ onBeforeUnmount(() => {
         <span>Exportando no navegador · {{ Math.round(exportProgress * 100) }}%</span>
         <q-btn flat no-caps label="Cancelar" @click="controller?.abort()" />
       </div>
-      <article v-for="asset in results" :key="asset.id" class="aito-remake__scene">
+      <article v-for="asset in results" :key="asset.id" :ref="element => { if (element) resultElements.set(asset.id, element); else resultElements.delete(asset.id) }" class="aito-remake__scene aito-remake__result">
         <div class="aito-remake__scene-title"><h3>{{ asset.title }}</h3><span>{{ seconds(asset.duration) }} s</span></div>
         <video :src="asset.previewUrl" controls playsinline preload="none" :aria-label="asset.title" />
         <p class="aito-remake__help">{{ asset.captions ? 'Com legendas' : 'Sem legendas adicionadas' }} · {{ asset.billingPending ? 'Reserva de' : 'Uso de' }} ≈ {{ aitoTokens(asset.approximateAitoTokens) }} AitoTokens<span v-if="asset.billingPending"> · Aguardando confirmação do custo</span></p>
@@ -823,4 +828,5 @@ html[data-aito-ia-theme='light'] .aito-remake__scene video { background: var(--a
 @media (max-width: 680px) {
   .aito-remake, .aito-remake__upload, .aito-remake__defaults { grid-template-columns: 1fr; }
 }
+.aito-remake__result { scroll-margin-top: calc(var(--video-header-height, 104px) + 72px); }
 </style>

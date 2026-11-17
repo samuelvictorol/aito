@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
@@ -76,6 +76,9 @@ const treasury = ref(null)
 const treasuryError = ref(false)
 const fundingDraft = reactive({ openai: undefined, higgsfield: undefined })
 const savingFunding = ref('')
+const fundingMfaOpen = ref(false)
+const fundingChallenge = ref(null)
+let pendingFunding = null
 const groups = ref([])
 const logs = ref([])
 const providerTotals = ref([])
@@ -390,18 +393,44 @@ async function loadOptions() {
 async function saveProviderBalance(row) {
   const key = providerBalanceKeys[row.provider]
   const amount = balanceValue(row)
-  if (!key || savingFunding.value || !validBalance(amount)) return
+  if (!key || savingFunding.value || fundingMfaOpen.value || !validBalance(amount)) return
   savingFunding.value = row.provider
   try {
     await api.put('/aito-tokens/admin/billing', { [key]: usdCents(amount) }, financeHeaders(true))
     if (await load(pagination.value.page)) fundingDraft[row.provider] = undefined
     $q.notify({ type: 'positive', message: `Saldo de referência da ${providerName(row.provider)} atualizado.` })
   } catch (cause) {
+    if (cause.response?.data?.code === 'REAUTH_REQUIRED') {
+      try {
+        const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+        pendingFunding = { provider: row.provider, body: { [key]: usdCents(amount) } }
+        fundingChallenge.value = data
+        fundingMfaOpen.value = true
+        return
+      } catch (error) { cause = error }
+    }
     $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível atualizar o saldo de referência.' })
   } finally {
     savingFunding.value = ''
   }
 }
+
+async function applyFunding(session) {
+  if (!session?.token || !pendingFunding || savingFunding.value) return
+  const operation = pendingFunding
+  pendingFunding = null
+  savingFunding.value = operation.provider
+  emit('reauthenticated', session)
+  try {
+    await api.put('/aito-tokens/admin/billing', operation.body, { headers: { Authorization: 'Bearer ' + session.token } })
+    if (await load(pagination.value.page)) fundingDraft[operation.provider] = undefined
+    $q.notify({ type: 'positive', message: `Saldo de referência da ${providerName(operation.provider)} atualizado.` })
+  } catch (cause) {
+    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível atualizar o saldo de referência.' })
+  } finally { savingFunding.value = '' }
+}
+
+watch(fundingMfaOpen, open => { if (!open) pendingFunding = null })
 
 async function openClientGrant(mode = 'grant') {
   const client = clients.value.find(item => item.value === filters.clientId)
@@ -802,6 +831,7 @@ onBeforeUnmount(() => {
       </q-card>
     </q-dialog>
     <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="applyReconciliation" />
+    <LoginMfaDialog v-model="fundingMfaOpen" :challenge="fundingChallenge" @verified="applyFunding" />
   </section>
 </template>
 

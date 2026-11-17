@@ -28,6 +28,7 @@ import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { createVideoProjectLinks, isVideoGenerationId } from 'src/services/aitoiaVideoProjectLinks'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
+import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia,
@@ -68,7 +69,7 @@ const title = ref(defaultProjectName)
 const projectTitle = computed(() => title.value.trim() || defaultProjectName)
 const projectColor = ref(defaultProjectColor)
 const projectColorOpen = ref(false)
-const startingTab = () => ['ai', 'code'].includes(route.query.tab) ? route.query.tab : testerMode.value ? 'code' : 'ai'
+const startingTab = () => tabs.some(item => item.id === route.query.tab) ? route.query.tab : testerMode.value ? 'code' : 'ai'
 const tab = ref(startingTab())
 const codeControlsOpened = ref(tab.value === 'code')
 watch(testerMode, () => { tab.value = startingTab() })
@@ -88,6 +89,7 @@ const narration = shallowRef(null)
 const voicePreview = shallowRef(null)
 const recording = shallowRef(null)
 const generated = shallowRef(null)
+const generatedPreview = ref(null)
 const clipLibrary = shallowRef([])
 const codeClips = computed(() => clipLibrary.value.filter(clip => clip.kind === 'code'))
 const codeClip = computed(() => codeClips.value.find(clip => clip.id === generated.value?.id) || codeClips.value[0])
@@ -1185,11 +1187,12 @@ async function makeVoicePreview() {
   const item = selectedVoice.value
   if (!item?.previewAvailable) return
   await run('sample', async signal => {
-    const { data } = await wallet.access().get('/aitoia/video/voice/previews/' + encodeURIComponent(item.id), {
-      responseType: 'blob', signal,
-    })
+    const path = '/aitoia/video/voice/previews/' + encodeURIComponent(item.id)
+    const { data } = await (signedIn.value ? wallet.access().get(path, { responseType: 'blob', signal })
+      : api.get(path, { responseType: 'blob', signal }))
     signal.throwIfAborted()
     if (voice.value !== item.id || !mounted) return
+    if (!(data instanceof Blob) || !data.size || !/^audio\//.test(data.type)) throw new Error('A amostra desta voz está temporariamente indisponível.')
     clearVoicePreview()
     voicePreview.value = { url: URL.createObjectURL(data) }
   })
@@ -1208,7 +1211,7 @@ function retainedClipExpiry(clip) {
   if (isVideoGenerationId(generationId) && activeProject.value) return activeProject.value.expiresAt
   return clip?.expiresAt || null
 }
-function storeClip(asset) {
+function storeClip(asset, { reveal = false } = {}) {
   const previous = clipLibrary.value.find(item => item.id === asset.id)
   const clip = localClip({ ...asset, expiresAt: asset.file ? retainedClipExpiry(asset) : asset.expiresAt,
     number: previous?.number || ((clipLibrary.value[0]?.number || 0) + 1) })
@@ -1216,6 +1219,10 @@ function storeClip(asset) {
   if (removedGeneratedIds.value.includes(clip.id)) removedGeneratedIds.value = removedGeneratedIds.value.filter(id => id !== clip.id)
   clipLibrary.value = [clip, ...clipLibrary.value.filter(item => item.id !== clip.id)]
   selectGenerated(clip)
+  if (reveal) {
+    closeMobilePanel(masterOpen)
+    void nextTick(() => { if (mounted) revealGeneratedVideo(generatedPreview.value) })
+  }
   return clip
 }
 
@@ -1244,7 +1251,7 @@ function renderCodeScene(scene, source = false) {
       return
     }
     storeClip({ id: crypto.randomUUID(), file: new File([data], `${scene.preset}.mp4`, { type: mediaType }),
-      title: scene.title, kind: 'code', expiresAt: Date.now() + AITOIA_RETENTION_MS })
+      title: scene.title, kind: 'code', expiresAt: Date.now() + AITOIA_RETENTION_MS }, { reveal: true })
     await saveProject()
     if (!storageError.value) notice.value = 'Cena renderizada e disponível no projeto.'
   })
@@ -1467,7 +1474,7 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   }
   if (!stillOwner() || projectId !== activeId.value) return
   if (job.timelineTransition) asset.title = job.timelineTransition.title
-  asset.expiresAt = storeClip(asset).expiresAt
+  asset.expiresAt = storeClip(asset, { reveal: true }).expiresAt
   let applied = false
   if (job.timelineTransition && asset.file) {
     const { beforeSceneId, prompt: direction } = job.timelineTransition
@@ -2281,7 +2288,7 @@ onBeforeUnmount(() => {
       <p v-if="videoInMaintenance && tab === 'ai'" class="video-studio__notice" role="status">
         <q-icon name="mdi-information-outline" size="20px" /> A geração de vídeo com IA está em manutenção. Você pode continuar na aba Vídeo por código.
       </p>
-      <p v-if="!signedIn && !testerMode" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 50.000 AitoTokens no primeiro cadastro.</p>
+      <p v-if="!signedIn && !testerMode" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 25.000 AitoTokens com Google e mais 25.000 ao voltar por 3 dias seguidos.</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
       <div v-if="activeJob?.timelineTransition && !transitionDialogOpen && !busy" class="video-studio__notice video-studio__draft">
@@ -2332,7 +2339,7 @@ onBeforeUnmount(() => {
           :export-results="downloadRemakes" :export-progress="progress"
           @busy="remakeBusy = $event; if (!$event) blockedExit = false"
           @recover="generationMode = 'remake'; tab = 'ai'"
-          @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
+          @ready="closeMobilePanel(masterOpen)" @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
 
         <section v-if="tab !== 'ai' || !remakeMode" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
           <div v-if="codeControlsOpened" v-show="tab === 'code'" class="video-studio__section">
@@ -2398,7 +2405,7 @@ onBeforeUnmount(() => {
                 </div>
               </fieldset>
             </div>
-            <p v-else-if="signedIn" class="video-studio__hint">{{ optionsLoading ? 'Carregando vozes…' : optionsError || 'A geração de locução está temporariamente indisponível.' }}</p>
+            <p v-else class="video-studio__hint">{{ optionsLoading ? 'Carregando vozes…' : optionsError || 'A geração de locução está temporariamente indisponível.' }}</p>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
               <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || !voice || !narrationText.trim()" @click="makeVoice"><q-spinner v-if="busy === 'voice'" size="19px" /><q-icon v-else name="mdi-waveform" size="19px" /> {{ busy === 'voice' ? 'Gerando…' : 'Gerar locução' }}<span v-if="voiceCost"> · {{ voiceCost }}</span></button>
@@ -2527,7 +2534,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-if="tab === 'ai' && !remakeMode" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
+        <section v-if="tab === 'ai' && !remakeMode" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
             <header><h2>Clipes do projeto</h2><span v-if="clipLibrary.length">{{ clipLibrary.length }} {{ clipLibrary.length === 1 ? 'clipe' : 'clipes' }}</span></header>
             <div v-if="generated" class="video-studio__generated">
               <div class="video-studio__clip-list" role="group" aria-label="Clipes gerados"><button v-for="clip in clipLibrary" :key="clip.id" class="video-studio__secondary" type="button" :aria-pressed="clip.id === generated.id" :disabled="!mayEdit" @click="selectGenerated(clip)">Clipe {{ clip.number }}</button></div>
@@ -2556,7 +2563,7 @@ onBeforeUnmount(() => {
             </div>
         </section>
 
-        <section v-else-if="tab === 'code'" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
+        <section v-else-if="tab === 'code'" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
           <header><h2><q-icon name="mdi-filmstrip" size="20px" /> Cenas renderizadas</h2><span v-if="codeClips.length">{{ codeClips.length }} {{ codeClips.length === 1 ? 'cena' : 'cenas' }}</span></header>
           <div v-if="codeClips.length > 1" class="video-studio__clip-list" role="group" aria-label="Selecionar cena renderizada">
             <button v-for="clip in codeClips" :key="clip.id" class="video-studio__secondary video-studio__code-clip" type="button"
@@ -3136,4 +3143,5 @@ html[data-aito-ia-theme='light'] .video-studio__delete-clip:hover:not(:disabled)
   .video-studio__tabs :deep(.q-tab__label) { font-size: .78rem; }
   .video-studio__tabs :deep(.q-tab__content) { gap: 4px; }
 }
+.video-studio__preview { scroll-margin-top: calc(var(--video-header-height, 104px) + 72px); }
 </style>

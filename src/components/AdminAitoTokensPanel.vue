@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseMoney } from 'src/services/purchase-history'
@@ -49,6 +49,9 @@ const grantAmount = ref(null)
 const grantChallenge = ref(null)
 const mfaOpen = ref(false)
 let pendingGrant = null
+let pendingFinancial = null
+const financialConfirming = ref(false)
+const financialSaving = ref(false)
 let currentLoad
 let modelLoad
 let billingLoad
@@ -92,6 +95,46 @@ function notify(error, fallback) {
   $q.notify({ type: 'negative', message: error.response?.data?.message || fallback })
 }
 
+async function saveFinancial(path, changes, apply, message) {
+  if (pendingFinancial || financialConfirming.value || financialSaving.value) throw Error('Conclua a confirmação financeira antes de iniciar outra alteração.')
+  financialSaving.value = true
+  try {
+    const { data } = await api.put(path, changes, financeHeaders(true))
+    apply(data.data)
+    $q.notify({ type: 'positive', message })
+  } catch (error) {
+    if (error.response?.data?.code !== 'REAUTH_REQUIRED') throw error
+    // Keep the values the administrator reviewed, even if the form changes
+    // while the access code is being delivered.
+    const operation = { path, changes: { ...changes }, apply, message }
+    const { data } = await api.post('/auth/mfa/reauth', {}, financeHeaders(true))
+    pendingFinancial = operation
+    pendingGrant = null
+    grantChallenge.value = data
+    mfaOpen.value = true
+  } finally { financialSaving.value = false }
+}
+
+async function applyConfirmation(session) {
+  if (!pendingFinancial) return applyGrant(session)
+  if (!session?.token || financialConfirming.value) return
+  const operation = pendingFinancial
+  pendingFinancial = null
+  financialConfirming.value = true
+  emit('reauthenticated', session)
+  try {
+    const { data } = await api.put(operation.path, operation.changes, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    })
+    operation.apply(data.data)
+    $q.notify({ type: 'positive', message: operation.message })
+  } catch (error) {
+    notify(error, 'Não foi possível salvar a alteração financeira. Confira os valores e tente novamente.')
+  } finally { financialConfirming.value = false }
+}
+
+watch(mfaOpen, open => { if (!open) pendingFinancial = null })
+
 async function load({ page = pagination.value.page, refreshSettings = false } = {}) {
   currentLoad?.abort()
   const request = new AbortController()
@@ -126,9 +169,8 @@ async function saveExchangeRate() {
   if (!Number.isFinite(rate) || rate <= 0) return
   editing.exchangeRate = true
   try {
-    const { data } = await api.put(`${root}/exchange-rate`, { rate, autoRefresh: exchange.autoRefresh }, financeHeaders(true))
-    Object.assign(exchange, data.data?.exchangeRate || data.data)
-    $q.notify({ type: 'positive', message: 'Cotação USD/BRL atualizada.' })
+    await saveFinancial(`${root}/exchange-rate`, { rate, autoRefresh: exchange.autoRefresh },
+      data => Object.assign(exchange, data?.exchangeRate || data), 'Cotação USD/BRL atualizada.')
   } catch (error) {
     notify(error, 'Não foi possível salvar a cotação.')
   } finally {
@@ -190,9 +232,7 @@ async function saveMultiplier() {
   billingError.value = ''
   try {
     const changes = Object.fromEntries(Object.entries(multipliers).map(([key, value]) => [key, parseMultiplier(value)]))
-    const { data } = await api.put(`${root}/billing`, changes, financeHeaders(true))
-    setMultipliers(data.data)
-    $q.notify({ type: 'positive', message: 'Multiplicadores de cobrança atualizados.' })
+    await saveFinancial(`${root}/billing`, changes, setMultipliers, 'Multiplicadores de cobrança atualizados.')
   } catch (error) {
     notify(error, 'Não foi possível salvar os multiplicadores.')
   } finally {
@@ -206,13 +246,11 @@ async function saveAlerts() {
     !validAlertEmail(alertEmail) || !validAlertPhone(alertPhone) || ![openaiLimit, higgsfieldLimit].every(validAlertLimit)) return
   editing.alerts = true
   try {
-    const { data } = await api.put(`${root}/billing`, {
+    await saveFinancial(`${root}/billing`, {
       alertsEnabled, alertEmail, alertPhone,
       openaiAlertUsdCents: Math.round(parseMultiplier(openaiLimit) * 100),
       higgsfieldAlertUsdCents: Math.round(parseMultiplier(higgsfieldLimit) * 100),
-    }, financeHeaders(true))
-    setAlerts(data.data)
-    $q.notify({ type: 'positive', message: 'Alertas de saldo atualizados.' })
+    }, setAlerts, 'Alertas de saldo atualizados.')
   } catch (error) {
     notify(error, 'Não foi possível salvar os alertas de saldo.')
   } finally {
@@ -254,6 +292,7 @@ function refreshLicenseSettings() {
 }
 
 function openGrant(wallet) {
+  pendingFinancial = null
   grantWallet.value = wallet
   grantAmount.value = null
   pendingGrant = null
@@ -463,7 +502,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
         </q-form>
       </q-card>
     </q-dialog>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="grantChallenge" @verified="applyGrant" />
+    <LoginMfaDialog v-model="mfaOpen" :challenge="grantChallenge" @verified="applyConfirmation" />
     </template>
   </section>
 </template>

@@ -192,6 +192,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     draft.value = ''
     sessionLoading.value = false
     error.value = 'Sua sessão terminou. Entre novamente para acessar o chat.'
+    if (mounted) void refreshModels()
   }
 
   async function refreshStatus({ silent = false } = {}) {
@@ -227,12 +228,14 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
   }
 
   async function refreshModels(refresh = false) {
-    if (!signedIn.value || modelLoading.value) return
+    if (modelLoading.value) return
     const epoch = sessionEpoch
     modelLoading.value = true
     settingsError.value = ''
     try {
-      const { data } = await generationApi.get('/aitoia/models', { params: refresh ? { refresh: 1 } : undefined })
+      const { data } = await (signedIn.value
+        ? generationApi.get('/aitoia/models', { params: refresh ? { refresh: 1 } : undefined })
+        : api.get('/aitoia/models/catalog'))
       if (sessionEpoch !== epoch) return
       models.value = data.data?.models || []
       if (!currentModel.value) model.value = data.data?.defaultModel || models.value[0]?.id || ''
@@ -259,7 +262,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     resetSession()
     if (!keepDraft) draft.value = ''
     error.value = ''
-    if (!next) { sessionLoading.value = false; return }
+    if (!next) { sessionLoading.value = false; await refreshModels(); return }
     const epoch = sessionEpoch
     sessionLoading.value = true
     await Promise.allSettled([refreshStatus(), refreshModels()])
@@ -269,6 +272,10 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
   function accountChange(event) {
     if (event.type === 'storage' && event.key && event.key !== clientSession.tokenKey && (!allowAdmin || event.key !== adminSession.tokenKey)) return
     syncSession()
+  }
+
+  function onWalletUpdated() {
+    if (signedIn.value) void refreshStatus({ silent: true })
   }
 
   function onVisible() {
@@ -619,7 +626,8 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
 
   onMounted(() => {
     mounted = true
-    syncSession()
+    void syncSession().then(() => { if (!signedIn.value && !models.value.length) void refreshModels() })
+    window.addEventListener('aito:wallet-updated', onWalletUpdated)
     window.addEventListener('storage', accountChange)
     window.addEventListener('aito:session-expired', accountChange)
     window.addEventListener('aito:session-changed', accountChange)
@@ -631,6 +639,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     mounted = false
     resetSession()
     clearInterval(expirationTimer)
+    window.removeEventListener('aito:wallet-updated', onWalletUpdated)
     window.removeEventListener('storage', accountChange)
     window.removeEventListener('aito:session-expired', accountChange)
     window.removeEventListener('aito:session-changed', accountChange)

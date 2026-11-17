@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
-import { forgetLocalGeneration, localGenerationActivity } from 'src/services/aitoiaGenerationActivity'
+import { canRemoveGeneration, forgetLocalGeneration, generationIdentity, localGenerationActivity } from 'src/services/aitoiaGenerationActivity'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { videoGenerationActive } from 'src/services/aitoiaVideoJobs'
@@ -36,7 +36,7 @@ const jobs = computed(() => {
   const upstream = remoteJobs.value.map(job => ({ title: types[job.source] || 'Vídeo', kind: 'video', ...job }))
   const local = owned.value.filter(job => !upstream.some(item => item.requestId === job.requestId || item.id && item.id === job.id) &&
     time.value - job.createdAt < (job.kind === 'video' && isActive(job) ? 120000 : 24 * 60 * 60_000))
-  return [...upstream, ...local].filter(item => !removedIds.value.has(item.id) &&
+  return [...upstream, ...local].filter(item => !removedIds.value.has(generationIdentity(item)) &&
     !(item.status === 'completed' && Date.parse(item.orphanExpiresAt) <= time.value)).sort((left, right) =>
     Number(isActive(right)) - Number(isActive(left)) || sortTime(right) - sortTime(left)).slice(0, 8)
 })
@@ -134,35 +134,37 @@ watch(open, visible => {
 onBeforeUnmount(() => { disposed = true; reset() })
 
 function askRemove(job) {
-  if (removing.value || !job.id) return
+  if (removing.value || isActive(job) || !canRemoveGeneration(job)) return
   const owner = access()
   const ownerId = accountId.value
-  const message = projectsFor(job).length
+  const failed = job.status !== 'completed'
+  const message = failed ? 'O aviso sairá desta lista. O histórico financeiro será preservado e nenhuma geração será reenviada.' : projectsFor(job).length
     ? 'O clipe original sairá de Gerações. As cópias salvas nos projetos continuam disponíveis.'
     : 'O clipe sairá de Gerações e ficará indisponível para abrir ou baixar.'
-  confirmStudioRemoval('Remover clipe gerado?', message, () => {
+  confirmStudioRemoval(failed ? 'Remover aviso de falha?' : 'Remover clipe gerado?', message, () => {
     if (!disposed && owner.current() && accountId.value === ownerId) void removeClip(job, owner, ownerId)
   })
 }
 
 async function removeClip(job, owner, ownerId) {
-  if (removing.value) return
+  if (removing.value || isActive(job) || !canRemoveGeneration(job)) return
+  const key = generationIdentity(job)
   const controller = new AbortController()
   removalRequest = controller
-  removing.value = job.id
+  removing.value = key
   removalError.value = ''
   try {
-    await owner.delete(`/aitoia/video/generations/${encodeURIComponent(job.id)}`, { signal: controller.signal })
+    if (job.id) await owner.delete(`/aitoia/video/generations/${encodeURIComponent(job.id)}`, { signal: controller.signal })
     if (!controller.signal.aborted && owner.current()) {
-      removedIds.value = new Set([...removedIds.value, job.id])
-      remoteJobs.value = remoteJobs.value.filter(item => item.id !== job.id)
+      removedIds.value = new Set([...removedIds.value, key])
+      remoteJobs.value = remoteJobs.value.filter(item => generationIdentity(item) !== key)
       forgetLocalGeneration(ownerId, job)
-      if (preview.value?.id === job.id || previewing.value === job.id) clearPreview()
+      if (job.id && (preview.value?.id === job.id || previewing.value === job.id)) clearPreview()
       queuePoll(350)
     }
   } catch (cause) {
     if (!controller.signal.aborted && owner.current()) {
-      removalError.value = cause.response?.data?.message || 'Não foi possível remover este clipe. Tente novamente.'
+      removalError.value = cause.response?.data?.message || 'Não foi possível remover esta geração. Tente novamente.'
     }
   } finally {
     if (removalRequest === controller) { removalRequest = null; removing.value = '' }
@@ -239,6 +241,9 @@ async function openClip(job) {
                 :loading="removing === item.id" :disable="Boolean(removing) && removing !== item.id" @click="askRemove(item)" />
             </div>
           </div>
+          <q-btn v-if="!isActive(item) && item.status !== 'completed' && canRemoveGeneration(item)" flat no-caps dense
+            icon="mdi-delete-outline" label="Remover aviso" :aria-label="`Remover aviso de ${item.title}`"
+            :loading="removing === generationIdentity(item)" :disable="Boolean(removing)" @click="askRemove(item)" />
           <template v-if="preview?.id === item.id">
             <video :src="preview.url" controls playsinline preload="metadata" :aria-label="item.title" />
             <q-btn flat no-caps dense icon="mdi-download-outline" label="Baixar clipe" @click="downloadAitoIAFile(preview.file, preview.file.name)" />

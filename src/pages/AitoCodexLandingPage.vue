@@ -37,7 +37,7 @@ const actions = [
 
 useMeta({
   title: 'AitoIA para Codex | GPT-6.1 e Higgsfield com AitoTokens',
-  meta: { description: { name: 'description', content: 'Use GPT-6.1 no Codex oficial para Windows e crie vídeos com Higgsfield no AitoIA usando a mesma carteira. Ganhe 50.000 AitoTokens no primeiro cadastro.' } },
+  meta: { description: { name: 'description', content: 'Use GPT-6.1 no Codex oficial para Windows e crie vídeos com Higgsfield no AitoIA usando a mesma carteira. Ganhe 25.000 AitoTokens no cadastro com Google e mais 25.000 ao entrar por 3 dias seguidos.' } },
   link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/aitoia-codex' } },
 })
 </script>
@@ -59,7 +59,7 @@ useMeta({
         </div>
         <router-link :to="registration" class="codex-bonus">
           <img src="/aitotokens.svg" alt="" width="37" height="37" />
-          <span><strong>Ganhe 50.000 AitoTokens</strong><small>Grátis no primeiro cadastro</small></span>
+          <span><strong>Comece com 25.000 AitoTokens</strong><small>Cadastre-se com o Google. Mais 25.000 após 3 dias seguidos.</small></span>
           <q-icon name="mdi-arrow-right" size="20px" />
         </router-link>
         <p class="codex-price">Recarga a partir de <strong>{{ entryPrice || 'US$ 5,00' }}</strong><template v-if="entryPrice"> · US$ 5,00 na cotação atual</template>. Pague conforme o uso.</p>

@@ -18,7 +18,7 @@ useMeta({
     <nav class="bio-links__nav" aria-label="Links da AitoSoftwares">
       <router-link class="bio-links__item bio-links__item--offer" :to="{ name: 'aito-ia-video-studio', query: { auth: 'register' } }">
         <img src="/aitotokens.svg" alt="" width="38" height="38">
-        <span><strong>50.000 AitoTokens Grátis</strong><small>No primeiro cadastro</small></span>
+        <span><strong>25.000 AitoTokens Grátis</strong><small>No cadastro com Google. Mais 25.000 após 3 dias seguidos.</small></span>
         <q-icon name="mdi-arrow-right" size="21px" />
       </router-link>
       <router-link class="bio-links__item" :to="{ name: 'aito-ia' }">

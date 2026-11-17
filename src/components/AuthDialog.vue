@@ -23,21 +23,24 @@
             <q-icon name="mdi-google" size="18px" aria-hidden="true" />
             {{ authMode === 'register' ? 'Criar conta com Google' : 'Entrar com Google' }}
           </button>
-          <div class="auth-dialog__separator"><span>ou</span></div>
+          <div v-if="authMode === 'login'" class="auth-dialog__separator"><span>ou, se você já tem uma conta</span></div>
+          <div v-else class="auth-dialog__welcome">
+            <q-icon name="mdi-gift-outline" size="24px" aria-hidden="true" />
+            <div><strong>Comece com 25.000 AitoTokens</strong><p>Crie sua conta com o Google. Ao voltar por 3 dias seguidos, ganhe mais 25.000 AitoTokens.</p></div>
+          </div>
         </template>
-        <q-form @submit.prevent="submitAuth">
-          <q-input v-if="authMode === 'login'" v-model="form.identifier" outlined dense lazy-rules :label="isAffiliate?'E-mail do afiliado':'E-mail ou telefone'" :type="isAffiliate?'email':'text'" autocomplete="username" :rules="[requiredRule]" />
-          <q-input v-if="authMode === 'register'" v-model="form.name" outlined dense lazy-rules label="Nome" autocomplete="name" :rules="[requiredRule]" />
-          <q-input v-if="authMode === 'register'" v-model="form.email" outlined dense lazy-rules label="E-mail" type="email" autocomplete="email" class="q-mt-sm" :rules="[requiredRule]" />
-          <q-input v-if="authMode === 'register'" v-model="form.phone" outlined dense lazy-rules label="Telefone" autocomplete="tel" class="q-mt-sm" :rules="[requiredRule]" />
-          <q-input v-if="!isAffiliate" v-model="form.password" outlined dense lazy-rules label="Senha" type="password" :autocomplete="authMode === 'register' ? 'new-password' : 'current-password'" class="q-mt-sm" :rules="[requiredRule]" />
+        <q-form v-if="authMode === 'login' || isAffiliate" @submit.prevent="submitAuth">
+          <q-input v-model="form.identifier" outlined dense lazy-rules :label="isAffiliate?'E-mail do afiliado':'E-mail ou telefone'" :type="isAffiliate?'email':'text'" autocomplete="username" :rules="[requiredRule]" />
+          <q-input v-if="!isAffiliate" v-model="form.password" outlined dense lazy-rules label="Senha" type="password" autocomplete="current-password" class="q-mt-sm" :rules="[requiredRule]" />
           <p v-if="isAffiliate" class="text-caption">Seu acesso usa um código enviado ao e-mail cadastrado pela equipe. Não é necessário criar senha.</p>
           <button type="submit" class="auth-dialog__action full-width q-mt-md" :disabled="loading">
             <q-spinner v-if="loading" size="18px" />
             <q-icon v-else name="mdi-login" size="18px" />
-            {{ isAffiliate ? 'Receber código por e-mail' : authMode === 'login' ? 'Entrar' : 'Cadastrar' }}
+            {{ isAffiliate ? 'Receber código por e-mail' : 'Entrar' }}
           </button>
         </q-form>
+
+        <p v-if="authMode === 'register' && !isAffiliate" class="auth-dialog__existing">Já tinha uma conta com e-mail e senha? <button type="button" @click="authMode = 'login'">Entre por aqui</button>.</p>
 
         <q-btn v-if="authMode === 'login' && !isAffiliate" flat no-caps class="auth-dialog__forgot full-width q-mt-sm" icon="mdi-lock-reset" label="Esqueci minha senha" @click="passwordResetOpen = true" />
         <button v-if="isAffiliate" type="button" class="auth-dialog__action full-width q-mt-sm" @click="affiliateApplicationOpen = true">
@@ -78,7 +81,7 @@ const mfaOpen = ref(false)
 const mfaChallenge = ref(null)
 const passwordResetOpen = ref(false)
 const affiliateApplicationOpen = ref(false)
-const form = reactive({ identifier: '', name: '', email: '', phone: '', password: '' })
+const form = reactive({ identifier: '', password: '' })
 const isOpen = computed({ get: () => props.modelValue, set: (value) => emit('update:modelValue', value) })
 const isAffiliate = computed(() => props.audience === 'affiliate')
 const requiredRule = (value) => Boolean(String(value || '').trim()) || 'Preencha este campo.'
@@ -102,11 +105,10 @@ function completeLogin(response) {
 }
 
 async function submitAuth() {
+  if (authMode.value !== 'login' && !isAffiliate.value) return
   loading.value = true
   try {
-    const response = authMode.value === 'register'
-      ? await api.post('/auth/register', { name: form.name, email: form.email, phone: form.phone, password: form.password })
-      : await api.post(isAffiliate.value ? '/auth/affiliate/login' : '/auth/login', { identifier: form.identifier, password: form.password })
+    const response = await api.post(isAffiliate.value ? '/auth/affiliate/login' : '/auth/login', { identifier: form.identifier, password: form.password })
     if (isAffiliate.value && response.data.requiresMfa) {
       mfaChallenge.value = response.data
       mfaOpen.value = true
@@ -172,6 +174,12 @@ watch(() => props.modelValue, (visible) => {
 .auth-dialog__forgot { color: #8fffee; font-size: .7rem; }
 .auth-dialog__separator { display: flex; margin: 1rem 0; align-items: center; gap: .65rem; color: rgba(225, 255, 249, .4); font-size: .68rem; }
 .auth-dialog__separator::before, .auth-dialog__separator::after { flex: 1; height: 1px; content: ''; background: rgba(19, 188, 157, .2); }
+.auth-dialog__welcome { display: flex; gap: .75rem; margin-top: 1rem; padding: 1rem; border: 1px solid rgba(143, 255, 238, .24); border-radius: .8rem; color: #c7fff2; background: rgba(19, 188, 157, .07); }
+.auth-dialog__welcome .q-icon { flex: none; margin-top: .05rem; color: #8fffee; }
+.auth-dialog__welcome strong { font-size: .9rem; }
+.auth-dialog__welcome p, .auth-dialog__existing { margin: .4rem 0 0; font-size: .78rem; line-height: 1.6; }
+.auth-dialog__existing { margin-top: 1rem; color: rgba(225, 255, 249, .72); }
+.auth-dialog__existing button { padding: 0; border: 0; color: #8fffee; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
 .auth-dialog__project { min-height: 2.7rem; border-color: rgba(143, 255, 238, .42); border-radius: 999px; color: #8fffee; background: rgba(19, 188, 157, .04); font-size: .74rem; }
 html[data-aito-ia-theme='light'] .auth-dialog { border-color: var(--aito-ai-line); color: var(--aito-ai-text); background: var(--aito-ai-glow), var(--aito-ai-surface); box-shadow: 0 26px 72px var(--aito-ai-shadow); }
 html[data-aito-ia-theme='light'] .auth-dialog h3 { color: var(--aito-ai-text); }
@@ -188,5 +196,7 @@ html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__messages) { color:
 html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field--outlined .q-field__control:before) { border-color: var(--aito-ai-line); }
 html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field--focused .q-field__control:after) { border-color: var(--aito-ai-accent-strong); }
 html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__action, .auth-dialog__project) { color: var(--aito-ai-text); border-color: var(--aito-ai-line); background: var(--aito-ai-panel); }
+html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__welcome, .auth-dialog__existing) { color: var(--aito-ai-text); border-color: var(--aito-ai-line); }
+html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__welcome .q-icon, .auth-dialog__existing button) { color: var(--aito-ai-accent); }
 html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__tabs .is-active, .auth-dialog__action:hover, .auth-dialog__action:focus-visible) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 </style>

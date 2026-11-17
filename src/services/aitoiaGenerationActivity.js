@@ -12,6 +12,10 @@ const routes = {
 export const localGenerationActivity = shallowRef([])
 export const removedGeneration = shallowRef(null)
 
+export const generationIdentity = generation => generation.id || generation.requestId
+export const canRemoveGeneration = generation => generation.active !== true &&
+  ['completed', 'failed', 'nsfw', 'canceled'].includes(generation.status) && Boolean(generationIdentity(generation))
+
 function update(row) {
   const remaining = localGenerationActivity.value.filter(item =>
     (item.owner !== row.owner || item.requestId !== row.requestId) && item.createdAt > Date.now() - 86400000)
@@ -24,8 +28,8 @@ function dismiss(owner, requestId) {
 
 export function forgetLocalGeneration(owner, generation) {
   localGenerationActivity.value = localGenerationActivity.value.filter(row =>
-    row.owner !== owner || !(row.id === generation.id || generation.requestId && row.requestId === generation.requestId))
-  removedGeneration.value = { owner, id: generation.id }
+    row.owner !== owner || !(generation.id && row.id === generation.id || generation.requestId && row.requestId === generation.requestId))
+  if (generation.id) removedGeneration.value = { owner, id: generation.id }
 }
 
 export async function followGeneration(owner, path, options, current, submit) {
