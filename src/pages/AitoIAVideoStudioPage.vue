@@ -29,6 +29,8 @@ import { createVideoProjectLinks, isVideoGenerationId } from 'src/services/aitoi
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
+import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoReleasePending } from 'src/services/aitoiaVideoRelease'
+import { scheduleInitialMasterCollapse } from 'src/services/aitoiaStudioPanel'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia,
@@ -140,6 +142,11 @@ watch([codeVideo, codeClip], ([video, clip], _, onCleanup) => {
   })
 }, { flush: 'post' })
 const removedGeneratedIds = shallowRef([])
+const dismissedStudioIds = new Set()
+const dismissedStudioRequests = new Set()
+const wasRemovedGeneration = item => Boolean(item && (dismissedStudioIds.has(item.id) ||
+  removedGeneratedIds.value.includes(item.id) || dismissedStudioRequests.has(item.requestId)))
+watch(accountId, () => { dismissedStudioIds.clear(); dismissedStudioRequests.clear() }, { flush: 'sync' })
 const generatedDuration = ref(0)
 const activeJob = shallowRef(null)
 const prompt = ref('')
@@ -215,6 +222,8 @@ const savingClip = ref(false)
 const projectsOpen = ref(false)
 useStudioDrawerAutoOpen(projectsOpen, () => route.name)
 const masterOpen = ref(true)
+const releaseMonitor = createVideoReleaseMonitor()
+let cancelInitialMasterCollapse
 const modelListOpen = ref(true)
 const studioHeader = ref(null)
 const workspace = ref(null)
@@ -401,7 +410,14 @@ function importArchive(file) {
 function showAuth(mode = 'register') { authMode.value = mode; authOpen.value = true }
 const compactViewport = () => window.matchMedia('(max-width: 900px)').matches
 function closeMobilePanel(panel) {
-  if (compactViewport()) panel.value = false
+  if (compactViewport()) {
+    if (panel === masterOpen) cancelInitialMasterCollapse?.()
+    panel.value = false
+  }
+}
+function toggleMaster() {
+  cancelInitialMasterCollapse?.()
+  masterOpen.value = !masterOpen.value
 }
 function chooseProject(id) {
   closeMobilePanel(projectsOpen)
@@ -738,18 +754,25 @@ function keepJob(job, finished = false) {
     }
   })
 }
-function scheduleStudioJob(delay = 9000) {
+function scheduleStudioJob(delay = videoReleasePending(activeJob.value) ? 2000 : 9000) {
   clearTimeout(jobTimer)
-  if (mounted && activeJob.value) jobTimer = setTimeout(() => {
+  if (mounted && activeJob.value && !activeJob.value.releasePollingStopped) jobTimer = setTimeout(() => {
     if (busy.value || projectLoading.value) scheduleStudioJob()
     else checkJob(true)
   }, delay)
 }
 function restoreJob() {
   if (!accountId.value || !activeId.value || projectLoading.value) return
+  if (wasRemovedGeneration(activeJob.value)) {
+    const removed = activeJob.value
+    clearTimeout(jobTimer)
+    activeJob.value = null
+    keepJob(removed, true)
+    return
+  }
   if (activeJob.value) { scheduleStudioJob(250); return }
   const saved = jobStorage(entries => entries[`${accountId.value}:${activeId.value}`] || entries[accountId.value])
-  if (saved?.finished || saved?.projectId && saved.projectId !== activeId.value) return
+  if (saved?.finished || wasRemovedGeneration(saved) || saved?.projectId && saved.projectId !== activeId.value) return
   if (saved && (saved.id || saved.requestId)) {
     activeJob.value = { ...saved, status: saved.status || 'queued' }
     tab.value = 'ai'
@@ -761,8 +784,9 @@ function restoreJob() {
   const access = wallet.access()
   void listVideoGenerations(access.get, { source: 'studio', projectId: project }).then(jobs => {
     if (!mounted || !access.current() || owner !== accountId.value || project !== activeId.value || activeJob.value || projectLoading.value) return
-    const job = jobs.find(item => videoGenerationActive(item.status))
-      || jobs.find(item => item.status === 'completed' && !removedGeneratedIds.value.includes(item.id) &&
+    const remaining = jobs.filter(item => !wasRemovedGeneration(item))
+    const job = remaining.find(item => videoGenerationActive(item.status) || videoReleasePending(item))
+      || remaining.find(item => item.status === 'completed' && !removedGeneratedIds.value.includes(item.id) &&
         !clipLibrary.value.some(clip => clip.id === item.id))
     if (!job) return
     activeJob.value = job
@@ -773,6 +797,9 @@ function restoreJob() {
 watch([accountId, activeId, projectLoading], restoreJob)
 watch(removedGeneration, item => {
   if (!item?.id || item.owner !== accountId.value) return
+  dismissedStudioIds.add(item.id)
+  if (item.requestId) dismissedStudioRequests.add(item.requestId)
+  removedGeneratedIds.value = [...new Set([...removedGeneratedIds.value, item.id])].slice(-300)
   if (draft.value?.generated?.id === item.id) {
     draft.value = null
     void clearVideoDraft(item.owner).catch(() => {})
@@ -783,12 +810,12 @@ watch(removedGeneration, item => {
     if (generated.value?.id === item.id) selectGenerated(clipLibrary.value[0] || null)
   }
   const job = activeJob.value
-  if (job?.id !== item.id || clipLibrary.value.some(clip => clip.id === item.id && clip.file)) return
+  if (!wasRemovedGeneration(job)) return
   clearTimeout(jobTimer)
   if (busy.value === 'video' || busy.value === 'transition-generate') activeOperation?.abort()
   activeJob.value = null
   keepJob(job, true)
-})
+}, { flush: 'sync' })
 
 function syncVideo(media, offset, animate) {
   const element = media?.isVideo ? media.element : null
@@ -1428,24 +1455,32 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   try {
     if (!job.id) {
       const [matching] = await listVideoGenerations(get, { source: 'studio', projectId, requestId: job.requestId, signal })
-      if (matching) current = { ...job, ...matching }
+      if (matching) current = mergeVideoGeneration(job, matching)
       else if (Date.now() - job.submittedAt < 120000) return
       else current = { ...job, status: 'failed', message: 'A fila não recebeu o pedido. Consulte o custo para enviar novamente.' }
     } else {
       const { data } = await get(`/aitoia/video/generations/${encodeURIComponent(job.id)}`, { signal })
       if (!data?.data?.status) throw new Error('A resposta da fila não chegou completa. Verifique novamente.')
-      current = { ...job, ...data.data }
+      current = mergeVideoGeneration(job, data.data)
     }
   } catch (cause) {
     signal.throwIfAborted()
+    if (wasRemovedGeneration(job)) return
     if (stillOwner() && projectId === activeId.value && [404, 410].includes(cause.response?.status)) {
       activeJob.value = null
       keepJob(current, true)
+      throw new Error('A geração não está mais disponível. Consulte a carteira para conferir a cobrança ou a liberação da reserva.')
+    }
+    if (stillOwner() && projectId === activeId.value && videoReleasePending(job)) {
+      const release = releaseMonitor.observe(job)
+      activeJob.value = { ...job, releasePollingStopped: !release.retry }
+      error.value = releasePendingMessage(release.retry)
+      return
     }
     throw cause
   }
   signal.throwIfAborted()
-  if (!stillOwner() || projectId !== activeId.value) return
+  if (!stillOwner() || projectId !== activeId.value || wasRemovedGeneration(current)) return
   if (videoGenerationActive(current.status)) {
     if (current.status !== job.status || current.id !== job.id || current.progress !== job.progress) {
       activeJob.value = current
@@ -1454,9 +1489,16 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
     return
   }
   if (current.status !== 'completed') {
+    const release = releaseMonitor.observe(current)
+    if (release.pending) {
+      activeJob.value = { ...current, releasePollingStopped: !release.retry }
+      keepJob(activeJob.value)
+      error.value = releasePendingMessage(release.retry)
+      return
+    }
     activeJob.value = null
     keepJob(current, true)
-    throw new Error(current.message || 'O provedor não conseguiu gerar o vídeo.')
+    throw new Error(release.released ? releasedVideoMessage(current) : current.message || 'O provedor não conseguiu gerar o vídeo.')
   }
   activeJob.value = current
   const previous = clipLibrary.value.find(item => item.id === current.id)
@@ -1555,7 +1597,7 @@ async function submitStudioJob(quote, placement, { post, current }, signal) {
       sceneId: placement.scriptTarget?.sceneId || placement.scriptTarget?.id || placement.afterSceneId || undefined },
     { headers: { 'X-Aito-Request-Id': requestId }, signal })
     signal.throwIfAborted()
-    if (!current() || projectId !== activeId.value) return
+    if (!current() || projectId !== activeId.value || wasRemovedGeneration({ ...data?.data, requestId })) return
     if (!data?.data?.id) throw new Error('O pedido ainda não foi confirmado. Verifique a geração novamente.')
     activeJob.value = { ...job, ...data.data }
     keepJob(activeJob.value)
@@ -2141,7 +2183,7 @@ async function restoreProject(project, signal) {
       } catch { return [] }
     })
     selectGenerated(clipLibrary.value.find(item => item.id === project.selectedClipId) || clipLibrary.value[0] || null)
-    activeJob.value = project.activeJob || null
+    activeJob.value = wasRemovedGeneration(project.activeJob) ? null : project.activeJob || null
   } finally {
     if (!opened) localMedia.forEach(closeStudioMedia)
   }
@@ -2187,6 +2229,7 @@ watch([timeline, format, previewMode], () => { if (mounted) seek(playhead.value)
 watch(tab, () => { if (mounted) paint(playhead.value) }, { flush: 'post' })
 onMounted(async () => {
   mounted = true
+  cancelInitialMasterCollapse = scheduleInitialMasterCollapse(() => { masterOpen.value = false })
   if (!signedIn.value) void loadOptions()
   window.addEventListener('online', refreshVideoProjectLinks)
   if (route.query.auth === 'register' && !signedIn.value) showAuth()
@@ -2202,6 +2245,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   mounted = false
+  cancelInitialMasterCollapse?.()
   window.removeEventListener('online', refreshVideoProjectLinks)
   videoProjectLinks.dispose()
   clearInterval(expireTimer)
@@ -2528,7 +2572,7 @@ onBeforeUnmount(() => {
             </p>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
-              <button v-else-if="activeJob && !busy" class="video-studio__primary" type="button" @click="checkJob()"><q-icon name="mdi-refresh" size="20px" /> Verificar geração</button>
+              <button v-else-if="activeJob && !busy" class="video-studio__primary" type="button" @click="checkJob()"><q-icon name="mdi-refresh" size="20px" /> {{ videoReleasePending(activeJob) ? 'Verificar liberação' : 'Verificar geração' }}</button>
               <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || Boolean(busy) || !canQuoteVideo" @click="makeVideo"><q-spinner v-if="busy === 'video' || busy === 'quote'" size="19px" /><q-icon v-else :name="videoQuote ? 'mdi-movie-open-play-outline' : 'mdi-calculator-variant-outline'" size="19px" /> {{ busy === 'video' ? 'Gerando clipe…' : busy === 'quote' ? 'Consultando preço…' : videoQuote?.estimated ? 'Confirmar reserva e gerar' : videoQuote ? 'Confirmar geração' : 'Consultar preço' }}<span v-if="quoteCost && !busy"> · Até {{ quoteCost }}</span></button>
             </div>
           </div>
@@ -2557,7 +2601,8 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="!generated || busy === 'video'" class="video-studio__clip-empty" role="status">
               <q-spinner v-if="busy === 'video'" size="30px" /><q-icon v-else name="mdi-filmstrip-box-multiple" size="32px" />
-              <AitoVideoProgress v-if="activeJob || busy === 'video'" :stage="activeJob?.status || 'submitting'" :percent="activeJob?.progress" />
+              <AitoVideoProgress v-if="videoGenerationActive(activeJob?.status) || (busy === 'video' && !videoReleasePending(activeJob))" :stage="activeJob?.status || 'submitting'" :percent="activeJob?.progress" />
+              <p v-else-if="videoReleasePending(activeJob)" role="status">A geração falhou. Aguardando confirmação da liberação da reserva.</p>
               <p v-else-if="activeJob">Geração pendente. Clique em Verificar geração para acompanhar.</p>
               <p v-else>Os vídeos gerados aparecem aqui.</p>
             </div>
@@ -2617,9 +2662,9 @@ onBeforeUnmount(() => {
     </main>
     </q-page-container>
     <q-footer class="video-studio__timeline" aria-label="Vídeo master" @paste="pasteStudioMedia">
-      <div class="video-studio__master-inner">
+      <div class="video-studio__master-inner" @pointerdown="cancelInitialMasterCollapse?.()" @focusin="cancelInitialMasterCollapse?.()">
         <q-btn class="video-studio__master-toggle" flat no-caps align="left" :aria-expanded="masterOpen" aria-controls="video-studio-master-controls"
-          :aria-label="masterOpen ? 'Minimizar vídeo master' : 'Expandir vídeo master'" @click="masterOpen = !masterOpen">
+          :aria-label="masterOpen ? 'Minimizar vídeo master' : 'Expandir vídeo master'" @click="toggleMaster">
           <q-icon name="mdi-filmstrip" size="20px" aria-hidden="true" />
           <strong>Vídeo master</strong>
           <span class="video-studio__master-count">{{ scenes.length }} {{ scenes.length === 1 ? 'cena' : 'cenas' }} · {{ durationLabel(timeline.duration) }}</span>

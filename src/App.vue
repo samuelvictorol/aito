@@ -23,6 +23,7 @@ import CosmicScene from './components/CosmicScene.vue'
 import {screenLoading} from './services/screen-loading'
 import { installPlatform, isInstalledAito, offersAitoInstall } from './services/aitoInstall'
 import { siteManifest } from './services/siteManifest'
+import { landingEdgeActionsVisible } from './composables/useLandingFloatingActions'
 import AitoIAMaintenance from './components/AitoIAMaintenance.vue'
 import { useAitoAvailabilityBoundary } from './composables/useAitoAvailability'
 import { installAitoIATheme } from './composables/useAitoIATheme'
@@ -49,9 +50,10 @@ const themePage = computed(() => route.name === 'aito-codex-theme')
 const isAitoManifest = computed(() => siteManifest(route).url === '/aitoia.webmanifest')
 const hasInstallShortcut = computed(() => route.name === 'landing-3d' || offersAitoInstall(route) ||
   (route.name !== 'aito-ia-video-studio' && Boolean(installEvent.value)))
-const canPromoteInstall = computed(() => !installDismissed.value && !themePage.value && isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
+const floatingActionsAllowed = computed(() => route.name !== 'landing-3d' || landingEdgeActionsVisible.value)
+const canPromoteInstall = computed(() => floatingActionsAllowed.value && !installDismissed.value && !themePage.value && isAitoManifest.value && !installed.value && !screenLoading.value && !maintenance.value && !checkingAvailability.value && hasInstallShortcut.value)
 const customerSession = ref(false)
-const showSupportShortcut = computed(() => !themePage.value && customerSession.value && !screenLoading.value &&
+const showSupportShortcut = computed(() => floatingActionsAllowed.value && !themePage.value && customerSession.value && !screenLoading.value &&
   route.meta.requiresAuth !== 'admin' && route.meta.requiresAuth !== 'affiliate' &&
   route.name !== 'admin-login' && route.name !== 'affiliate-login')
 

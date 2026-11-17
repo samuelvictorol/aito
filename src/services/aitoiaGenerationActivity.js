@@ -29,7 +29,7 @@ function dismiss(owner, requestId) {
 export function forgetLocalGeneration(owner, generation) {
   localGenerationActivity.value = localGenerationActivity.value.filter(row =>
     row.owner !== owner || !(generation.id && row.id === generation.id || generation.requestId && row.requestId === generation.requestId))
-  if (generation.id) removedGeneration.value = { owner, id: generation.id }
+  if (generation.id) removedGeneration.value = { owner, id: generation.id, requestId: generation.requestId }
 }
 
 export async function followGeneration(owner, path, options, current, submit) {

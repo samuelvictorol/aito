@@ -29,14 +29,13 @@
     <div class="landing-3d__noise" aria-hidden="true"></div>
     <div ref="caseLayer" class="landing-3d__case-layer" aria-hidden="true"></div>
 
-    <header class="landing-3d__header">
+    <header v-if="floatingActionsVisible" class="landing-3d__header">
       <button class="landing-3d__brand" type="button" aria-label="Voltar ao inicio" @click="scrollTo('inicio')">
         <img src="/aito-logo-restored.png" alt="" width="34" height="34" />
         <span>AITO<span>SOFTWARES</span></span>
       </button>
 
       <div class="landing-3d__header-actions">
-        <router-link class="landing-3d__product-link" to="/aitotokens">AitoTokens</router-link>
         <button class="landing-3d__account-link" type="button" aria-label="Abrir acesso" @click="openAccessChooser">
           <q-icon name="mdi-account-outline" aria-hidden="true" />
           <span class="landing-3d__account-label">{{ accountLabel }}</span>
@@ -55,7 +54,7 @@
       <div v-if="$slots['install-aitoia']" class="landing-3d__install"><slot name="install-aitoia" /></div>
     </header>
 
-    <nav class="landing-3d__progress" aria-label="Navegacao entre secoes">
+    <nav v-if="floatingActionsVisible" class="landing-3d__progress" aria-label="Navegacao entre secoes">
       <button
         v-for="(section, index) in landing3dSections"
         :key="section.id"
@@ -185,7 +184,7 @@
       </section>
     </div>
 
-    <div class="landing-3d__floating-links">
+    <div v-if="floatingActionsVisible" class="landing-3d__floating-links">
       <p class="landing-3d__counter" aria-live="polite">
         <span>{{ String(activeSection + 1).padStart(2, '0') }}</span><i></i><span>{{ String(landing3dSections.length).padStart(2, '0') }}</span>
       </p>
@@ -205,10 +204,10 @@
       </router-link>
     </div>
 
-    <button class="landing-3d__ai-float" type="button" aria-label="Abrir assistente do site" @click="iaChat = true">
+    <button v-if="floatingActionsVisible" class="landing-3d__ai-float" type="button" aria-label="Abrir assistente do site" @click="iaChat = true">
       <img src="/ia.gif" alt="" />
     </button>
-    <button class="landing-3d__surprise-float" type="button" aria-label="Abrir Surpreenda-me" @click="router.push('/surpresa')">
+    <button v-if="floatingActionsVisible" class="landing-3d__surprise-float" type="button" aria-label="Abrir Surpreenda-me" @click="router.push('/surpresa')">
       <q-icon name="mdi-gift-outline" aria-hidden="true" />
       <q-tooltip>Surpreenda-me</q-tooltip>
     </button>
@@ -267,6 +266,7 @@ import { landingShowcase } from 'src/data/landingShowcase'
 import IAChatComponent from 'components/IAChatComponent.vue'
 import AuthDialog from 'components/AuthDialog.vue'
 import { useLandingScroll } from 'src/composables/useLandingScroll'
+import { useLandingFloatingActions } from 'src/composables/useLandingFloatingActions'
 import { landing3dSections } from 'src/data/landing3dSections'
 import {
   institutionalBrands,
@@ -306,6 +306,8 @@ const sceneReady = ref(cachedIntro)
 const introRevealing = ref(cachedIntro)
 const introComplete = ref(cachedIntro)
 const introTextVisible = ref(cachedIntro)
+const edgeActionsVisible = useLandingFloatingActions()
+const floatingActionsVisible = computed(() => introTextVisible.value && edgeActionsVisible.value)
 const introPhase = ref(cachedIntro ? 'complete' : 'loading')
 const caseLayer = ref(null)
 const brandDialogOpen = ref(false)
@@ -636,9 +638,6 @@ onBeforeUnmount(() => {
 
 .landing-3d__header-actions { display: flex; align-items: center; gap: 0.65rem; }
 .landing-3d__install { position: absolute; top: calc(100% + 1.15rem); right: max(clamp(1rem, 5vw, 5rem), env(safe-area-inset-right)); }
-.landing-3d__product-link { color: var(--aito-aqua); font-size: .72rem; font-weight: 700; text-decoration: none; border: 1px solid rgba(143,255,238,.35); border-radius: 999px; padding: .55rem .8rem; white-space: nowrap; pointer-events: auto; }
-.landing-3d__product-link:hover,.landing-3d__product-link:focus-visible { background: rgba(19,188,157,.18); outline: none; }
-@media(max-width:600px){.landing-3d__product-link{font-size:.62rem;padding:.45rem .55rem}}
 
 .landing-3d__account-link {
   display: inline-flex;

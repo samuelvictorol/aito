@@ -8,11 +8,13 @@ import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
+import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { burnRemakeCaptions, maxRemakeInputBytes, maxRemakeSceneSeconds, prepareRemakeVideoReference,
   remakeInputAccept, remakeSplitDurations, removeRemakeSourceSubtitles, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
-import { prepareRemakePlan, quoteRemakePlan } from 'src/services/aitoiaVideoRemakePlan'
+import { prepareRemakePlan, quoteRemakePlan, remakeSceneIntent } from 'src/services/aitoiaVideoRemakePlan'
+import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 
 const { isDark } = useAitoIATheme()
@@ -57,6 +59,7 @@ let disposed = false
 const discardedJobs = ref([])
 const previousJobs = shallowRef([])
 const resultElements = new Map()
+const releaseMonitor = createVideoReleaseMonitor()
 const projectId = computed(() => props.projectScope?.split(':').at(-1))
 
 const locked = computed(() => Boolean(action.value || props.blocked))
@@ -211,11 +214,31 @@ function trackJob(scene, remove = false) {
 function clearJob(scene, keepQuote = false) {
   trackJob(scene, true)
   scene.job = null
+  scene.releasePollingStopped = false
   scene.requestId = undefined
   scene.submittedAt = undefined
   scene.submitted = false
   if (!keepQuote) scene.quote = null
 }
+
+watch(removedGeneration, removed => {
+  const scope = props.projectScope || ''
+  const owner = scope.slice(0, scope.lastIndexOf(':'))
+  if (!removed?.id || removed.owner !== owner) return
+  discardedJobs.value = [...new Set([...discardedJobs.value, removed.id])].slice(-300)
+  const pending = scenes.value.filter(scene => scene.job?.id === removed.id ||
+    removed.requestId && scene.requestId === removed.requestId)
+  if (!pending.length) return
+  // A response already in flight must not restore a job removed by its owner.
+  clearTimeout(queueTimer)
+  queueRequest?.abort()
+  if (action.value?.kind === 'generate' && pending.some(scene => scene.index === action.value.index)) controller?.abort()
+  for (const scene of pending) {
+    clearJob(scene)
+    scene.error = 'Aviso removido. Consulte a carteira para conferir o saldo.'
+  }
+  emit('balance')
+}, { flush: 'sync' })
 function rejectUpload(file) {
   if (!file?.size) return 'Selecione um vídeo válido.'
   if (file.size > maxRemakeInputBytes) return 'O vídeo pode ter até 70 MB.'
@@ -295,7 +318,7 @@ async function planScene(scene) {
   })
   await execute('prepare', scene, async (signal, { post }) => {
     const prepared = await prepareRemakePlan({ file: scene.file, master: master.value.trim(), scenePrompt: scene.edit.trim(), dialogue: scene.dialogue.trim(),
-      captions: scene.captions, characterNames: referencesFor(scene).map(item => item.title), walletId: props.walletId,
+      ...remakeSceneIntent(scene, referencesFor(scene)), walletId: props.walletId,
       maxBilledUsdCents: offer.maxBilledUsdCents, apiPost: post, signal })
     signal.throwIfAborted()
     scene.planQuote = null
@@ -333,6 +356,7 @@ async function quoteScene(scene) {
     const model = modelFor(scene).id
     const outputResolution = resolutionFor(scene)
     const references = referencesFor(scene)
+    const intent = remakeSceneIntent(scene, references)
     const files = [...new Set(references.map(item => item.file).filter(Boolean))].slice(0, maxReferences)
     const cleanSource = scene.subtitleRegion ? await removeRemakeSourceSubtitles(scene.file, scene.subtitleRegion, { signal }) : scene.file
     const referenceFile = await prepareRemakeVideoReference(cleanSource, { signal })
@@ -341,7 +365,7 @@ async function quoteScene(scene) {
     for (const file of files) imageReferenceTokens.push(await upload(post, file, checkImageReference(file), putImageReference, signal, walletId))
     const body = { walletId, referenceToken, imageReferenceTokens, prompt: promptFor(scene, references, files),
       dialogue: scene.dialogue.trim(), sourceDuration: scene.duration,
-      subtitles: scene.captions, model, resolution: outputResolution }
+      subtitles: intent.captions, removeOriginalSubtitles: intent.removeOriginalSubtitles, model, resolution: outputResolution }
     const { data } = await post(root + '/quote', body, { signal })
     signal.throwIfAborted()
     if (props.walletId === walletId) {
@@ -393,6 +417,13 @@ function scheduleQueue(ms = 9000) {
   if (!disposed) queueTimer = setTimeout(() => void refreshQueue(), ms)
 }
 
+function pendingRelease(scene, job) {
+  const release = releaseMonitor.observe(job)
+  scene.releasePollingStopped = release.pending && !release.retry
+  if (release.pending) scene.error = releasePendingMessage(release.retry)
+  return release
+}
+
 function restoreQueuedScene(job) {
   if (!job.sceneId || discardedJobs.value.includes(job.id) || scenes.value.some(scene => scene.result?.id === job.id)) return
   let scene = scenes.value.find(item => item.clientSceneId === job.sceneId || item.requestId && item.requestId === job.requestId)
@@ -435,7 +466,7 @@ async function refreshQueue(only = null) {
     const byId = new Map((jobs || []).map(job => [job.id, job]))
     if (jobs) {
       for (const job of jobs) {
-        if (videoGenerationActive(job.status) || job.status === 'completed') restoreQueuedScene(job)
+        if (videoGenerationActive(job.status) || videoReleasePending(job) || job.status === 'completed') restoreQueuedScene(job)
       }
       if (discoverJobs) {
         discoverJobs = false
@@ -449,6 +480,7 @@ async function refreshQueue(only = null) {
       }
     }
     for (const scene of only ? [only] : scenes.value) {
+      if (!only && scene.releasePollingStopped) continue
       if (!scene.job) {
         if (jobs && scene.submittedAt && Date.now() - scene.submittedAt > 120000 &&
           !jobs.some(job => job.requestId === scene.requestId)) {
@@ -463,18 +495,29 @@ async function refreshQueue(only = null) {
           (await access.get(`/aitoia/video/generations/${encodeURIComponent(scene.job.id)}`, { signal })).data.data
         signal.throwIfAborted()
         if (!access.current()) return
-        scene.job = { ...scene.job, ...job }
+        scene.job = mergeVideoGeneration(scene.job, job)
         if (videoGenerationActive(job.status)) continue
+        const release = pendingRelease(scene, scene.job)
+        if (release.pending) continue
         if (job.status === 'completed') await saveFinishedScene(scene, scene.job, signal, access.get, access.current)
         else {
           clearJob(scene)
-          scene.error = job.message || 'O provedor encerrou a geração desta cena.'
+          scene.error = release.released ? releasedVideoMessage(job) : job.message || 'O provedor encerrou a geração desta cena.'
           emit('balance')
         }
       } catch (cause) {
         signal.throwIfAborted()
         if (!access.current()) return
-        if ([404, 410].includes(cause.response?.status) && scene.job?.status !== 'completed') clearJob(scene)
+        if ([404, 410].includes(cause.response?.status)) {
+          clearJob(scene)
+          scene.error = 'A geração não está mais disponível. Consulte a carteira para conferir a cobrança ou a liberação da reserva.'
+          emit('balance')
+          continue
+        }
+        if (videoReleasePending(scene.job)) {
+          pendingRelease(scene, scene.job)
+          continue
+        }
         if (only || scene.job?.status === 'completed') scene.error = problem(cause)
       }
     }
@@ -482,7 +525,9 @@ async function refreshQueue(only = null) {
     if (!signal.aborted && only && access.current()) only.error = problem(cause)
   } finally {
     queueRequest = null
-    if (!disposed && (discoverJobs || scenes.value.some(scene => scene.job || scene.submitted))) scheduleQueue()
+    if (!disposed && (discoverJobs || scenes.value.some(scene => (scene.job || scene.submitted) && !scene.releasePollingStopped))) {
+      scheduleQueue(scenes.value.some(scene => videoReleasePending(scene.job) && !scene.releasePollingStopped) ? 2000 : 9000)
+    }
   }
 }
 
@@ -499,8 +544,13 @@ async function renderScene(scene) {
       const { data } = await post(root, { ...quote.body, quoteToken: quote.quoteToken, projectId: projectId.value, sceneId: scene.clientSceneId },
         { headers: { 'X-Aito-Request-Id': quote.requestId }, signal })
       signal.throwIfAborted()
-      if (!current()) return
+      if (!current() || scene.requestId !== quote.requestId) return
       if (!data?.data?.id) throw new Error('O pedido ainda não foi confirmado. Verifique a cena novamente.')
+      if (discardedJobs.value.includes(data.data.id)) {
+        clearJob(scene)
+        emit('balance')
+        return
+      }
       scene.job = data.data
       trackJob(scene)
     } catch (cause) {
@@ -708,7 +758,7 @@ onBeforeUnmount(() => {
           {{ scene.quote.modelLabel || scene.job?.modelLabel || modelFor(scene)?.label || 'Higgsfield' }} · Até ≈ {{ aitoTokens(scene.quote.estimatedAitoTokens) }} AitoTokens
         </p>
         <p v-if="scene.error" class="aito-remake__error" role="alert">{{ scene.error }}</p>
-        <AitoVideoProgress v-if="scene.job || scene.submitted || isWorking(scene, 'generate')"
+        <AitoVideoProgress v-if="videoGenerationActive(scene.job?.status) || (!scene.job && scene.submitted) || isWorking(scene, 'generate')"
           :stage="scene.job?.status || 'submitting'" :percent="scene.job?.progress" />
         <div v-if="isWorking(scene, 'finish')" class="aito-remake__progress" role="status">
           <q-linear-progress rounded :value="progress" :color="isDark ? 'teal-3' : 'teal-8'" aria-label="Finalização da cena" />
@@ -719,7 +769,7 @@ onBeforeUnmount(() => {
             :label="scene.planQuote ? 'Confirmar preparação' : 'Melhorar Prompt de Cena'" :disable="lockedScene(scene)"
             :loading="isWorking(scene, 'prepare') || isWorking(scene, 'plan-price')" @click="planScene(scene)" />
           <q-btn v-if="scene.quote || scene.job || scene.submitted" no-caps unelevated color="teal-8" icon="mdi-movie-open-play-outline"
-            :label="scene.job || scene.submitted ? 'Verificar cena' : scene.quote?.estimated ? 'Confirmar reserva e refazer' : 'Confirmar e refazer'"
+            :label="videoReleasePending(scene.job) ? 'Verificar liberação' : scene.job || scene.submitted ? 'Verificar cena' : scene.quote?.estimated ? 'Confirmar reserva e refazer' : 'Confirmar e refazer'"
             :disable="locked" @click="renderScene(scene)" />
           <q-btn v-else-if="!scene.recovered" no-caps outline :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-calculator-variant-outline" label="Cotar cena"
             :disable="locked || !canQuote(scene) || (scene.captions && !scene.caption.trim())" :loading="isWorking(scene, 'quote')" @click="quoteScene(scene)" />

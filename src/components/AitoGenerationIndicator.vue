@@ -6,6 +6,7 @@ import { canRemoveGeneration, forgetLocalGeneration, generationIdentity, localGe
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { videoGenerationActive } from 'src/services/aitoiaVideoJobs'
+import { failedVideo, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 
 const props = defineProps({ state: { type: Object, required: true } })
 const { accountId, access } = props.state
@@ -25,6 +26,7 @@ let pollTimer
 let pollRequest
 let previewRequest
 let removalRequest
+let releaseRefreshTimer
 let disposed = false
 
 const types = { remake: 'Cena refeita', studio: 'Clipe do estúdio', chat: 'Vídeo no chat' }
@@ -102,6 +104,7 @@ function clearPreview() {
 }
 
 function reset() {
+  clearTimeout(releaseRefreshTimer)
   clearTimeout(pollTimer)
   pollRequest?.abort()
   pollRequest = null
@@ -159,6 +162,15 @@ async function removeClip(job, owner, ownerId) {
       removedIds.value = new Set([...removedIds.value, key])
       remoteJobs.value = remoteJobs.value.filter(item => generationIdentity(item) !== key)
       forgetLocalGeneration(ownerId, job)
+      if (failedVideo(job)) {
+        void props.state.refreshStatus({ silent: true })
+        if (videoReleasePending(job)) {
+          clearTimeout(releaseRefreshTimer)
+          releaseRefreshTimer = setTimeout(() => {
+            if (!disposed && owner.current()) void props.state.refreshStatus({ silent: true })
+          }, 4500)
+        }
+      }
       if (job.id && (preview.value?.id === job.id || previewing.value === job.id)) clearPreview()
       queuePoll(350)
     }
