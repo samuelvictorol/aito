@@ -16,7 +16,7 @@ import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
 
-const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array })
+const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array, initialCatalog: Object })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
 const { accountId, signedIn, walletId, status, currentModel, effort, speed, access } = props.state
 const { videoInMaintenance } = useAitoAvailability()
@@ -44,6 +44,7 @@ let clipExpiryTimer
 let disposed = false
 let reference
 let imageReferences
+let initialCatalog = props.initialCatalog
 const models = computed(() => chatVideoModels(catalog.value, { hasVideo: Boolean(base.value), imageCount: imageBases.value.length }))
 const maxImages = computed(() => Math.max(0, ...chatVideoModels(catalog.value, { hasVideo: Boolean(base.value) })
   .map(item => item.maxImageReferences || 0)))
@@ -65,8 +66,11 @@ async function loadCatalog() {
   const api = access()
   catalogRequest = controller
   try {
+    const cached = initialCatalog
+    initialCatalog = undefined
+    if (cached) catalog.value = cached
     const [catalogResponse, recent] = await Promise.allSettled([
-      api.get('/aitoia/video/options', { signal: controller.signal }),
+      cached ? null : api.get('/aitoia/video/options', { signal: controller.signal }),
       listVideoGenerations(api.get, { source: 'chat', signal: controller.signal }),
     ])
     controller.signal.throwIfAborted()
@@ -77,7 +81,7 @@ async function loadCatalog() {
       if (job.value) schedulePoll(250)
     }
     if (catalogResponse.status === 'rejected') throw catalogResponse.reason
-    catalog.value = catalogResponse.value.data.data
+    if (!cached) catalog.value = catalogResponse.value.data.data
   } catch (cause) {
     if (!controller.signal.aborted) error.value = cause.response?.data?.message || 'Não foi possível consultar os modelos de vídeo.'
   }

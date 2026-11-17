@@ -30,7 +30,12 @@ let startPointer
 let touching = false
 let mounted = false
 
-function setMiddle(element) { middle = element }
+function setMiddle(element) {
+  if (middle === element) return
+  if (middle) resizeObserver?.unobserve(middle)
+  middle = element
+  if (middle) resizeObserver?.observe(middle)
+}
 function previewKey(block, id) { return `${block}:${id}` }
 
 function syncLayout(centerSelection = false) {
@@ -132,8 +137,12 @@ function skipDragClick(event) {
   event.stopPropagation()
 }
 
+function trackFocus(event) {
+  focused.value = event.target.matches('.model-carousel__card-action:focus-visible')
+}
+
 function releaseFocus(event) {
-  if (!shell.value?.contains(event.relatedTarget)) focused.value = false
+  if (!event.relatedTarget?.matches?.('.model-carousel__card-action:focus-visible')) focused.value = false
 }
 
 function setFocusPreview(event, block, item) {
@@ -141,7 +150,7 @@ function setFocusPreview(event, block, item) {
 }
 
 function syncMotion() {
-  reducedMotion.value = motion?.matches ?? true
+  reducedMotion.value = Boolean(motion?.matches)
   schedule()
 }
 
@@ -162,9 +171,10 @@ onMounted(() => {
   if (window.ResizeObserver) {
     resizeObserver = new ResizeObserver(() => syncLayout())
     resizeObserver.observe(viewport.value)
+    if (middle) resizeObserver.observe(middle)
   }
   if (window.IntersectionObserver) {
-    viewportObserver = new IntersectionObserver(([entry]) => { visible.value = entry.intersectionRatio >= .2 }, { threshold: .2 })
+    viewportObserver = new IntersectionObserver(([entry]) => { visible.value = entry.isIntersecting })
     viewportObserver.observe(shell.value)
   } else visible.value = true
   syncLayout(true)
@@ -183,15 +193,15 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="shell" class="model-carousel" role="region" aria-roledescription="carrossel" aria-label="Modelos disponíveis"
-    @pointerenter="hovering = $event.pointerType !== 'touch'" @pointerleave="hovering = false"
-    @focusin="focused = true" @focusout="releaseFocus"
+    @focusin="trackFocus" @focusout="releaseFocus"
     @keydown.left.prevent="move(-1)" @keydown.right.prevent="move(1)">
     <button v-if="looping" type="button" class="model-carousel__control" aria-label="Modelos anteriores" @click="move(-1)">
       <q-icon name="mdi-chevron-left" size="22px" />
     </button>
     <div ref="viewport" class="model-carousel__viewport" :class="{ 'model-carousel__viewport--looping': looping, 'model-carousel__viewport--dragging': dragging }"
       @scroll.passive="onScroll" @pointerdown="beginDrag" @pointermove="drag" @pointerup="endDrag" @pointercancel="endDrag"
-      @pointerleave="!dragging && $event.pointerType !== 'touch' && endDrag($event)" @click.capture="skipDragClick" @dragstart.prevent>
+      @pointerenter="hovering = $event.pointerType !== 'touch'"
+      @pointerleave="hovering = false; if (!dragging && $event.pointerType !== 'touch') endDrag($event)" @click.capture="skipDragClick" @dragstart.prevent>
       <div class="model-carousel__track">
         <div v-for="block in blocks" :key="block" :ref="block === 0 ? setMiddle : undefined" class="model-carousel__group"
           :aria-hidden="block === 0 ? undefined : 'true'">

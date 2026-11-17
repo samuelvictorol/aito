@@ -66,10 +66,12 @@ test('the Codex offer is limited to the customer app at fifteen-minute intervals
 })
 
 test('hands off direct generation requests while keeping instructional prompts in chat', async () => {
-  for (const input of ['Gere um vídeo de um cachorro', 'Pode me criar um clipe?', 'Por favor, você pode gerar um vídeo?']) {
+  for (const input of ['Gere um vídeo de um cachorro', 'Pode me criar um clipe?', 'Por favor, você pode gerar um vídeo?',
+    'Eu quero que você faça um vídeo curto', 'Preciso que gere um vídeo', 'Gostaria de criar uma animação', 'Could you make a clip?']) {
     assert.equal(requestsVideoGeneration(input), true, input)
   }
-  for (const input of ['Crie um roteiro para um vídeo', 'Como gerar um vídeo?', 'Analise este clipe', 'Faça uma imagem']) {
+  for (const input of ['Crie um roteiro para um vídeo', 'Como gerar um vídeo?', 'Analise este clipe', 'Faça uma imagem',
+    'Pode me explicar como gerar um vídeo?', 'Gostaria de saber como fazer um vídeo']) {
     assert.equal(requestsVideoGeneration(input), false, input)
   }
   const image = { id: 'image', name: 'ref.png', mime: 'image/png', blob: new Blob(['fixture'], { type: 'image/png' }) }

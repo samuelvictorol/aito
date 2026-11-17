@@ -1,5 +1,6 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoAboutLink from 'components/AitoAboutLink.vue'
 import { useMeta, useQuasar } from 'quasar'
@@ -11,6 +12,7 @@ import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
+import { useStudioDrawerAutoOpen } from 'src/composables/useStudioDrawerAutoOpen'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { accessMarketingKit, exportMarketingImage, loadMarketingReferenceUrl, marketingFormats, prepareMarketingReference, readMarketingImage } from 'src/services/aitoiaMarketingLocal'
 import { exportMarketingProject, readStudioProject } from 'src/services/aitoiaStudioArchive'
@@ -19,6 +21,7 @@ import 'src/css/aitoia-theme.css'
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const path = '/aitoia-marketing-studio'
+const route = useRoute()
 const $q = useQuasar()
 const { isDark } = useAitoIATheme()
 const drawerBreakpoint = 900
@@ -27,6 +30,9 @@ const drawerButton = ref(null)
 const drawerCloseButton = ref(null)
 const mobileDrawer = computed(() => $q.screen.width > 0 && $q.screen.width <= drawerBreakpoint)
 const drawerWidth = computed(() => mobileDrawer.value ? Math.min(320, Math.round($q.screen.width * .9)) : 304)
+useStudioDrawerAutoOpen(drawerOpen, () => route.name, () => {
+  if (mobileDrawer.value) nextTick(() => drawerCloseButton.value?.$el?.focus())
+})
 const wallet = useAitoIA({ chatHistory: false, allowAdmin: true })
 const { accountId, signedIn, adminMode, status, walletId } = wallet
 const catalog = ref(null)
@@ -427,7 +433,7 @@ onBeforeUnmount(() => {
       </div>
     </q-header>
 
-    <q-drawer v-model="drawerOpen" show-if-above bordered :dark="isDark" no-swipe-open :breakpoint="drawerBreakpoint" :width="drawerWidth" class="marketing__drawer">
+    <q-drawer v-model="drawerOpen" bordered :dark="isDark" no-swipe-open :breakpoint="drawerBreakpoint" :width="drawerWidth" class="marketing__drawer">
       <aside id="marketing-workspace" class="marketing__drawer-content" aria-labelledby="marketing-workspace-title" :inert="!drawerOpen" @keydown.esc.stop="closeWorkspace">
         <div class="marketing__section-title marketing__drawer-title">
           <h2 id="marketing-workspace-title">Projetos e componentes</h2>

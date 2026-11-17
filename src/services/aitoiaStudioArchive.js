@@ -6,6 +6,7 @@ import { maxRemakeSceneSeconds, remakeSplitDurations } from './aitoiaVideoRemake
 import { readSubtitleRegion } from './aitoiaSubtitleRemoval.js'
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp']
+const artworkTypes = [...imageTypes, 'image/gif']
 const videoTypes = ['video/mp4', 'video/webm']
 const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/webm', 'audio/aac']
 const formats = new Map(marketingFormats.map(format => [format.id, format]))
@@ -25,6 +26,7 @@ async function mediaType(blob, allowed) {
   if (starts(137, 80, 78, 71, 13, 10, 26, 10)) return 'image/png'
   if (starts(255, 216, 255)) return 'image/jpeg'
   if (marker(0, 'RIFF') && marker(8, 'WEBP')) return 'image/webp'
+  if (marker(0, 'GIF87a') || marker(0, 'GIF89a')) return 'image/gif'
   if (marker(4, 'ftyp')) return allowed === audioTypes ? 'audio/mp4' : 'video/mp4'
   if (starts(26, 69, 223, 163)) return allowed === audioTypes ? 'audio/webm' : 'video/webm'
   if (marker(0, 'RIFF') && marker(8, 'WAVE')) return 'audio/wav'
@@ -81,7 +83,7 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
   const scriptRows = rows(manifest.plan?.scenes, maxStudioScenes)
   const scriptIds = new Map(scriptRows.filter(item => typeof item?.id === 'string').map(item => [item.id, uuid()]))
   const scenes = await Promise.all(rows(manifest.scenes, maxStudioScenes).map(async scene => {
-    const asset = await file(scene.media, [...imageTypes, ...videoTypes])
+    const asset = await file(scene.media, [...artworkTypes, ...videoTypes])
     return { id: uuid(), heading: text(scene.heading, 140), caption: text(scene.caption, 500), file: asset,
       duration: Number.isFinite(scene.duration) ? Math.max(.01, scene.duration) : 5,
       offset: Number.isFinite(scene.offset) ? Math.max(0, scene.offset) : 0,
@@ -94,7 +96,7 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
   const components = await Promise.all(componentRows.map(async item => {
     const type = text(item.type, 32)
     const voiceComponent = manifest.version >= 4 && type === voiceComponentType
-    const asset = await file(item.media, voiceComponent ? audioTypes : manifest.version >= 5 && type === 'Cenas' ? [...imageTypes, ...videoTypes] : imageTypes)
+    const asset = await file(item.media, voiceComponent ? audioTypes : manifest.version >= 5 && type === 'Cenas' ? [...artworkTypes, ...videoTypes] : artworkTypes)
     return { id: componentIds.get(item.id) || uuid(), type, title: text(item.title, 80), prompt: text(item.prompt, 2000),
       file: voiceComponent && asset ? await normalizeVoiceReference(asset) : asset, voiceId: componentIds.get(item.voiceId),
       sourceClipId: clipIds.get(item.sourceClipId), kind: text(item.kind, 40) }
@@ -138,6 +140,7 @@ export async function readStudioProject(blob, studio, { expiresAt, signal } = {}
     referenceModelId: text(manifest.configuration?.referenceModel, 80),
     narrationText: text(manifest.narration?.text, 12000), narration: await file(manifest.narration?.media, audioTypes),
     recording: await file(recordingName, videoTypes, true), reference: await file(manifest.references?.video, videoTypes),
+    codeBackground: await file(manifest.references?.codeBackground, artworkTypes),
     transitionClips: await Promise.all(rows(manifest.references?.transition, 2).map(name => file(name, videoTypes))),
     referenceImages: (await frames(manifest.references?.images, 10)).filter(Boolean), sourceFrames: (await frames(manifest.references?.keyframes, 8)).filter(Boolean) }
 }

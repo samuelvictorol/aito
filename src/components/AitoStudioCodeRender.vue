@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useQuasar } from 'quasar'
 import { videoFormats } from 'src/services/aitoiaVideo'
+import { maxMotionArtwork, motionArtworkFile } from 'src/services/aitoiaMotionArtwork'
 import lemoCatalog from 'src/data/aitoMotionStyles.json'
 
 const props = defineProps({
@@ -8,9 +10,12 @@ const props = defineProps({
   disabled: Boolean,
   canImprove: Boolean,
   suggestion: { type: Object, default: null },
+  backgroundAsset: { type: Object, default: null },
+  artworkComponents: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['render', 'improve', 'downloadSource'])
+const emit = defineEmits(['render', 'improve', 'downloadSource', 'update:backgroundAsset', 'generateArtwork'])
 const formatId = defineModel('formatId', { type: String, required: true })
+const $q = useQuasar()
 
 const hyperframes = [
   { id: 'kinetic', label: 'Tipografia animada', category: 'titles', accent: '#4ce9d1', background: '#10223c', motion: 'zoom', description: 'Uma manchete em movimento para abrir a história.', title: 'Seu WhatsApp, em ordem.', subtitle: 'Reúna conversas e acompanhe cada atendimento.' },
@@ -55,6 +60,10 @@ const intensity = ref(65)
 const speed = ref('normal')
 const font = ref('auto')
 const previewKey = ref(0)
+const artworkInput = ref(null)
+const artworkUrl = ref('')
+const artworkError = ref(false)
+const allowedArtwork = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
 
 const aspects = Object.fromEntries(videoFormats.map(format => [format.id, format.label]))
 const models = computed(() => engine.value === 'hyperframes' ? hyperframes : lemoCatalog.styles)
@@ -74,7 +83,8 @@ const matches = computed(() => {
 const pages = computed(() => Math.max(1, Math.ceil(matches.value.length / pageSize)))
 const visibleModels = computed(() => matches.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const locked = computed(() => props.disabled || Boolean(props.busy))
-const canRender = computed(() => !locked.value && Boolean(title.value.trim()))
+const hasSceneTitle = computed(() => !locked.value && Boolean(title.value.trim()))
+const canRender = computed(() => hasSceneTitle.value && !artworkError.value)
 const previewMotion = computed(() => motion.value === 'auto' ? selectedPreset.value.motion || 'rise' : motion.value)
 const previewLayout = computed(() => layout.value === 'auto' ? selectedPreset.value.layout || 'center' : layout.value)
 const previewFont = computed(() => font.value === 'auto' ? modelFont(selectedPreset.value) : font.value)
@@ -86,11 +96,40 @@ const previewStyle = computed(() => ({
 }))
 
 watch([query, category], () => { page.value = 1 })
+watch(() => props.backgroundAsset, (file, _previous, onCleanup) => {
+  artworkError.value = false
+  artworkUrl.value = file ? URL.createObjectURL(file) : ''
+  const url = artworkUrl.value
+  if (url) onCleanup(() => URL.revokeObjectURL(url))
+}, { immediate: true })
 watch(() => props.suggestion, suggestion => {
   if (!suggestion) return
   title.value = suggestion.title
   subtitle.value = suggestion.subtitle
 })
+
+function useArtwork(file) {
+  if (!file || locked.value) return
+  const extension = file.name?.split('.').at(-1).toLowerCase()
+  const contentType = !file.type || file.type === 'application/octet-stream' ? allowedArtwork[extension] : file.type
+  try {
+    const artwork = contentType && file.type !== contentType
+      ? new File([file], file.name, { type: contentType, lastModified: file.lastModified }) : file
+    emit('update:backgroundAsset', motionArtworkFile(artwork))
+  } catch (error) {
+    $q.notify({ type: 'negative', position: 'top', message: error.message })
+  }
+}
+
+function pickArtwork(event) {
+  useArtwork(event.target.files?.[0])
+  event.target.value = ''
+}
+
+function pickComponent(event) {
+  useArtwork(props.artworkComponents.find(item => item.id === event.target.value)?.file)
+  event.target.value = ''
+}
 
 function palette({ accent: highlight, background: canvas }) {
   const channels = canvas.match(/[0-9a-f]{2}/gi).map(channel => Number.parseInt(channel, 16) / 255)
@@ -151,6 +190,12 @@ function scene() {
       <div><h2>Vídeo por código</h2><p>Escolha uma skill e edite a cena. A renderização não usa AitoTokens.</p></div>
     </header>
 
+    <aside class="code-render__artwork-banner" aria-label="Geração de mídia para o projeto">
+      <span class="code-render__artwork-icon"><q-icon name="mdi-creation" size="22px" /></span>
+      <div><strong>Crie mídia para a cena</strong><p>Descreva o que quer gerar e, se precisar, envie até três referências. Usa AitoTokens.</p></div>
+      <button class="code-render__secondary" type="button" :disabled="locked" @click="emit('generateArtwork')"><q-icon name="mdi-image-plus-outline" size="19px" /> Gerar GIF ou imagem</button>
+    </aside>
+
     <fieldset class="code-render__section">
       <legend>Skill</legend>
       <div class="code-render__engines">
@@ -198,7 +243,10 @@ function scene() {
       <div class="code-render__composition">
         <div class="code-render__artboard">
           <div class="code-render__artboard-heading"><strong>{{ selectedPreset.label }}</strong><span>{{ aspects[formatId] }}</span></div>
-          <div class="code-render__preview" :class="[`format--${formatId}`, ...art(selectedPreset)]" :style="previewStyle">
+          <div class="code-render__preview" :class="[`format--${formatId}`, ...art(selectedPreset), { 'has-background': artworkUrl && !artworkError }]" :style="previewStyle">
+            <div v-if="artworkUrl && !artworkError" class="code-render__preview-artwork" :class="`artwork--${previewLayout}`">
+              <img :key="artworkUrl" :src="artworkUrl" alt="" @error="artworkError = true" />
+            </div>
             <div :key="previewKey" class="code-render__preview-copy" :class="[`align--${previewLayout}`, `font--${previewFont}`, `motion--${previewMotion}`, { 'is-playing': previewKey > 0 }]">
               <span v-if="eyebrow">{{ eyebrow }}</span><strong>{{ title || selectedPreset.title || selectedPreset.label }}</strong><small v-if="subtitle">{{ subtitle }}</small>
             </div>
@@ -214,6 +262,17 @@ function scene() {
           <div class="code-render__settings">
             <label>Formato<select v-model="formatId" :disabled="locked"><option v-for="item in videoFormats" :key="item.id" :value="item.id">{{ item.title }} · {{ item.label }}</option></select></label>
             <label>Duração<select v-model="duration" :disabled="locked"><option v-for="seconds in 7" :key="seconds" :value="seconds + 1">{{ seconds + 1 }} s</option></select></label>
+          </div>
+          <div class="code-render__artwork-controls" @dragover.prevent @drop.prevent="useArtwork($event.dataTransfer?.files?.[0])">
+            <div class="code-render__artwork-state" aria-live="polite">
+              <q-icon :name="backgroundAsset?.type === 'image/gif' ? 'mdi-file-gif-box' : 'mdi-image-outline'" size="21px" />
+              <div><strong>Mídia de fundo</strong><span>{{ artworkError ? 'Não foi possível abrir este arquivo.' : backgroundAsset?.name || 'Decoração do modelo' }}</span></div>
+              <button v-if="backgroundAsset" class="code-render__icon" type="button" aria-label="Restaurar decoração do modelo" title="Restaurar decoração do modelo" :disabled="locked" @click="emit('update:backgroundAsset', null)"><q-icon name="mdi-close" size="18px" /></button>
+            </div>
+            <input ref="artworkInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" hidden @change="pickArtwork" />
+            <button class="code-render__secondary" type="button" :disabled="locked" @click="artworkInput?.click()"><q-icon name="mdi-upload-outline" size="18px" /> Enviar imagem ou GIF</button>
+            <label v-if="artworkComponents.length">Usar componente<select :disabled="locked" @change="pickComponent"><option value="">Escolha no projeto</option><option v-for="item in artworkComponents" :key="item.id" :value="item.id">{{ item.title }}</option></select></label>
+            <small>PNG, JPEG, WebP ou GIF de até {{ maxMotionArtwork / 1024 / 1024 }} MB. A mídia acompanha a posição do modelo.</small>
           </div>
         </div>
       </div>
@@ -242,7 +301,7 @@ function scene() {
         <q-spinner v-if="busy === 'code-source'" size="18px" /><q-icon v-else name="mdi-file-code-outline" size="18px" />
         {{ busy === 'code-source' ? 'Preparando HTML…' : 'Baixar HTML' }}
       </button>
-      <button v-if="canImprove" class="code-render__secondary" type="button" :disabled="!canRender" @click="emit('improve', scene())">
+      <button v-if="canImprove" class="code-render__secondary" type="button" :disabled="!hasSceneTitle" @click="emit('improve', scene())">
         <q-spinner v-if="busy === 'code-text'" size="18px" /><q-icon v-else name="mdi-creation-outline" size="18px" />
         {{ busy === 'code-text' ? 'Ajustando texto…' : 'Melhorar texto com IA' }}
         <q-tooltip>A revisão de texto segue a cobrança normal de IA.</q-tooltip>
@@ -257,6 +316,12 @@ function scene() {
 .code-render__header > .q-icon { margin-top: 1px; color: var(--aito-ai-accent); }
 .code-render__header h2 { margin: 0; font-size: 1.22rem; line-height: 1.25; }
 .code-render__header p { margin: 5px 0 0; color: var(--aito-ai-muted); }
+.code-render__artwork-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px; border: 1px solid var(--aito-ai-purple-line); border-radius: 10px; background: linear-gradient(115deg, var(--aito-ai-purple-soft), var(--aito-ai-panel) 78%); }
+.code-render__artwork-banner > div { flex: 1 1 160px; min-width: 0; }
+.code-render__artwork-banner p { margin: 3px 0 0; color: var(--aito-ai-muted); font-size: .78rem; }
+.code-render__artwork-icon { display: grid; flex: 0 0 38px; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
+.code-render .code-render__artwork-banner > button { border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); }
+.code-render .code-render__artwork-banner > button:hover:not(:disabled) { background: var(--aito-ai-purple-soft); }
 .code-render fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .code-render legend { margin-bottom: 9px; font-weight: 720; }
 .code-render__engines, .code-render__catalog-tools, .code-render__settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -318,9 +383,22 @@ html[data-aito-ia-theme='light'] .code-render__engine--lemu { --engine-accent: v
 .code-render__artboard-heading { display: flex; justify-content: space-between; gap: 6px; width: 100%; font-size: .8rem; }
 .code-render__artboard-heading span { flex: none; color: var(--aito-ai-muted); }
 .code-render__preview { width: 100%; max-height: 245px; aspect-ratio: 16 / 9; border-radius: 6px; color: var(--model-text); }
+.code-render__preview.has-background::after { display: none; }
 .code-render__preview.format--portrait { max-width: 135px; aspect-ratio: 9 / 16; }
 .code-render__preview.format--square { max-width: 195px; aspect-ratio: 1; }
-.code-render__preview-copy { display: grid; gap: 5px; width: 100%; padding: 11%; text-align: center; overflow-wrap: anywhere; font-family: system-ui, sans-serif; }
+.code-render__preview-artwork { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.code-render__preview-artwork img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.code-render__preview-artwork::after { position: absolute; inset: 0; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--model-background) 76%, transparent), color-mix(in srgb, var(--model-background) 37%, transparent)); content: ''; }
+.code-render__preview-artwork:is(.artwork--left, .artwork--split, .artwork--right, .artwork--bottom) { border: 1px solid color-mix(in srgb, var(--model-accent) 55%, transparent); border-radius: 6px; }
+.code-render__preview-artwork:is(.artwork--left, .artwork--split) { inset: 9% 5% 9% 54%; }
+.code-render__preview-artwork.artwork--right { inset: 9% 54% 9% 5%; }
+.code-render__preview-artwork.artwork--bottom { inset: 5% 13% 38%; }
+.code-render__preview-artwork:is(.artwork--left, .artwork--split, .artwork--right, .artwork--bottom)::after { background: color-mix(in srgb, var(--model-background) 10%, transparent); }
+.code-render__preview.has-background .code-render__preview-copy:is(.align--left, .align--split, .align--right) { width: 55%; padding: 6%; }
+.code-render__preview.has-background .code-render__preview-copy.align--left { margin-right: auto; }
+.code-render__preview.has-background .code-render__preview-copy.align--right { margin-left: auto; }
+.code-render__preview.has-background .code-render__preview-copy.align--bottom { padding: 5% 8%; }
+.code-render__preview-copy { position: relative; display: grid; gap: 5px; width: 100%; padding: 11%; text-align: center; overflow-wrap: anywhere; font-family: system-ui, sans-serif; }
 .code-render__preview-copy.align--left { text-align: left; }
 .code-render__preview-copy.align--right { text-align: right; }
 .code-render__preview-copy.align--bottom { align-self: end; text-align: left; }
@@ -341,6 +419,13 @@ html[data-aito-ia-theme='light'] .code-render__engine--lemu { --engine-accent: v
 @keyframes code-scene-reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes code-scene-pulse { 0% { opacity: 0; transform: scale(var(--scene-scale)); } 73% { opacity: 1; transform: scale(1.035); } 100% { transform: none; } }
 .code-render__inputs { display: grid; gap: 8px; align-content: start; }
+.code-render__artwork-controls { display: grid; gap: 7px; min-width: 0; padding: 9px; border: 1px dashed var(--aito-ai-line); border-radius: 8px; background: var(--aito-ai-bg); }
+.code-render__artwork-controls > small { color: var(--aito-ai-muted); font-size: .72rem; }
+.code-render__artwork-state { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.code-render__artwork-state > .q-icon { color: var(--aito-ai-accent); }
+.code-render__artwork-state div { display: grid; line-height: 1.3; }
+.code-render__artwork-state strong { font-size: .8rem; }
+.code-render__artwork-state span { color: var(--aito-ai-muted); font-size: .74rem; overflow-wrap: anywhere; }
 .code-render__preset-details { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; color: var(--aito-ai-muted); font-size: .79rem; }
 .code-render__preset-details p { margin: 0; }
 .code-render__link { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--aito-ai-accent); font: inherit; text-align: left; cursor: pointer; }

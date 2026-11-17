@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useMeta, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
+import { api } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoAboutLink from 'components/AitoAboutLink.vue'
@@ -11,11 +12,14 @@ import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
 import AitoVideoModelCarousel from 'components/AitoVideoModelCarousel.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
-import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
+import { aitoTokenCost, aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
+import { useStudioDrawerAutoOpen } from 'src/composables/useStudioDrawerAutoOpen'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { studioVideoModels, videoAspectPreview, videoCatalog, videoModelPreview, videoModelSpecialty } from 'src/data/aitoiaVideoCatalog'
 import { readAnswer } from 'src/services/aitoiaChat'
+import { fileFromImage } from 'src/services/aitoiaArtifacts'
+import { animateMotionArtwork, fitMotionImage, maxMotionArtwork, motionArtworkFile, motionArtworkTypes, prepareMotionReference, readMotionBackground } from 'src/services/aitoiaMotionArtwork'
 import { downloadAitoIAFile, zipAitoIAFiles } from 'src/services/aitoiaArchive'
 import { readStudioProject } from 'src/services/aitoiaStudioArchive'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
@@ -53,9 +57,9 @@ const authOpen = ref(false)
 const authMode = ref('register')
 const walletOpen = ref(false)
 const tabs = [
+  { id: 'ai', label: 'Vídeos com IA', icon: 'mdi-movie-open-play-outline' },
   { id: 'scenes', label: 'Cenas', icon: 'mdi-view-dashboard-outline' },
   { id: 'voice', label: 'Locução', icon: 'mdi-waveform' },
-  { id: 'ai', label: 'Vídeo com IA', icon: 'mdi-movie-open-play-outline' },
   { id: 'code', label: 'Vídeo por código', icon: 'mdi-code-tags' },
 ]
 const defaultProjectName = 'Projeto Sem Nome'
@@ -64,7 +68,7 @@ const title = ref(defaultProjectName)
 const projectTitle = computed(() => title.value.trim() || defaultProjectName)
 const projectColor = ref(defaultProjectColor)
 const projectColorOpen = ref(false)
-const startingTab = () => ['ai', 'code'].includes(route.query.tab) ? route.query.tab : testerMode.value ? 'code' : 'scenes'
+const startingTab = () => ['ai', 'code'].includes(route.query.tab) ? route.query.tab : testerMode.value ? 'code' : 'ai'
 const tab = ref(startingTab())
 const codeControlsOpened = ref(tab.value === 'code')
 watch(testerMode, () => { tab.value = startingTab() })
@@ -88,6 +92,22 @@ const clipLibrary = shallowRef([])
 const codeClips = computed(() => clipLibrary.value.filter(clip => clip.kind === 'code'))
 const codeClip = computed(() => codeClips.value.find(clip => clip.id === generated.value?.id) || codeClips.value[0])
 const codeSuggestion = shallowRef(null)
+const codeBackgroundFile = shallowRef(null)
+const artworkOpen = ref(false)
+const artworkPrompt = ref('')
+const artworkFiles = ref([])
+const artworkOutput = ref('image')
+const artworkMotion = ref('zoom')
+const artworkQuote = shallowRef(null)
+const artworkResult = shallowRef(null)
+const artworkPreview = ref('')
+const artworkBusy = computed(() => ['artwork-quote', 'artwork-generate', 'artwork-animate'].includes(busy.value))
+watch([artworkPrompt, artworkFiles, artworkOutput, artworkMotion], () => { artworkQuote.value = null })
+watch(artworkResult, (file, _, onCleanup) => {
+  artworkPreview.value = file ? URL.createObjectURL(file) : ''
+  const url = artworkPreview.value
+  if (url) onCleanup(() => URL.revokeObjectURL(url))
+}, { flush: 'sync' })
 const codeVideo = ref(null)
 const codePoster = ref('')
 watch([codeVideo, codeClip], ([video, clip], _, onCleanup) => {
@@ -144,6 +164,9 @@ const inventoryClips = shallowRef([])
 const inventoryLoading = ref(false)
 const inventoryError = ref('')
 const projectComponents = shallowRef([])
+const artworkComponents = computed(() => projectComponents.value.filter(({ file }) =>
+  file?.size > 0 && file.size <= maxMotionArtwork && motionArtworkTypes.includes(file.type)))
+const artworkSaved = computed(() => Boolean(artworkResult.value && projectComponents.value.some(item => item.file === artworkResult.value)))
 const remakeDraft = shallowRef(null)
 const remakeRevision = ref(0)
 const remakeEditor = ref(null)
@@ -188,6 +211,7 @@ const saveClipOpen = ref(false)
 const destinationProject = ref('')
 const savingClip = ref(false)
 const projectsOpen = ref(false)
+useStudioDrawerAutoOpen(projectsOpen, () => route.name)
 const masterOpen = ref(true)
 const modelListOpen = ref(true)
 const studioHeader = ref(null)
@@ -225,7 +249,7 @@ const transitionClips = shallowRef([null, null])
 const transitionLabels = ['1. Clipe de saída', '2. Clipe de entrada']
 const referenceAnalysis = ref('')
 const videoQuote = shallowRef(null)
-const tokenCost = cents => aitoTokenCost(cents, status.value?.aitoTokensPerUsd)
+const tokenCost = cents => aitoTokenCost(cents, status.value?.aitoTokensPerUsd ?? options.value?.aitoTokensPerUsd)
 const quoteCost = computed(() => tokenCost(videoQuote.value?.billedUsdCents))
 const reservedCost = computed(() => tokenCost(generated.value?.reservedUsdCents))
 const generationModes = [
@@ -347,11 +371,12 @@ const jobStorageKey = 'aitoia-video-jobs'
 const jobLifetime = AITOIA_RETENTION_MS
 let jobTimer
 
-watch(accountId, (next, previous) => {
+watch([accountId, signedIn], ([next, authenticated], [previous]) => {
   if (previous) activeOperation?.abort()
   optionsRequest?.abort()
-  if (next && signedIn.value) loadOptions()
-  else { options.value = null; optionsLoading.value = false }
+  options.value = null
+  if (next || !authenticated) loadOptions()
+  else optionsLoading.value = false
 })
 
 const videoProjectLinks = createVideoProjectLinks({ owner: () => accountId.value, access: wallet.access })
@@ -364,7 +389,7 @@ const { projects, records, activeId, loading: projectLoading, storageError, clou
   watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, masterScript, sceneScripts, scriptTarget,
     voiceReferenceId, prompt, generationMode, videoModel, referenceModelId,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
-    activeJob, projectComponents, componentTypes, remakeDraft, removedGeneratedIds],
+    activeJob, projectComponents, componentTypes, remakeDraft, removedGeneratedIds, codeBackgroundFile],
 })
 
 function importArchive(file) {
@@ -496,7 +521,11 @@ watch(() => componentForm.value?.file, file => {
 }, { flush: 'sync' })
 function setComponentImage(file) {
   if (!file) return
-  try { checkImageReference(file); updateComponentForm({ file, sourceClipId: undefined }); componentError.value = '' }
+  try {
+    if (file.type === 'image/gif') motionArtworkFile(file)
+    else checkImageReference(file)
+    updateComponentForm({ file, sourceClipId: undefined }); componentError.value = ''
+  }
   catch (cause) { componentError.value = cause.message }
 }
 async function setComponentVoice(file) {
@@ -661,22 +690,23 @@ async function run(kind, action, { background = false } = {}) {
   }
 }
 async function loadOptions() {
-  if (!signedIn.value) return
   optionsRequest?.abort()
   const controller = new AbortController()
   optionsRequest = controller
+  const access = signedIn.value ? wallet.access() : null
   optionsLoading.value = true
   optionsError.value = ''
   try {
-    const { data } = await wallet.access().get('/aitoia/video/options', { signal: controller.signal })
-    if (controller.signal.aborted) return
+    const config = { signal: controller.signal }
+    const { data } = await (access ? access.get('/aitoia/video/options', config) : api.get('/aitoia/video/catalog', config))
+    if (controller.signal.aborted || (access ? !access.current() : signedIn.value)) return
     options.value = data.data
     if (!options.value?.voices?.some(item => item.id === voice.value)) voice.value = options.value?.voices?.[0]?.id || ''
     const available = textModels.value
     if (!available.some(model => model.id === videoModel.value)) {
       videoModel.value = available.find(model => model.id === 'kling-4.0-flash')?.id || available[0]?.id || ''
     }
-    restoreJob()
+    if (access) restoreJob()
   } catch (cause) {
     if (!controller.signal.aborted) optionsError.value = cause.response?.data?.message || 'Não foi possível consultar o catálogo.'
   } finally { if (optionsRequest === controller) optionsLoading.value = false }
@@ -1195,7 +1225,9 @@ function renderCodeScene(scene, source = false) {
   const access = wallet.access()
   const endpoint = '/aitoia/video/studio/code-render'
   run(source ? 'code-source' : 'code-render', async signal => {
-    const { data } = await access.post(source ? `${endpoint}/source` : endpoint, scene,
+    const backgroundMedia = codeBackgroundFile.value ? await readMotionBackground(codeBackgroundFile.value) : undefined
+    signal.throwIfAborted()
+    const { data } = await access.post(source ? `${endpoint}/source` : endpoint, { ...scene, backgroundMedia },
       { responseType: 'blob', timeout: 90000, signal })
     signal.throwIfAborted()
     if (!mounted || !access.current()) return
@@ -1216,6 +1248,76 @@ function renderCodeScene(scene, source = false) {
     await saveProject()
     if (!storageError.value) notice.value = 'Cena renderizada e disponível no projeto.'
   })
+}
+
+function openCodeArtwork() {
+  if (useCredits()) artworkOpen.value = true
+}
+
+function quoteCodeArtwork() {
+  if (!artworkPrompt.value.trim() || !useCredits()) return
+  run('artwork-quote', async signal => {
+    const access = wallet.access()
+    const files = artworkFiles.value || []
+    if (files.length > 3) throw new Error('Use até três referências.')
+    const references = await Promise.all(files.map(prepareMotionReference))
+    const format = { landscape: 'banner', portrait: 'story', square: 'feed' }[formatId.value]
+    const id = walletId.value
+    const { data } = await access.post('/aitoia/marketing/quote', { walletId: id, format, referenceCount: references.length }, { signal })
+    if (!access.current()) return
+    if (!Number.isFinite(data.data?.maxBilledUsdCents)) throw new Error('Não foi possível calcular o valor da arte.')
+    artworkQuote.value = { format, walletId: id, references, maxBilledUsdCents: data.data.maxBilledUsdCents,
+      prompt: artworkPrompt.value.trim(), output: artworkOutput.value, motion: artworkMotion.value }
+  })
+}
+
+function generateCodeArtwork() {
+  const quote = artworkQuote.value
+  if (!quote || !useCredits()) return
+  if (quote.walletId !== walletId.value) { artworkQuote.value = null; return }
+  artworkQuote.value = null
+  run('artwork-generate', async signal => {
+    const access = wallet.access()
+    const { format, walletId: id, references, maxBilledUsdCents, prompt: description, output, motion } = quote
+    try {
+      const { data } = await access.post('/aitoia/images/generations', {
+        walletId: id, format, references, maxBilledUsdCents,
+        prompt: `${description}\nCrie a arte de fundo de uma cena. Deixe espaço visual para o texto sobreposto. Não escreva texto na imagem.`,
+      }, { signal, timeout: 180000, headers: { 'X-Aito-Request-Id': crypto.randomUUID() } })
+      if (!mounted || !access.current() || signal.aborted) return
+      const image = fileFromImage(data.data?.image)
+      const file = new File([image.blob], image.name, { type: image.type })
+      artworkResult.value = file
+      artworkResult.value = output === 'gif' ? await animateMotionArtwork(file, motion, signal) : await fitMotionImage(file)
+    } finally {
+      if (access.current()) void wallet.refreshStatus({ silent: true })
+    }
+  })
+}
+
+function retryArtworkGif() {
+  const file = artworkResult.value
+  if (!file || file.type === 'image/gif') return
+  run('artwork-animate', async signal => { artworkResult.value = await animateMotionArtwork(file, artworkMotion.value, signal) })
+}
+
+function useGeneratedArtwork() {
+  if (!artworkResult.value || busy.value) return
+  run('artwork-animate', async signal => {
+    const file = await fitMotionImage(artworkResult.value)
+    signal.throwIfAborted()
+    codeBackgroundFile.value = file
+    artworkOpen.value = false
+  })
+}
+
+async function saveGeneratedArtwork() {
+  if (!artworkResult.value || !activeId.value || busy.value) return
+  if (artworkSaved.value) return
+  projectComponents.value = [...projectComponents.value, { id: crypto.randomUUID(), type: 'Cenários',
+    title: artworkPrompt.value.trim().slice(0, 80) || 'Arte do vídeo', prompt: artworkPrompt.value.trim(), file: artworkResult.value }]
+  await saveProject()
+  if (!storageError.value) notice.value = 'Arte salva em Componentes → Cenários.'
 }
 
 function improveCodeScene({ title, subtitle }) {
@@ -1889,6 +1991,7 @@ async function archiveProject() {
       plan: { master: masterScript.value, scenes: sceneScripts.value },
       configuration: { prompt: prompt.value, scriptPrompt: scriptPrompt.value, mode: generationMode.value, model: videoModel.value, referenceModel: referenceModelId.value },
       references: { video: add(reference.value?.file, 'referencia'), images: referenceImages.value.map((item, index) => add(item.file, `imagem-${index + 1}`)),
+        codeBackground: add(codeBackgroundFile.value, 'fundo-por-codigo'),
         transition: transitionClips.value.map((clip, index) => add(clip?.file, `transicao-${index + 1}`)),
         keyframes: sourceFrames.value.map((frame, index) => add(frame.file, `quadro-${index + 1}`)) },
       clips: clipLibrary.value.map(({ id, number, file, title, kind, expiresAt }) => ({ id, number, title, kind, expiresAt,
@@ -1903,6 +2006,12 @@ async function archiveProject() {
 }
 function resetProject() {
   pause()
+  codeBackgroundFile.value = null
+  artworkOpen.value = false
+  artworkPrompt.value = ''
+  artworkFiles.value = []
+  artworkQuote.value = null
+  artworkResult.value = null
   removeNarration()
   clearVoicePreview()
   clearReference()
@@ -1961,6 +2070,7 @@ function snapshotProject() {
     scriptTarget: scriptTarget.value, voiceReferenceId: voiceReferenceId.value,
     generationMode: generationMode.value, videoModel: videoModel.value, referenceModelId: referenceModelId.value,
     reference: reference.value?.file, referenceImages: referenceImages.value.map(item => item.file), referenceAnalysis: referenceAnalysis.value,
+    codeBackground: codeBackgroundFile.value,
     transitionClips: transitionClips.value.map(clip => clip?.file || null), sourceFrames: sourceFrames.value.map(frame => frame.file),
     insertionAfter: insertionAfter.value,
     componentTypes: componentTypes.value, components: projectComponents.value, remake: remakeDraft.value,
@@ -2011,6 +2121,7 @@ async function restoreProject(project, signal) {
       componentTypes.value = [...new Set([...builtInComponentTypes, ...project.componentTypes])].slice(0, 20)
     }
     projectComponents.value = project.components || []
+    codeBackgroundFile.value = project.codeBackground || null
     remakeDraft.value = project.remake || null
     removedGeneratedIds.value = Array.isArray(project.removedGeneratedIds) ? project.removedGeneratedIds.filter(isVideoGenerationId).slice(-300) : []
     referenceAnalysis.value = project.referenceAnalysis || ''
@@ -2069,6 +2180,7 @@ watch([timeline, format, previewMode], () => { if (mounted) seek(playhead.value)
 watch(tab, () => { if (mounted) paint(playhead.value) }, { flush: 'post' })
 onMounted(async () => {
   mounted = true
+  if (!signedIn.value) void loadOptions()
   window.addEventListener('online', refreshVideoProjectLinks)
   if (route.query.auth === 'register' && !signedIn.value) showAuth()
   exportFormats.value = studioVideoExports()
@@ -2110,7 +2222,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
     </q-header>
-    <q-drawer v-model="projectsOpen" show-if-above :dark="isDark" bordered :breakpoint="900" :width="306" class="video-studio__drawer">
+    <q-drawer v-model="projectsOpen" :dark="isDark" bordered :breakpoint="900" :width="306" class="video-studio__drawer">
       <aside id="video-studio-project-drawer" class="video-studio__drawer-content" aria-label="Projetos e componentes">
         <header class="video-studio__drawer-heading">
           <div><span>{{ testerMode ? 'Estúdio de vídeo de testes' : 'Estúdio de vídeo' }}</span><h2>Projetos e componentes</h2></div>
@@ -2184,7 +2296,7 @@ onBeforeUnmount(() => {
         <button type="button" class="video-studio__primary" :disabled="!draftReady || atLimit" @click="applyDraft(true)">Criar projeto</button>
       </div>
 
-      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code' }">
+      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code', 'video-studio__grid--voice': tab === 'voice' }">
         <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
           <q-tabs :model-value="tab" :dark="isDark" dense no-caps align="justify" indicator-color="transparent" @update:model-value="chooseEditorTab">
             <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label"
@@ -2195,7 +2307,7 @@ onBeforeUnmount(() => {
         <section v-if="tab === 'ai'" class="video-studio__catalog" aria-label="Modo de geração">
           <div class="video-studio__catalog-header">
             <div><h2>{{ remakeMode ? 'Ferramentas de vídeo' : 'Criar com Higgsfield' }}</h2><p v-if="!remakeMode">Gere um clipe a partir de um prompt e referências opcionais.</p></div>
-            <button v-if="signedIn" class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
+            <button class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
           </div>
           <div class="video-studio__generation-modes" role="group" aria-label="Como criar o clipe">
             <button v-for="item in generationModes.filter(mode => mode.id !== 'continuation' || generationMode === mode.id)" :key="item.id" class="video-studio__secondary" :class="{ 'video-studio__remake-button': item.id === 'remake' }" type="button" :aria-pressed="generationMode === item.id" :disabled="!mayEdit" @click="changeGenerationMode(item.id)">
@@ -2206,7 +2318,7 @@ onBeforeUnmount(() => {
             <AitoVideoModelCarousel v-if="modelCards.length" :cards="modelCards" :selected-id="selectedConfig?.id" :active="modelListOpen"
               :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" @select="selectVideoModel" />
             <p v-else class="video-studio__catalog-empty">{{ optionsLoading ? 'Carregando modelos de vídeo…' : optionsError ||
-              (!signedIn ? 'Entre para consultar os modelos de vídeo.' : hasReference || reference || referenceImages.length || voiceReference
+              (hasReference || reference || referenceImages.length || voiceReference
                 ? 'Nenhum modelo deste modo aceita as referências anexadas.' : 'Nenhum modelo disponível para este modo.') }}</p>
           </q-expansion-item>
         </section>
@@ -2226,6 +2338,8 @@ onBeforeUnmount(() => {
           <div v-if="codeControlsOpened" v-show="tab === 'code'" class="video-studio__section">
             <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit"
               :can-improve="Boolean(wallet.currentModel.value)" :suggestion="codeSuggestion" @render="renderCodeScene"
+              :background-asset="codeBackgroundFile" :artwork-components="artworkComponents"
+              @update:background-asset="codeBackgroundFile = $event" @generate-artwork="openCodeArtwork"
               @download-source="scene => renderCodeScene(scene, true)" @improve="improveCodeScene" />
           </div>
 
@@ -2662,6 +2776,45 @@ onBeforeUnmount(() => {
         </q-card-section>
       </q-card>
     </q-dialog>
+    <q-dialog v-model="artworkOpen" :persistent="artworkBusy">
+      <q-card class="aito-ai-theme video-studio__dialog" :dark="isDark">
+        <q-card-section class="video-studio__scene-heading">
+          <h2><q-icon name="mdi-creation-outline" /> Gerar GIF ou imagem</h2>
+          <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar geração" :disable="artworkBusy" />
+        </q-card-section>
+        <q-card-section class="video-studio__dialog-list">
+          <q-input v-model="artworkPrompt" :dark="isDark" outlined type="textarea" rows="3" maxlength="900"
+            label="Descreva a arte" placeholder="Ex. luzes suaves sobre um estúdio verde, com espaço para o título" :disable="artworkBusy" />
+          <q-file v-model="artworkFiles" :dark="isDark" outlined multiple clearable use-chips
+            label="Até 3 imagens ou GIFs de referência" accept="image/png,image/jpeg,image/webp,image/gif" :max-files="3"
+            :max-file-size="12 * 1024 * 1024" :disable="artworkBusy" @rejected="error = 'Use até três imagens ou GIFs de até 12 MB cada.'" />
+          <p v-if="artworkFiles?.some(file => file.type === 'image/gif')" class="video-studio__hint">A IA usa um quadro de cada GIF como referência.</p>
+          <div class="video-studio__fields">
+            <label>Saída<select v-model="artworkOutput" :disabled="artworkBusy"><option value="image">Imagem</option><option value="gif">GIF animado</option></select></label>
+            <label v-if="artworkOutput === 'gif'">Movimento<select v-model="artworkMotion" :disabled="artworkBusy"><option value="zoom">Zoom suave</option><option value="drift">Deslocamento lateral</option></select></label>
+          </div>
+          <p v-if="artworkOutput === 'gif'" class="video-studio__hint">A IA cria a imagem e o estúdio aplica o movimento selecionado em loop.</p>
+          <div class="video-studio__actions">
+            <button v-if="!artworkQuote" type="button" class="video-studio__primary" :disabled="artworkBusy || !artworkPrompt.trim()" @click="quoteCodeArtwork">
+              <q-spinner v-if="artworkBusy" size="18px" /><q-icon v-else name="mdi-creation-outline" size="18px" />
+              {{ busy === 'artwork-generate' ? 'Gerando…' : busy === 'artwork-animate' ? 'Preparando arte…' : 'Consultar custo' }}
+            </button>
+            <button v-else type="button" class="video-studio__primary" :disabled="artworkBusy" @click="generateCodeArtwork">
+              <q-icon name="mdi-creation-outline" size="18px" /> Confirmar e gerar · até {{ tokenCost(artworkQuote.maxBilledUsdCents) || usd(artworkQuote.maxBilledUsdCents) }}
+            </button>
+          </div>
+          <template v-if="artworkPreview">
+            <img :src="artworkPreview" alt="Arte gerada" class="video-studio__reference-preview video-studio__artwork-preview" />
+            <div class="video-studio__actions">
+              <button type="button" class="video-studio__primary" :disabled="artworkBusy" @click="useGeneratedArtwork">Aplicar ao fundo</button>
+              <button type="button" class="video-studio__secondary" :disabled="artworkBusy || !activeId || artworkSaved" @click="saveGeneratedArtwork">{{ artworkSaved ? 'Salvo em Cenários' : 'Salvar em Cenários' }}</button>
+              <button type="button" class="video-studio__secondary" :disabled="artworkBusy" @click="downloadAitoIAFile(artworkResult, artworkResult.name)">Baixar</button>
+              <button v-if="artworkOutput === 'gif' && artworkResult.type !== 'image/gif'" type="button" class="video-studio__secondary" :disabled="artworkBusy" @click="retryArtworkGif">Animar como GIF</button>
+            </div>
+          </template>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
     <q-dialog v-model="componentOpen" persistent>
       <q-card class="aito-ai-theme video-studio__dialog">
         <q-card-section class="video-studio__scene-heading"><h2>{{ componentForm ? `${editingComponent ? 'Editar' : 'Adicionar'} ${componentName}` : componentType }}</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar componentes" /></q-card-section>
@@ -2674,7 +2827,7 @@ onBeforeUnmount(() => {
               <input type="file" accept="audio/*,.mp3,.wav,.m4a" :disabled="componentLoading" @change="fileFrom($event, setComponentVoice)" />
             </label>
             <video v-else-if="componentVideo(componentForm)" class="video-studio__reference-preview" :src="componentPosters.get(componentForm.file)" controls playsinline preload="metadata" aria-label="Clipe salvo" />
-            <label v-else>Imagem de referência<input type="file" accept="image/jpeg,image/png,image/webp" @change="fileFrom($event, setComponentImage)" /></label>
+            <label v-else>Imagem ou GIF de referência<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="fileFrom($event, setComponentImage)" /></label>
             <label v-if="componentType === 'Personagens'">Voz do personagem
               <select :value="componentForm.voiceId || ''" @change="updateComponentForm({ voiceId: $event.target.value })">
                 <option value="">Sem voz vinculada</option>
@@ -2902,6 +3055,7 @@ onBeforeUnmount(() => {
 .video-studio__analysis button { justify-self: start; }
 .video-studio__generated video, .video-studio__rendered, .video-studio__reference-preview { display: block; width: 100%; max-height: 420px; border-radius: 8px; background: var(--aito-ai-bg); }
 .video-studio__reference-preview { max-height: 220px; }
+.video-studio__artwork-preview { object-fit: contain; }
 .video-studio__dialog { width: min(620px, 95vw); background: var(--aito-ai-surface); color: var(--aito-ai-text); }
 .video-studio__dialog h2 { margin: 0 0 8px; font-size: 1.15rem; }
 .video-studio__dialog-list { display: grid; gap: 10px; }
@@ -2960,6 +3114,7 @@ html[data-aito-ia-theme='light'] .video-studio__delete-clip:hover:not(:disabled)
   .video-studio__scenes > button { min-height: 52px; scroll-snap-align: start; }
   .video-studio__editor { order: 5; }
   .video-studio__grid--generate .video-studio__editor { order: 3; }
+  .video-studio__grid--voice .video-studio__editor { order: 2; }
   .video-studio__preview--clips { order: 4; }
   .video-studio__grid--code .video-studio__editor { order: 3; }
   .video-studio__preview--code { order: 4; }

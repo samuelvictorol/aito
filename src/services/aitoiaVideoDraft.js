@@ -32,6 +32,6 @@ export async function readVideoDraft(owner) {
 export function requestsVideoGeneration(value) {
   const text = String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim()
   const request = text.replace(/^(?:por favor[, ]+|please\s+)/i, '')
-    .replace(/^(?:(?:voce\s+)?(?:pode|poderia|consegue|quero)\s+(?:que voce\s+)?|voce\s+)?(?:me\s+)?/i, '')
+    .replace(/^(?:(?:voce\s+)?(?:pode|poderia|consegue|conseguiria)\s+|(?:eu\s+)?(?:quero|queria|preciso|gostaria)\s+(?:de\s+)?(?:que\s+(?:voce\s+)?)?|(?:can|could|would) you\s+)?(?:me\s+)?/i, '')
   return /^(?:gere|gerar|crie|criar|faca|fazer|produza|produzir|renderize|renderizar|generate|create|make|render)\s+(?:(?:para mim|pra mim|for me)\s+)?(?:(?:um|uma|o|a|the|an?)\s+)?(?:video|clipe|clip|animacao)s?\b/i.test(request)
 }

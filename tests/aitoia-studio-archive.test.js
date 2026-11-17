@@ -3,6 +3,17 @@ import test from 'node:test'
 import { zipAitoIAFiles } from '../src/services/aitoiaArchive.js'
 import { exportMarketingProject, readStudioProject } from '../src/services/aitoiaStudioArchive.js'
 
+test('restores animated GIFs as components and as the code-scene background', async () => {
+  const path = 'midias/arte.gif'
+  const gif = new Blob([Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')], { type: 'image/gif' })
+  const archive = await zip({ format: 'aitoia-video', version: 5, aspectRatio: '9:16', scenes: [{}],
+    components: [{ type: 'Cenários', title: 'Arte', media: path }], references: { codeBackground: path } }, [{ name: path, blob: gif }])
+  const project = await readStudioProject(archive, 'video')
+  assert.equal(project.codeBackground.type, 'image/gif')
+  assert.equal(project.components[0].file.type, 'image/gif')
+  assert.deepEqual(await project.codeBackground.arrayBuffer(), await gif.arrayBuffer())
+})
+
 const png = new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+rLf0AAAAASUVORK5CYII=', 'base64')], { type: 'image/png' })
 const zip = (project, files = []) => zipAitoIAFiles([{ name: 'projeto.json', blob: new Blob([JSON.stringify(project)]) }, ...files])
 
