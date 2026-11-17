@@ -6,7 +6,9 @@ import { useMeta, useQuasar } from 'quasar'
 import { api as publicApi } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
+import AitoIAThemeToggle from 'components/AitoIAThemeToggle.vue'
 import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
@@ -18,6 +20,7 @@ const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const path = '/aitoia-marketing-studio'
 const $q = useQuasar()
+const { isDark } = useAitoIATheme()
 const drawerBreakpoint = 900
 const drawerOpen = ref(false)
 const drawerButton = ref(null)
@@ -424,17 +427,18 @@ onBeforeUnmount(() => {
       </div>
     </q-header>
 
-    <q-drawer v-model="drawerOpen" show-if-above bordered dark no-swipe-open :breakpoint="drawerBreakpoint" :width="drawerWidth" class="marketing__drawer">
+    <q-drawer v-model="drawerOpen" show-if-above bordered :dark="isDark" no-swipe-open :breakpoint="drawerBreakpoint" :width="drawerWidth" class="marketing__drawer">
       <aside id="marketing-workspace" class="marketing__drawer-content" aria-labelledby="marketing-workspace-title" :inert="!drawerOpen" @keydown.esc.stop="closeWorkspace">
         <div class="marketing__section-title marketing__drawer-title">
           <h2 id="marketing-workspace-title">Projetos e componentes</h2>
           <q-btn ref="drawerCloseButton" flat round dense icon="mdi-close" aria-label="Fechar projetos e componentes" @click="closeWorkspace" />
         </div>
+        <AitoIAThemeToggle />
         <section class="marketing__drawer-section" aria-label="Projetos do Estúdio de Marketing">
           <AitoStudioProjectPicker drawer can-export :projects="projects" :active-id="projectId" :loading="projectLoading" :storage-error="storageError" :cloud-state="cloudState"
             :disabled="!accountId || locked" @create="createProject" @open="selectProject" @remove="deleteProject"
             @renew="renewProject" @import="importArchive" @export="archiveProject" />
-          <q-input v-if="projectId" v-model="projectTitle" dark outlined label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
+          <q-input v-if="projectId" v-model="projectTitle" :dark="isDark" outlined label="Nome do projeto" maxlength="65" :disable="locked || projectLoading" />
         </section>
         <section class="marketing__drawer-section" aria-labelledby="marketing-palette">
           <div class="marketing__section-title"><h2 id="marketing-palette">Paleta de Cores</h2><span>{{ palette.length }}/{{ maxPaletteColors }}</span></div>
@@ -498,7 +502,7 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <q-input v-model="prompt" dark outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="catalog?.maxPromptCharacters || 3000" :disable="locked" />
+            <q-input v-model="prompt" :dark="isDark" outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="catalog?.maxPromptCharacters || 3000" :disable="locked" />
 
             <section aria-labelledby="marketing-references">
               <div class="marketing__section-title"><h2 id="marketing-references">Referências</h2><span>{{ referenceCount }}/{{ maxReferences }}</span></div>
@@ -535,7 +539,7 @@ onBeforeUnmount(() => {
     </q-page-container>
 
     <q-dialog :model-value="!!quote" @update:model-value="value => { if (!value) quote = null }">
-      <q-card v-if="quote" dark class="aito-ai-theme marketing__dialog">
+      <q-card v-if="quote" :dark="isDark" class="aito-ai-theme marketing__dialog">
         <h2>Confirmar geração</h2>
         <p>{{ format.label }} · {{ format.width }} × {{ format.height }}</p>
         <p v-if="quoteCost">Limite de débito de <strong>{{ quoteCost }}</strong>.</p>
@@ -545,22 +549,22 @@ onBeforeUnmount(() => {
     </q-dialog>
 
     <q-dialog v-model="paletteDialog" persistent aria-labelledby="marketing-palette-editor">
-      <q-card dark class="aito-ai-theme marketing__dialog marketing__palette-dialog">
+      <q-card :dark="isDark" class="aito-ai-theme marketing__dialog marketing__palette-dialog">
         <h2 id="marketing-palette-editor">{{ paletteIndex < 0 ? 'Adicionar cor' : 'Editar cor' }}</h2>
-        <q-color v-model="paletteColor" dark flat bordered format-model="hex" class="full-width" />
+        <q-color v-model="paletteColor" :dark="isDark" flat bordered format-model="hex" class="full-width" />
         <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Cancelar" /><q-btn unelevated no-caps class="marketing__primary" label="Salvar cor" :disable="paletteLocked || !isPaletteColor(paletteColor)" @click="savePaletteColor" /></div>
       </q-card>
     </q-dialog>
 
     <q-dialog v-model="componentDialog" persistent>
-      <q-card dark class="aito-ai-theme marketing__dialog">
+      <q-card :dark="isDark" class="aito-ai-theme marketing__dialog">
         <h2>Novo componente de marca</h2>
         <q-form class="marketing__form" @submit.prevent="addComponent">
-          <q-input v-model="componentLabel" dark outlined label="Nome" placeholder="Ex. logo principal" maxlength="60" :disable="kitBusy" />
-          <q-input v-model="componentText" dark outlined type="textarea" autogrow label="Texto reutilizável" :maxlength="catalog?.maxComponentCharacters || 500" :disable="kitBusy" />
-          <q-btn-toggle v-model="componentOrigin" no-caps unelevated spread color="grey-9" toggle-color="teal-8" :options="[{ label: 'Upload', value: 'upload' }, { label: 'Link da imagem', value: 'url' }]" />
-          <q-file v-if="componentOrigin === 'upload'" v-model="componentFile" dark outlined clearable label="Imagem da marca" accept="image/jpeg,image/png,image/webp" :disable="kitBusy" />
-          <q-input v-else v-model.trim="componentUrl" dark outlined clearable label="Endereço HTTPS da imagem" :disable="kitBusy" />
+          <q-input v-model="componentLabel" :dark="isDark" outlined label="Nome" placeholder="Ex. logo principal" maxlength="60" :disable="kitBusy" />
+          <q-input v-model="componentText" :dark="isDark" outlined type="textarea" autogrow label="Texto reutilizável" :maxlength="catalog?.maxComponentCharacters || 500" :disable="kitBusy" />
+          <q-btn-toggle v-model="componentOrigin" no-caps unelevated spread :color="isDark ? 'grey-9' : 'teal-1'" :text-color="isDark ? 'white' : 'teal-10'" toggle-color="teal-8" toggle-text-color="white" :options="[{ label: 'Upload', value: 'upload' }, { label: 'Link da imagem', value: 'url' }]" />
+          <q-file v-if="componentOrigin === 'upload'" v-model="componentFile" :dark="isDark" outlined clearable label="Imagem da marca" accept="image/jpeg,image/png,image/webp" :disable="kitBusy" />
+          <q-input v-else v-model.trim="componentUrl" :dark="isDark" outlined clearable label="Endereço HTTPS da imagem" :disable="kitBusy" />
           <q-btn v-if="componentOrigin === 'url' ? componentUrl : componentFile" flat no-caps icon="mdi-image-search-outline" label="Conferir imagem" :loading="componentPreviewBusy" :disable="kitBusy" @click="previewComponent" />
           <img v-if="componentPreview" :src="componentPreview.url" class="marketing__component-preview" alt="Prévia do componente" />
           <p v-if="componentImageError" role="alert">{{ componentImageError }}</p>
@@ -576,7 +580,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .marketing { min-height: 100svh; color: var(--aito-ai-text); background: var(--aito-ai-glow), var(--aito-ai-bg); font-family: var(--aito-ai-font); }
-.marketing__header { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-bottom: 1px solid var(--aito-ai-line); }
+.marketing__header { color: var(--aito-ai-text); background: var(--aito-ai-header); border-bottom: 1px solid var(--aito-ai-line); }
 .marketing__bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left)); }
 .marketing__brand, .marketing__account, .marketing__balance, .marketing__navigation { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .marketing__navigation .q-btn { color: var(--aito-ai-accent); flex: none; }
@@ -592,14 +596,14 @@ onBeforeUnmount(() => {
 .marketing__intro h1 { margin: 0 0 6px; font-size: clamp(1.9rem, 4.6vw, 3rem); font-weight: 780; line-height: 1.1; letter-spacing: -.045em; }
 .marketing p, .marketing small, .marketing__section-title span { color: var(--aito-ai-muted); }
 .marketing__grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: 14px; }
-.marketing__panel, .marketing__dialog { padding: clamp(14px, 2.3vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 14px; background: var(--aito-ai-surface); }
+.marketing__panel, .marketing__dialog { padding: clamp(14px, 2.3vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 14px; color: var(--aito-ai-text); background: var(--aito-ai-surface); }
 .marketing :deep(.marketing__drawer) { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-color: var(--aito-ai-line); }
 .marketing__drawer-content { display: flex; min-height: 100%; flex-direction: column; gap: 18px; padding: 18px 16px max(16px, env(safe-area-inset-bottom)); }
 .marketing__drawer-title { margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--aito-ai-line); }
 .marketing__drawer-section { display: grid; gap: 12px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--aito-ai-line); }
 .marketing__drawer-section .marketing__section-title, .marketing__drawer-section p { margin: 0; }
 .marketing__drawer-section p, .marketing__section-title span { font-size: .79rem; }
-.marketing__drawer-footer { margin-top: auto; padding-top: 5px; }
+.marketing__drawer-footer { display: grid; gap: 8px; margin-top: auto; padding-top: 5px; }
 .marketing__drawer-footer .q-btn { min-height: 44px; background: var(--aito-ai-panel); }
 .marketing__add-component { min-height: 44px; color: var(--aito-ai-accent); }
 .marketing__brand-link { justify-self: start; min-height: 44px; color: var(--aito-ai-accent); }
@@ -638,7 +642,7 @@ onBeforeUnmount(() => {
 .marketing__palette-dialog .marketing__actions { margin-top: 12px; }
 .marketing__gallery img { width: 49px; height: 49px; }
 .marketing__gallery button[aria-pressed=true], .marketing__kit button[aria-pressed=true] { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
-.marketing__primary { min-height: 42px; color: var(--aito-ai-ink); background: var(--aito-ai-gradient); font-weight: 750; }
+.marketing__primary { min-height: 42px; color: var(--aito-ai-on-accent); background: var(--aito-ai-gradient); font-weight: 750; }
 .marketing__canvas, .marketing__result { display: grid; place-items: center; min-height: 250px; padding: 12px; border-radius: 8px; background: var(--aito-ai-bg); }
 .marketing__canvas > div { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; width: auto; height: min(300px, 53vw); max-width: 100%; padding: 12px; border: 1px dashed var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); text-align: center; }
 .marketing__result img { display: block; max-width: 100%; max-height: 525px; object-fit: contain; }
@@ -656,6 +660,16 @@ onBeforeUnmount(() => {
 .marketing__formats label:nth-child(2n) { background: #202a3c; }
 .marketing__formats label:has(:checked) { background: #134c42; border-color: #52d0b1; }
 .marketing__formats label:nth-child(2n):has(:checked) { background: #342951; border-color: #b49ce8; color: #eee3ff; }
+html[data-aito-ia-theme='light'] .marketing__main { background: none; }
+html[data-aito-ia-theme='light'] .marketing__intro h1 { color: var(--aito-ai-text); }
+html[data-aito-ia-theme='light'] .marketing__form { border-color: var(--aito-ai-line); background: linear-gradient(150deg, var(--aito-ai-accent-soft), var(--aito-ai-surface) 42%); box-shadow: 0 10px 30px var(--aito-ai-shadow); }
+html[data-aito-ia-theme='light'] .marketing__preview { border-color: var(--aito-ai-purple-line); background: linear-gradient(150deg, var(--aito-ai-purple-soft), var(--aito-ai-surface) 62%); box-shadow: 0 10px 30px var(--aito-ai-shadow); }
+html[data-aito-ia-theme='light'] .marketing__preview h2 { color: var(--aito-ai-purple); }
+html[data-aito-ia-theme='light'] :is(.marketing__canvas, .marketing__result) { background: var(--aito-ai-canvas); }
+html[data-aito-ia-theme='light'] .marketing__canvas > div { background: linear-gradient(150deg, var(--aito-ai-surface), var(--aito-ai-purple-soft)); border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); }
+html[data-aito-ia-theme='light'] .marketing__formats label:nth-child(2n) { background: var(--aito-ai-surface); }
+html[data-aito-ia-theme='light'] .marketing__formats label:has(:checked) { background: var(--aito-ai-accent-soft); border-color: var(--aito-ai-accent-strong); }
+html[data-aito-ia-theme='light'] .marketing__formats label:nth-child(2n):has(:checked) { background: var(--aito-ai-purple-soft); border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); }
 @media (max-width: 900px) {
   .marketing__drawer-content { padding-top: calc(16px + env(safe-area-inset-top)); }
 }

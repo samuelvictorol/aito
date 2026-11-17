@@ -2,11 +2,13 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { AITO_INSTALL_PATH } from 'src/services/aitoInstall'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 
 const open = defineModel({ type: Boolean, required: true })
 const props = defineProps({ platform: { type: String, required: true }, nativePrompt: Boolean, installing: Boolean })
 const emit = defineEmits(['install'])
 const route = useRoute()
+const { isDark } = useAitoIATheme()
 const onInstallPage = computed(() => route.path === AITO_INSTALL_PATH)
 const canInstall = computed(() => props.platform !== 'ios' && (props.nativePrompt || props.installing))
 const deviceIcon = computed(() => ({ ios: 'mdi-apple', android: 'mdi-android', desktop: 'mdi-monitor' })[props.platform])
@@ -14,7 +16,7 @@ const deviceIcon = computed(() => ({ ios: 'mdi-apple', android: 'mdi-android', d
 
 <template>
   <q-dialog v-model="open" aria-labelledby="aito-install-title">
-    <q-card dark class="install-card">
+    <q-card :dark="isDark" class="install-card">
       <header class="install-card__header">
         <img src="/icons/aitoia-180.png" alt="" width="52" height="52" />
         <q-btn v-close-popup flat round icon="mdi-close" aria-label="Fechar instalação" />
@@ -62,4 +64,9 @@ const deviceIcon = computed(() => ({ ios: 'mdi-apple', android: 'mdi-android', d
 .install-card__guide ol { padding-inline-start: 19px; margin: 6px 0 0; color: #d5e9e3; }
 .install-card__guide li + li { margin-top: 4px; }
 .install-card__action { min-height: 44px; width: 100%; background: #a7efde; color: #102e28; font-weight: 700; }
+html[data-aito-ia-theme='light'] .install-card { background: var(--aito-ai-glow), var(--aito-ai-panel); border-color: var(--aito-ai-line); color: var(--aito-ai-text); }
+html[data-aito-ia-theme='light'] .install-card :is(p, ol) { color: var(--aito-ai-muted); }
+html[data-aito-ia-theme='light'] .install-card__guide { background: var(--aito-ai-accent-soft); }
+html[data-aito-ia-theme='light'] .install-card__guide > .q-icon { color: var(--aito-ai-accent); }
+html[data-aito-ia-theme='light'] .install-card__action { background: var(--aito-ai-gradient); color: var(--aito-ai-on-accent); }
 </style>

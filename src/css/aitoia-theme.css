@@ -1,4 +1,4 @@
-.aito-ai-theme {
+:root[data-aito-ia-theme], .aito-ai-theme {
   color-scheme: dark;
   --aito-ai-bg: #03090b;
   --aito-ai-surface: #061819;
@@ -25,4 +25,51 @@
   --aito-ai-glow: radial-gradient(ellipse at 75% 12%, #13bc9d2e, transparent 64%);
   --aito-ai-overlay: #01080ad9;
   --aito-ai-font: 'Geist', 'Inter', system-ui, sans-serif;
+  --aito-ai-header: #071313;
+  --aito-ai-canvas: #03090b;
+  --aito-ai-shadow: #0005;
+  --aito-ai-media-bg: #060c11;
+  --aito-ai-chip: #143632;
+  --aito-ai-on-accent: #03120f;
 }
+
+:root[data-aito-ia-theme='light'],
+:root[data-aito-ia-theme='light'] .aito-ai-theme {
+  color-scheme: light;
+  --aito-ai-bg: #f1f9f7;
+  --aito-ai-surface: #fbfefd;
+  --aito-ai-panel: #fff;
+  --aito-ai-raised: #eaf6f2;
+  --aito-ai-line: #b8d8d0;
+  --aito-ai-text: #112f2a;
+  --aito-ai-muted: #4c6863;
+  --aito-ai-accent: #086554;
+  --aito-ai-accent-strong: #07816a;
+  --aito-ai-accent-soft: #dcf2eb;
+  --aito-ai-gold: #795713;
+  --aito-ai-gold-soft: #fdf5df;
+  --aito-ai-gold-line: #d9c185;
+  --aito-ai-ink: #092a22;
+  --aito-ai-purple: #60408d;
+  --aito-ai-purple-soft: #f1ebfa;
+  --aito-ai-purple-line: #d3c4e9;
+  --aito-ai-error: #992845;
+  --aito-ai-error-soft: #fceaf0;
+  --aito-ai-error-line: #e5afc0;
+  --aito-ai-gradient: linear-gradient(135deg, #c3f3e3, #7ad9bc);
+  --aito-ai-gold-gradient: linear-gradient(125deg, #fff0bd, #eac477);
+  --aito-ai-glow: radial-gradient(ellipse at 80% 0%, #c2eee4 0%, transparent 65%),
+    linear-gradient(155deg, #e6f8f3 0%, #f1f9f7 54%, #f7faf9 100%);
+  --aito-ai-overlay: #edf9f5e8;
+  --aito-ai-header: #f9fdfa;
+  --aito-ai-canvas: #e5f5ef;
+  --aito-ai-shadow: #24625720;
+  --aito-ai-media-bg: #e1f0ec;
+  --aito-ai-chip: #e5f4ef;
+  --aito-ai-on-accent: #082f25;
+}
+
+:root[data-aito-ia-theme='light'] .q-dialog__backdrop { background: #0f322a61; }
+:root[data-aito-ia-theme='light'] .q-tooltip { background: #214c43; color: #fff; }
+:root[data-aito-ia-theme='light'] .q-menu:not(.q-menu--dark) { color: var(--aito-ai-text); background: var(--aito-ai-panel); }
+:root[data-aito-ia-theme='light'] .aito-ai-theme ::selection { background: #b4ead6; color: #12372c; }

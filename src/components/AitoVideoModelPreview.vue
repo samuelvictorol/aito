@@ -34,6 +34,7 @@ watch(() => [props.files?.motion, props.animate], () => { playing.value = false 
 <style scoped>
 .aito-model-preview { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; max-height: 150px; overflow: hidden; border-radius: 8px; color: var(--aito-ai-accent); background: radial-gradient(ellipse at center, #34404d, #171a20 76%); }
 .aito-model-preview--sprite { background-color: var(--aito-ai-panel); background-image: url('/aitoia-model-posters.webp'); background-size: 200% 400%; }
+html[data-aito-ia-theme='light'] .aito-model-preview:not(.aito-model-preview--sprite) { background: radial-gradient(ellipse at center, var(--aito-ai-raised), var(--aito-ai-canvas) 76%); }
 .aito-model-preview :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .aito-model-preview video { opacity: 0; transition: opacity .18s ease; }
 .aito-model-preview .aito-model-preview__playing { opacity: 1; }

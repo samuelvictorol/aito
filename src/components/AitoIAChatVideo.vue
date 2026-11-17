@@ -353,4 +353,5 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
 .chat-video__error { margin: 0; color: var(--aito-ai-error); font-size: .8rem; }
 .chat-video__pricing { margin: 0; color: var(--aito-ai-gold); font-size: .8rem; }
 .chat-video__result video { display: block; width: 100%; max-height: 290px; margin-bottom: 6px; border-radius: 7px; background: var(--aito-ai-bg); }
+:global([data-aito-ia-theme='light'] .chat-video__result video) { background: var(--aito-ai-media-bg); }
 </style>

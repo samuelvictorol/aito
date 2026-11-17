@@ -8,8 +8,10 @@ import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoIAMaintenance from 'components/AitoIAMaintenance.vue'
+import AitoIAThemeToggle from 'components/AitoIAThemeToggle.vue'
 import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { chatVideoModels } from 'src/data/aitoiaVideoCatalog'
 import { fileKind, MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
@@ -28,6 +30,7 @@ useMeta({
 const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
+const { isDark } = useAitoIATheme()
 const state = useAitoIA({ allowAdmin: true })
 const { videoInMaintenance } = useAitoAvailability()
 const { signedIn, adminMode, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
@@ -188,7 +191,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="aito-ai-theme aito-studio" :class="{ 'aito-studio--sidebar': sidebarOpen }">
+  <div class="aito-ai-theme aito-studio" :class="{ 'aito-studio--sidebar': sidebarOpen, 'aito-studio--light': !isDark }">
     <button v-if="sidebarOpen" type="button" class="aito-studio__scrim" aria-label="Fechar conversas" @click="sidebarOpen = false" />
     <aside class="aito-studio__sidebar" aria-label="Conversas">
       <div class="aito-studio__brand-row">
@@ -200,7 +203,7 @@ onMounted(() => {
       <div class="aito-studio__sidebar-label">
         <span>Conversas<span v-if="signedIn"> · {{ chats.length }}/{{ AITOIA_CHAT_LIMIT }}</span></span>
         <button v-if="chats.length" type="button" class="aito-studio__icon" aria-label="Exportar conversas"><q-icon name="mdi-tray-arrow-down" size="18px" />
-          <q-menu dark class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 190px">
+          <q-menu :dark="isDark" class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 190px">
             <q-item v-close-popup clickable @click="state.exportChats('zip')"><q-item-section>Baixar tudo em ZIP</q-item-section></q-item>
             <q-item v-close-popup clickable @click="state.exportChats('json')"><q-item-section>Baixar JSON</q-item-section></q-item>
           </q-list></q-menu>
@@ -210,17 +213,18 @@ onMounted(() => {
         <div v-for="chat in chats" :key="chat.id" class="aito-studio__chat" :class="{ 'is-active': chat.id === activeId }">
           <button type="button" class="aito-studio__chat-name" :title="chat.title" :aria-current="chat.id === activeId ? 'true' : undefined" @click="chooseChat(chat.id)"><q-icon name="mdi-message-outline" size="17px" /><span>{{ chat.title }}</span></button>
           <button type="button" class="aito-studio__icon" :aria-label="'Opções de ' + chat.title"><q-icon name="mdi-dots-horizontal" size="18px" />
-            <q-menu dark class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 177px">
+            <q-menu :dark="isDark" class="aito-ai-theme aito-studio__menu" anchor="bottom right" self="top right"><q-list dense style="min-width: 177px">
               <q-item v-close-popup clickable @click="askRename(chat)"><q-item-section>Renomear</q-item-section></q-item>
               <q-item v-close-popup clickable @click="state.exportChats('zip', chat)"><q-item-section>Baixar ZIP</q-item-section></q-item>
               <q-item v-close-popup clickable @click="state.exportChats('json', chat)"><q-item-section>Baixar JSON</q-item-section></q-item>
-              <q-item v-close-popup clickable @click="dialog = { type: 'remove', chat }"><q-item-section class="text-red-3">Excluir</q-item-section></q-item>
+              <q-item v-close-popup clickable @click="dialog = { type: 'remove', chat }"><q-item-section class="aito-studio__delete">Excluir</q-item-section></q-item>
             </q-list></q-menu>
           </button>
         </div>
         <div v-if="!chats.length" class="aito-studio__empty-list">{{ sessionLoading ? 'Carregando conversas…' : 'Nenhuma conversa salva' }}</div>
       </div>
       <div class="aito-studio__sidebar-foot">
+        <AitoIAThemeToggle class="aito-studio__theme-toggle" />
         <router-link v-if="signedIn" :to="adminMode ? '/admin' : '/app'"><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" size="19px" /> {{ adminMode ? 'Aito Admin' : 'Minha conta' }} <q-icon class="aito-studio__out" name="mdi-arrow-top-right" size="15px" /></router-link>
         <button v-else type="button" @click="showAuth('login')"><q-icon name="mdi-login" size="19px" /> Entrar</button>
         <q-icon name="mdi-lock-outline" size="16px" /><span>Histórico neste dispositivo por até 7 dias.</span>
@@ -301,7 +305,7 @@ onMounted(() => {
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="state" />
 
     <q-dialog v-model="videoChoice" :persistent="draftSending">
-      <q-card dark class="aito-ai-theme aito-studio__dialog">
+      <q-card :dark="isDark" class="aito-ai-theme aito-studio__dialog">
         <AitoIAMaintenance v-if="videoInMaintenance" area="video" compact />
         <template v-else>
           <div class="aito-studio__dialog-head"><q-icon name="mdi-movie-open-play-outline" size="24px" /><h2>Como quer criar seu vídeo?</h2></div>
@@ -319,7 +323,7 @@ onMounted(() => {
     </q-dialog>
 
     <q-dialog :model-value="Boolean(imageQuote)" @update:model-value="value => { if (!value) imageQuote = null }">
-      <q-card v-if="imageQuote" dark class="aito-ai-theme aito-studio__dialog">
+      <q-card v-if="imageQuote" :dark="isDark" class="aito-ai-theme aito-studio__dialog">
         <div class="aito-studio__dialog-head"><q-icon name="mdi-image-plus-outline" size="22px" /><h2>Gerar imagem</h2></div>
         <div class="aito-studio__settings">
           <p v-if="tokenCost(imageQuote.maxBilledUsdCents)">Limite de débito de <strong>{{ tokenCost(imageQuote.maxBilledUsdCents) }}</strong>.</p>
@@ -329,7 +333,7 @@ onMounted(() => {
     </q-dialog>
 
     <q-dialog v-model="settingsOpen">
-      <q-card dark class="aito-ai-theme aito-studio__dialog">
+      <q-card :dark="isDark" class="aito-ai-theme aito-studio__dialog">
         <div class="aito-studio__dialog-head"><q-icon name="mdi-tune-variant" size="22px" /><h2>Modelo e potência</h2><button v-close-popup type="button" class="aito-studio__icon" aria-label="Fechar configurações"><q-icon name="mdi-close" size="21px" /></button></div>
         <div class="aito-studio__settings">
           <div class="aito-studio__select-row">
@@ -344,7 +348,7 @@ onMounted(() => {
     </q-dialog>
 
     <q-dialog :model-value="Boolean(dialog)" @update:model-value="value => { if (!value) dialog = null }">
-      <q-card dark class="aito-ai-theme aito-studio__dialog">
+      <q-card :dark="isDark" class="aito-ai-theme aito-studio__dialog">
         <form v-if="dialog" @submit.prevent="completeDialog">
           <div class="aito-studio__dialog-head"><h2>{{ dialog.type === 'rename' ? 'Renomear conversa' : 'Excluir conversa' }}</h2><button v-close-popup type="button" class="aito-studio__icon" aria-label="Cancelar"><q-icon name="mdi-close" size="21px" /></button></div>
           <div class="aito-studio__settings">
@@ -377,8 +381,9 @@ onMounted(() => {
 .aito-studio__chat-name .q-icon { flex: 0 0 auto; color: var(--aito-ai-accent); }
 .aito-studio__empty-list { padding: .2rem .5rem; color: var(--aito-ai-muted); font-size: .77rem; }
 .aito-studio__sidebar-foot { display: grid; grid-template-columns: 17px 1fr; gap: 12px 7px; align-items: center; padding: 12px 3px 3px; border-top: 1px solid var(--aito-ai-line); color: var(--aito-ai-muted); font-size: .72rem; }
-.aito-studio__sidebar-foot a, .aito-studio__sidebar-foot button { grid-column: span 2; display: flex; align-items: center; gap: 9px; border: 0; padding: 4px 2px; color: var(--aito-ai-text); background: transparent; text-decoration: none; text-align: left; cursor: pointer; font-size: .81rem; }
-.aito-studio__sidebar-foot a:hover, .aito-studio__sidebar-foot button:hover { color: var(--aito-ai-accent); }
+.aito-studio__theme-toggle { grid-column: 1 / -1; }
+.aito-studio__sidebar-foot > a, .aito-studio__sidebar-foot > button { grid-column: span 2; display: flex; align-items: center; gap: 9px; border: 0; padding: 4px 2px; color: var(--aito-ai-text); background: transparent; text-decoration: none; text-align: left; cursor: pointer; font-size: .81rem; }
+.aito-studio__sidebar-foot > a:hover, .aito-studio__sidebar-foot > button:hover { color: var(--aito-ai-accent); }
 .aito-studio__out { margin-left: auto; color: var(--aito-ai-muted); }
 .aito-studio__main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--aito-ai-glow), var(--aito-ai-bg); }
 .aito-studio__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 63px; padding: 10px 23px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
@@ -435,6 +440,7 @@ onMounted(() => {
 .aito-studio__drop { z-index: 4; position: absolute; inset: 70px 12px 10px; display: grid; align-content: center; justify-items: center; gap: 12px; border: 2px dashed var(--aito-ai-accent); border-radius: 19px; color: var(--aito-ai-accent); background: var(--aito-ai-overlay); font-weight: 700; pointer-events: none; }
 .aito-studio__dialog { width: min(460px, calc(100vw - 2rem)); padding: 1rem; border: 1px solid var(--aito-ai-line); border-radius: 15px; color: var(--aito-ai-text); background: var(--aito-ai-surface); }
 .aito-studio__menu { border: 1px solid var(--aito-ai-line); color: var(--aito-ai-text); background: var(--aito-ai-surface); }
+.aito-studio__delete { color: var(--aito-ai-error); }
 .aito-studio__dialog-head { display: flex; align-items: center; gap: .45rem; }
 .aito-studio__dialog-head > .q-icon { color: var(--aito-ai-purple); }
 .aito-studio__dialog-head h2 { flex: 1; margin: 0; font-size: 1.12rem; font-weight: 750; line-height: 1.25; }
@@ -447,6 +453,12 @@ onMounted(() => {
 .aito-studio__reasoning strong { color: var(--aito-ai-purple); font-size: .82rem; }
 .aito-studio__reasoning input { width: 100%; height: 19px; margin: 6px 0 0; accent-color: var(--aito-ai-purple); cursor: pointer; }
 .aito-studio__setting-error { margin: 0; color: var(--aito-ai-error); font-size: .78rem; line-height: 1.45; }
+.aito-studio--light .aito-studio__header { background: var(--aito-ai-header); }
+.aito-studio--light .aito-studio__composer { box-shadow: 0 13px 36px var(--aito-ai-shadow); }
+.aito-studio--light .aito-studio__orb { box-shadow: 0 12px 33px #4ec5a92d, inset 0 1px 1px #fff; }
+.aito-studio--light .aito-studio__orb img { filter: drop-shadow(0 4px 9px #164f4133); }
+.aito-studio--light .aito-studio__icon:hover, .aito-studio--light .aito-studio__top-model-button:hover { background: var(--aito-ai-raised); }
+.aito-studio--light :is(.aito-studio__signup, .aito-studio__send) { color: var(--aito-ai-on-accent); }
 .aito-studio__mobile-toggle, .aito-studio__sidebar-close, .aito-studio__scrim { display: none; }
 @media (max-width: 740px) {
   .aito-studio { grid-template-columns: minmax(0, 1fr); }

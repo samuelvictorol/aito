@@ -39,6 +39,7 @@ onBeforeUnmount(() => { if (url) URL.revokeObjectURL(url) })
 .aito-attachment__link small { color: var(--aito-ai-muted); font-weight: 400; }
 .aito-attachment__remove { display: grid; min-width: 28px; height: 28px; place-items: center; margin-left: .1rem; border: 0; border-radius: 7px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
 .aito-attachment__remove:hover, .aito-attachment__link:hover { color: var(--aito-ai-text); background: #ffffff0a; }
+:global([data-aito-ia-theme='light'] .aito-attachment__remove:hover), :global([data-aito-ia-theme='light'] .aito-attachment__link:hover) { background: var(--aito-ai-raised); }
 .aito-attachment--preview { width: min(430px, 100%); max-width: 100%; }
 .aito-attachment--preview .aito-attachment__link { display: grid; width: 100%; }
 .aito-attachment--preview .aito-attachment__link img { width: 100%; height: auto; max-height: 440px; object-fit: contain; }

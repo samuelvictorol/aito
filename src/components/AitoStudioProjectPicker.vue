@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { AITOIA_STUDIO_LIMIT, canRenewStudio } from 'src/services/aitoiaLocal'
 
 const props = defineProps({
@@ -14,6 +15,7 @@ const props = defineProps({
   colored: Boolean,
 })
 const emit = defineEmits(['create', 'open', 'remove', 'renew', 'import', 'export'])
+const { isDark } = useAitoIATheme()
 const deleting = ref(false)
 const input = ref(null)
 const now = ref(Date.now())
@@ -38,7 +40,7 @@ function selectFile(event) {
       <div class="aito-projects__selector">
         <span id="aito-project-list-title"><q-icon name="mdi-folder-multiple-outline" size="18px" /> Projetos · {{ projects.length }}/{{ AITOIA_STUDIO_LIMIT }}</span>
         <q-select v-if="colored" class="aito-projects__color-select" :model-value="activeProject" :options="projects"
-          option-label="title" option-value="id" behavior="menu" dark outlined dense aria-label="Escolher projeto"
+          option-label="title" option-value="id" behavior="menu" :dark="isDark" outlined dense aria-label="Escolher projeto"
           :disable="disabled || loading || !projects.length" :loading="loading" :display-value="activeProject?.title || 'Nenhum projeto salvo'"
           @update:model-value="project => emit('open', project.id)">
           <template v-if="activeProject" #selected><span class="aito-projects__color-option"><i :style="{ backgroundColor: projectColor(activeProject) }" aria-hidden="true" />{{ activeProject.title }}</span></template>
@@ -84,7 +86,7 @@ function selectFile(event) {
 .aito-projects__controls select { min-width: 0; width: min(200px, 100%); text-overflow: ellipsis; }
 .aito-projects__color-select { width: 100%; min-width: 0; }
 .aito-projects__color-option { display: inline-flex; align-items: center; gap: 9px; min-width: 0; overflow-wrap: anywhere; }
-.aito-projects__color-option i { display: inline-block; width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; border: 1px solid #ffffff45; }
+.aito-projects__color-option i { display: inline-block; width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; border: 1px solid var(--aito-ai-line); }
 .aito-projects__controls button { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .aito-projects__controls button:disabled { opacity: .54; cursor: not-allowed; }
 .aito-projects__controls button:focus-visible, .aito-projects__controls select:focus-visible { outline: 2px solid var(--aito-ai-accent); outline-offset: 2px; }

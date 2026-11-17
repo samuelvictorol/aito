@@ -14,15 +14,8 @@ export const codexDefaultSetupPrompt = `Ajude-me a configurar o AitoIA no Codex 
 
 export const codexOfferInterval = 15 * 60 * 1000
 
-const promotedRoutes = new Set([
-  'landing-3d', 'aito-tokens-product', 'aito-codex-product', 'user-app', 'aito-ia',
-  'aito-ia-video-studio', 'aito-ia-marketing-studio',
-  'whatsapp-solutions-product', 'whatsapp-solutions-source',
-])
-
 export function offersCodex(route, adminSession) {
-  return !adminSession && !route.query?.auth &&
-    (route.name !== 'user-app' || route.query?.tab !== 'profile') && promotedRoutes.has(route.name)
+  return route.name === 'user-app' && !adminSession && !route.query?.auth && route.query?.tab !== 'profile'
 }
 
 export function codexOfferDelay(now, lastShown) {

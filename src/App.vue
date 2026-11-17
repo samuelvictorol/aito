@@ -9,7 +9,7 @@
   </router-view>
   <CosmicScene v-if="screenLoading"/>
   <AitoInstallDialog v-if="canPromoteInstall || installOpen" v-model="installOpen" :platform="platform" :native-prompt="!!installEvent" :installing="installing" @install="installAitoIA" />
-  <AitoCodexOffer v-if="!themePage && !screenLoading && !maintenance && !checkingAvailability && route.meta.requiresAuth !== 'admin'" />
+  <AitoCodexOffer v-if="route.name === 'user-app' && customerSession && !screenLoading && !maintenance && !checkingAvailability" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
   <AitoSupportShortcut v-if="showSupportShortcut" />
   <div v-if="canPromoteInstall && route.name !== 'landing-3d'" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }"><button type="button" class="aito-install-action" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button><button type="button" class="aito-install-close" aria-label="Ocultar botão Instalar Aito IA" @click="installDismissed = true"><q-icon name="mdi-close" size="16px" /></button></div>
@@ -24,11 +24,14 @@ import { installPlatform, isInstalledAito, offersAitoInstall } from './services/
 import { siteManifest } from './services/siteManifest'
 import AitoIAMaintenance from './components/AitoIAMaintenance.vue'
 import { useAitoAvailabilityBoundary } from './composables/useAitoAvailability'
+import { installAitoIATheme } from './composables/useAitoIATheme'
+import './css/aitoia-theme.css'
 import { useRoute, useRouter } from 'vue-router'
 
 const $q = useQuasar()
 const router = useRouter()
 const route = useRoute()
+installAitoIATheme(route)
 const { maintenance, checkingAvailability, refreshAvailability } = useAitoAvailabilityBoundary(route, router)
 const AitoInstallDialog = defineAsyncComponent(() => import('./components/AitoInstallDialog.vue'))
 const AitoCodexOffer = defineAsyncComponent(() => import('./components/AitoCodexOffer.vue'))
@@ -117,6 +120,8 @@ onBeforeUnmount(() => {
 .aito-install-action { padding: .45rem .65rem; }
 .aito-install-close { padding: 0 .45rem; border-left: 1px solid #5ead9e; }
 .aito-install-button--landing { position: static; pointer-events: auto; }
+html[data-aito-ia-theme='light'] .aito-install-button { background: var(--aito-ai-panel); color: var(--aito-ai-accent); border-color: var(--aito-ai-line); }
+html[data-aito-ia-theme='light'] .aito-install-close { border-color: var(--aito-ai-line); }
 @media (max-width: 670px) {
   .aito-install-button--workspace { top: calc(105px + env(safe-area-inset-top)); }
 }

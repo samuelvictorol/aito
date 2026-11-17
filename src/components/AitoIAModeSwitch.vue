@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import AitoIAMaintenance from './AitoIAMaintenance.vue'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 
 defineProps({
   mode: { type: String, default: 'chat' },
@@ -10,6 +11,7 @@ defineProps({
 })
 const emit = defineEmits(['chat-video'])
 const open = ref(false)
+const { isDark } = useAitoIATheme()
 const { videoInMaintenance } = useAitoAvailability()
 </script>
 
@@ -25,7 +27,7 @@ const { videoInMaintenance } = useAitoAvailability()
     <span v-else :class="{ 'is-current': mode === 'marketing' }" :aria-current="mode === 'marketing' ? 'page' : undefined"><q-icon name="mdi-image-multiple-outline" /> Estúdio de Marketing</span>
   </nav>
   <q-dialog v-model="open">
-    <q-card dark class="aito-ai-theme aito-mode-dialog" aria-labelledby="aito-video-mode-title">
+    <q-card :dark="isDark" class="aito-ai-theme aito-mode-dialog" aria-labelledby="aito-video-mode-title">
       <header>
         <q-icon name="mdi-movie-open-play-outline" size="25px" />
         <h2 id="aito-video-mode-title">Como você quer criar seu vídeo?</h2>

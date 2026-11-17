@@ -1,4 +1,5 @@
 <script setup>
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { videoModelSpecialty } from 'src/data/aitoiaVideoCatalog'
 
 defineProps({
@@ -8,11 +9,12 @@ defineProps({
   disable: Boolean,
 })
 const emit = defineEmits(['update:modelValue'])
+const { isDark } = useAitoIATheme()
 </script>
 
 <template>
   <q-select class="aito-video-model-select" :model-value="modelValue" :options="models" :label="label"
-    option-value="id" emit-value map-options outlined dense dark :disable="disable"
+    option-value="id" emit-value map-options outlined dense :dark="isDark" :disable="disable"
     @update:model-value="emit('update:modelValue', $event)">
     <template #option="scope">
       <q-item v-bind="scope.itemProps">

@@ -1,9 +1,11 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 
 const route = useRoute()
 const router = useRouter()
+const { isDark } = useAitoIATheme()
 const position = ref(null)
 const dragging = ref(false)
 const shortcut = ref(null)
@@ -122,7 +124,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', keepInViewport))
     aria-describedby="support-shortcut-description"
     @hide="openSupportAfterConfirmation"
   >
-    <q-card dark class="aito-ai-theme support-shortcut__dialog">
+    <q-card :dark="isDark" class="aito-ai-theme support-shortcut__dialog">
       <q-card-section>
         <h2 id="support-shortcut-title"><q-icon name="mdi-help-circle-outline" size="24px" /> Ir para o suporte?</h2>
         <p id="support-shortcut-description">Você poderá acompanhar ou abrir um chamado de suporte.</p>
@@ -158,6 +160,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', keepInViewport))
 }
 .support-shortcut:focus-visible { outline: 2px solid #a4fce4; outline-offset: 3px; }
 .support-shortcut:hover { color: white; border-color: #a4fce4; }
+html[data-aito-ia-theme='light'] .support-shortcut {
+  border-color: var(--aito-ai-accent-strong);
+  color: var(--aito-ai-ink);
+  background: var(--aito-ai-gradient);
+  box-shadow: 0 5px 18px var(--aito-ai-shadow);
+}
+html[data-aito-ia-theme='light'] .support-shortcut:focus-visible { outline-color: var(--aito-ai-accent); }
 .support-shortcut.is-dragging { cursor: grabbing; }
 .support-shortcut__dialog {
   width: 390px;

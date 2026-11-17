@@ -100,5 +100,6 @@ function download(block) {
 .aito-response__toolbar span { flex: 1; }
 .aito-response__toolbar button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
 .aito-response__toolbar button:hover { color: var(--aito-ai-text); background: #ffffff12; }
+:global([data-aito-ia-theme='light'] .aito-response__toolbar button:hover) { background: var(--aito-ai-raised); }
 .aito-response__code pre { margin: 0; overflow: auto; padding: 1rem; font-size: .83rem; line-height: 1.55; }
 </style>

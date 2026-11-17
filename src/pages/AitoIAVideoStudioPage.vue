@@ -6,6 +6,7 @@ import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoAboutLink from 'components/AitoAboutLink.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
+import AitoIAThemeToggle from 'components/AitoIAThemeToggle.vue'
 import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
 import AitoVideoModelCarousel from 'components/AitoVideoModelCarousel.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
@@ -19,6 +20,7 @@ import { downloadAitoIAFile, zipAitoIAFiles } from 'src/services/aitoiaArchive'
 import { readStudioProject } from 'src/services/aitoiaStudioArchive'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { useAitoAvailability } from 'src/composables/useAitoAvailability'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { createVideoProjectLinks, isVideoGenerationId } from 'src/services/aitoiaVideoProjectLinks'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
@@ -34,6 +36,7 @@ const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const AitoStudioCodeRender = defineAsyncComponent(() => import('components/AitoStudioCodeRender.vue'))
 const wallet = useAitoIA({ chatHistory: false, allowAdmin: true })
+const { isDark } = useAitoIATheme()
 const { videoInMaintenance } = useAitoAvailability()
 const { signedIn, adminMode, status, walletId, accountId, models } = wallet
 const route = useRoute()
@@ -2107,32 +2110,33 @@ onBeforeUnmount(() => {
         </div>
       </header>
     </q-header>
-    <q-drawer v-model="projectsOpen" show-if-above dark bordered :breakpoint="900" :width="306" class="video-studio__drawer">
+    <q-drawer v-model="projectsOpen" show-if-above :dark="isDark" bordered :breakpoint="900" :width="306" class="video-studio__drawer">
       <aside id="video-studio-project-drawer" class="video-studio__drawer-content" aria-label="Projetos e componentes">
         <header class="video-studio__drawer-heading">
           <div><span>{{ testerMode ? 'Estúdio de vídeo de testes' : 'Estúdio de vídeo' }}</span><h2>Projetos e componentes</h2></div>
           <q-btn flat round dense icon="mdi-close" aria-label="Fechar painel de projetos" @click="projectsOpen = false" />
         </header>
+        <AitoIAThemeToggle />
         <div class="video-studio__drawer-section">
           <AitoStudioProjectPicker v-if="signedIn" drawer colored :projects="projects" :active-id="activeId" :loading="projectLoading"
             :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)"
             @create="chooseProject()" @open="chooseProject" @remove="deleteProject" @renew="renewProject" @import="importArchive" />
-          <q-btn v-else-if="!testerMode" outline no-caps color="teal-3" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
-          <q-input v-if="signedIn && activeId" v-model="title" dark outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
+          <q-btn v-else-if="!testerMode" outline no-caps class="video-studio__accent-btn" icon="mdi-login" label="Entrar para salvar projetos" @click="showAuth('login')" />
+          <q-input v-if="signedIn && activeId" v-model="title" :dark="isDark" outlined dense label="Nome do projeto" maxlength="80" :disable="!mayEdit" />
           <q-btn outline no-caps class="video-studio__script-btn" icon="mdi-script-text-outline" label="Roteiro do projeto"
             :disable="!mayEdit || Boolean(busy)" @click="openProjectScript" />
         </div>
         <div class="video-studio__drawer-section">
           <h3>Componentes</h3>
-          <q-list dark bordered separator class="video-studio__drawer-list">
+          <q-list :dark="isDark" bordered separator class="video-studio__drawer-list">
             <q-item v-for="type in componentTypes" :key="type" clickable :disable="!mayEdit" @click="openComponents(type)">
               <q-item-section avatar><q-icon :name="componentIcons[type] || 'mdi-folder-outline'" size="20px" /></q-item-section>
               <q-item-section>{{ type }}</q-item-section><q-item-section side><q-icon name="mdi-chevron-right" size="18px" /></q-item-section>
             </q-item>
           </q-list>
           <q-form class="video-studio__drawer-add" @submit.prevent="addComponentType">
-            <q-input v-model.trim="componentTypeName" dark outlined dense label="Novo tipo" maxlength="32" :disable="!mayEdit" />
-            <q-btn outline color="teal-3" type="submit" round dense icon="mdi-plus" aria-label="Criar tipo de componente" :disable="!mayEdit || !componentTypeName" />
+            <q-input v-model.trim="componentTypeName" :dark="isDark" outlined dense label="Novo tipo" maxlength="32" :disable="!mayEdit" />
+            <q-btn outline class="video-studio__accent-btn" type="submit" round dense icon="mdi-plus" aria-label="Criar tipo de componente" :disable="!mayEdit || !componentTypeName" />
           </q-form>
         </div>
         <footer class="video-studio__drawer-footer">
@@ -2182,7 +2186,7 @@ onBeforeUnmount(() => {
 
       <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code' }">
         <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
-          <q-tabs :model-value="tab" dark dense no-caps align="justify" indicator-color="transparent" active-color="teal-2" @update:model-value="chooseEditorTab">
+          <q-tabs :model-value="tab" :dark="isDark" dense no-caps align="justify" indicator-color="transparent" @update:model-value="chooseEditorTab">
             <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label"
               :class="{ 'video-studio__code-tab': item.id === 'code' }" :disable="!mayEdit" />
           </q-tabs>
@@ -2372,7 +2376,7 @@ onBeforeUnmount(() => {
             <div v-else-if="offer" class="video-studio__fields video-studio__fields--clip">
               <div class="video-studio__aspect-control">
                 <span>Formato</span>
-                <q-select :model-value="offer.format" :options="videoAspectOptions" emit-value map-options dark dense outlined
+                <q-select :model-value="offer.format" :options="videoAspectOptions" emit-value map-options :dark="isDark" dense outlined
                   class="video-studio__aspect-select" aria-label="Formato do clipe" :disable="!mayEdit"
                   @update:model-value="changeVideoConfiguration('format', $event)">
                   <template #selected-item="scope">
@@ -2483,7 +2487,7 @@ onBeforeUnmount(() => {
             <a v-if="recording" class="video-studio__secondary" :href="recording.url" :download="recording.filename"><q-icon name="mdi-download-outline" size="19px" /> Baixar vídeo</a>
             <button v-if="subtitles" class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="downloadSubtitles"><q-icon name="mdi-subtitles-outline" size="19px" /> Legendas SRT</button>
           </div>
-          <q-linear-progress v-if="busy === 'render'" rounded :value="progress" color="teal-4" aria-label="Progresso de exportação" />
+          <q-linear-progress v-if="busy === 'render'" rounded :value="progress" :color="isDark ? 'teal-4' : 'teal-8'" aria-label="Progresso de exportação" />
           <p v-else-if="!canRecord" class="video-studio__hint">A exportação de vídeo depende do suporte do navegador.</p>
           <video v-if="recording" class="video-studio__rendered" :src="recording.url" controls playsinline preload="metadata" aria-label="Vídeo exportado" />
           <p v-if="!signedIn" class="video-studio__hint"><q-icon name="mdi-shield-lock-outline" size="17px" /> Entre para salvar projetos por até 7 dias.</p>
@@ -2600,7 +2604,7 @@ onBeforeUnmount(() => {
     <q-dialog v-model="projectColorOpen" aria-labelledby="video-project-color">
       <q-card class="aito-ai-theme video-studio__dialog video-studio__color-dialog">
         <q-card-section class="video-studio__scene-heading"><h2 id="video-project-color">Cor do projeto</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar seletor de cor" /></q-card-section>
-        <q-card-section><q-color dark flat bordered format-model="hex" class="full-width" :model-value="projectColor" @update:model-value="setProjectColor" /></q-card-section>
+        <q-card-section><q-color :dark="isDark" flat bordered format-model="hex" class="full-width" :model-value="projectColor" @update:model-value="setProjectColor" /></q-card-section>
       </q-card>
     </q-dialog>
     <q-dialog v-model="scriptOpen" :persistent="busy === 'script'">
@@ -2641,7 +2645,7 @@ onBeforeUnmount(() => {
             </div>
             <label>Roteiro da cena<textarea :value="item.prompt" rows="3" maxlength="1500" placeholder="Ação, enquadramento, expressão e fala" :disabled="Boolean(busy)"
               @input="updateScriptScene(item.id, { prompt: $event.target.value })" /></label>
-            <q-select v-if="projectComponents.length" dense dark outlined multiple emit-value map-options use-chips label="Componentes da cena"
+            <q-select v-if="projectComponents.length" dense :dark="isDark" outlined multiple emit-value map-options use-chips label="Componentes da cena"
               :model-value="item.componentIds" :options="projectComponents" :max-values="12" option-label="title" option-value="id" :disable="Boolean(busy)"
               @update:model-value="value => updateScriptScene(item.id, { componentIds: value })" />
             <AitoVideoModelSelect v-if="scriptModelChoices.get(item.id)?.length" :model-value="item.modelId || ''"
@@ -2738,11 +2742,11 @@ onBeforeUnmount(() => {
 .video-studio button:disabled { cursor: not-allowed; opacity: .54; }
 .video-studio a { text-decoration: none; }
 .video-studio h1, .video-studio h2, .video-studio h3, .video-studio p { margin: 0; }
-.video-studio__header { background: var(--aito-ai-surface); color: var(--aito-ai-text); }
-.video-studio__bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: calc(8px + env(safe-area-inset-top, 0px)) clamp(14px, 3vw, 40px) 8px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); }
+.video-studio__header { background: var(--aito-ai-header); color: var(--aito-ai-text); }
+.video-studio__bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: calc(8px + env(safe-area-inset-top, 0px)) clamp(14px, 3vw, 40px) 8px; border-bottom: 1px solid var(--aito-ai-line); background: var(--aito-ai-header); }
 .video-studio__header-start, .video-studio__brand, .video-studio__mode, .video-studio__account, .video-studio__balance { display: flex; align-items: center; }
 .video-studio__header-start { gap: 8px; min-width: 0; }
-.video-studio__header-start .q-btn { color: var(--aito-ai-accent); }
+.video-studio__header-start .q-btn, .video-studio__accent-btn { color: var(--aito-ai-accent); }
 .video-studio__brand { width: max-content; gap: 6px; color: var(--aito-ai-text); font-size: 1.12rem; }
 .video-studio__mode { justify-content: center; }
 .video-studio__account { justify-self: end; gap: 8px; }
@@ -2771,7 +2775,7 @@ onBeforeUnmount(() => {
 .video-studio__drawer-list :deep(.q-item) { min-height: 44px; padding: 7px 10px; }
 .video-studio__drawer-list :deep(.q-item__section--avatar) { min-width: 33px; color: var(--aito-ai-accent); }
 .video-studio__drawer-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; }
-.video-studio__drawer-footer { padding-top: 4px; margin-top: auto; }
+.video-studio__drawer-footer { display: grid; gap: 8px; padding-top: 4px; margin-top: auto; }
 .video-studio__drawer-footer .q-btn { width: 100%; border: 1px solid var(--aito-ai-line); color: var(--aito-ai-accent); }
 .video-studio__editor { grid-column: 2; grid-row: 2; overflow: hidden; }
 .video-studio__tabs { grid-column: 1 / -1; grid-row: 1; width: min(760px, 100%); padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
@@ -2787,7 +2791,7 @@ onBeforeUnmount(() => {
 .video-studio__preview--code header .q-icon { color: var(--aito-ai-accent); vertical-align: .05em; }
 .video-studio__preview--code .video-studio__clip-empty { min-height: 220px; }
 .video-studio__code-clip[aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
-.video-studio__code-screen { display: grid; place-items: center; overflow: hidden; border-radius: 10px; background: #060c11; }
+.video-studio__code-screen { display: grid; place-items: center; overflow: hidden; border-radius: 10px; background: var(--aito-ai-media-bg); }
 .video-studio__code-screen video { display: block; width: 100%; max-height: min(49dvh, 460px); min-height: 96px; object-fit: contain; }
 .video-studio__rendered-clip { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .video-studio__rendered-title { overflow-wrap: anywhere; }
@@ -2865,7 +2869,7 @@ onBeforeUnmount(() => {
 .video-studio__actions, .video-studio__scene-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .video-studio__spacer { flex: 1; }
 .video-studio__primary, .video-studio__secondary { display: inline-flex; min-height: 36px; gap: 5px; align-items: center; justify-content: center; padding: 6px 9px; border: 1px solid transparent; border-radius: 8px; font-weight: 690 !important; cursor: pointer; text-align: center; }
-.video-studio__primary { background: var(--aito-ai-gradient); color: var(--aito-ai-ink); }
+.video-studio__primary { background: var(--aito-ai-gradient); color: var(--aito-ai-on-accent); }
 .video-studio__secondary { border-color: var(--aito-ai-line); background: var(--aito-ai-panel); color: var(--aito-ai-text); }
 .video-studio__primary:not(:disabled):hover, .video-studio__secondary:not(:disabled):hover { filter: brightness(1.17); }
 .video-studio__notice { display: flex; align-items: center; gap: 8px; margin-bottom: 12px !important; padding: 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
@@ -2918,10 +2922,38 @@ onBeforeUnmount(() => {
 .video-studio__component-thumb { width: 48px; height: 42px; border-radius: 6px; object-fit: cover; }
 .video-studio__actions [aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
 .video-studio__draft { flex-wrap: wrap; }
+html[data-aito-ia-theme='light'] .video-studio { background: var(--aito-ai-glow), var(--aito-ai-bg); }
+html[data-aito-ia-theme='light'] .video-studio__panel { background: var(--aito-ai-surface); box-shadow: 0 10px 30px var(--aito-ai-shadow); }
+html[data-aito-ia-theme='light'] .video-studio__tabs :deep(.video-studio__code-tab:not(.q-tab--active)),
+html[data-aito-ia-theme='light'] .video-studio__aspect-icon { color: var(--aito-ai-accent); }
+html[data-aito-ia-theme='light'] .video-studio__grid--code > .video-studio__preview--code,
+html[data-aito-ia-theme='light'] .video-studio__grid--generate .video-studio__editor {
+  border-color: var(--aito-ai-line);
+  background: linear-gradient(145deg, var(--aito-ai-accent-soft), var(--aito-ai-surface) 52%);
+}
+html[data-aito-ia-theme='light'] .video-studio__preview--clips {
+  border-color: var(--aito-ai-purple-line);
+  background: linear-gradient(145deg, var(--aito-ai-purple-soft), var(--aito-ai-surface) 67%);
+}
+html[data-aito-ia-theme='light'] .video-studio__timeline {
+  --aito-ai-bg: #f1edf8;
+  --aito-ai-panel: #f9f6fd;
+  --aito-ai-line: #cfc5dd;
+  --aito-ai-muted: #575066;
+  --aito-ai-text: #251c34;
+  background: linear-gradient(145deg, #fff 0%, #f7f2fc 65%, #f0ecf7 100%);
+  box-shadow: 0 -6px 24px #31204918;
+}
+html[data-aito-ia-theme='light'] .video-studio__delete-clip { color: var(--aito-ai-error); }
+html[data-aito-ia-theme='light'] .video-studio__delete-clip:hover:not(:disabled) {
+  color: var(--aito-ai-error);
+  border-color: var(--aito-ai-error-line);
+  background: var(--aito-ai-error-soft);
+}
 @media (max-width: 900px) {
   .video-studio__grid, .video-studio__grid--generate { grid-template-columns: minmax(0, 1fr); }
   .video-studio__grid > * { grid-column: 1 !important; grid-row: auto !important; }
-  .video-studio__tabs { position: sticky; top: calc(var(--video-header-height) + 4px); z-index: 8; order: 1; width: 100%; box-shadow: 0 4px 14px #0009; }
+  .video-studio__tabs { position: sticky; top: calc(var(--video-header-height) + 4px); z-index: 8; order: 1; width: 100%; box-shadow: 0 4px 14px var(--aito-ai-shadow); }
   .video-studio__catalog { order: 2; }
   .video-studio__preview { order: 3; }
   .video-studio__master-controls .video-studio__actions :is(button, a) { min-height: 41px; }

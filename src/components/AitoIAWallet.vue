@@ -1,9 +1,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { aitoTokens, brl, usd } from 'src/composables/useAitoIA'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { checkoutLink } from 'src/services/aitoiaChat'
 
 const props = defineProps({ modelValue: Boolean, state: { type: Object, required: true }, initialPackage: Number })
+const { isDark } = useAitoIATheme()
 defineEmits(['update:modelValue'])
 const { adminMode, status, walletId, walletLoading, walletError, pending, history, historyLoading, historyOffset, historyLimit,
   historyTotal, checkoutBusy, paymentBusy, paymentNotice } = props.state
@@ -22,7 +24,7 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
 
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card dark class="aito-ai-theme aito-wallet">
+    <q-card :dark="isDark" class="aito-ai-theme aito-wallet">
       <header class="aito-wallet__header">
         <img src="/aitotokens.svg" alt="" width="42" height="42" />
         <h2>{{ status ? `≈ ${aitoTokens(status.approximateTokens)} AitoTokens` : 'AitoTokens' }}</h2>
@@ -81,7 +83,7 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
 .aito-wallet__header { display: flex; align-items: center; gap: 8px; }
 .aito-wallet__header h2 { flex: 1; margin: 0; font-size: 1.23rem; font-weight: 750; line-height: 1.2; }
 .aito-wallet__icon { display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; border-radius: 8px; color: var(--aito-ai-muted); background: transparent; cursor: pointer; }
-.aito-wallet__icon:hover { color: var(--aito-ai-text); background: #ffffff10; }
+.aito-wallet__icon:hover { color: var(--aito-ai-text); background: var(--aito-ai-raised); }
 .aito-wallet__summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px; margin-top: 9px; padding: 8px 10px; border: 1px solid var(--aito-ai-gold-line); border-radius: 10px; background: var(--aito-ai-gold-soft); }
 .aito-wallet__summary > div, .aito-wallet__summary > label { display: grid; gap: 4px; color: var(--aito-ai-muted); font-size: .77rem; }
 .aito-wallet__summary strong { color: var(--aito-ai-gold); font-size: 1.12rem; line-height: 1.2; }

@@ -1,7 +1,9 @@
 <script setup>
 import { computed } from 'vue'
+import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 
 const props = defineProps({ stage: { type: String, required: true }, percent: Number })
+const { isDark } = useAitoIATheme()
 const stages = {
   submitting: 'Confirmando envio',
   queued: 'Na fila de geração',
@@ -19,7 +21,7 @@ const amount = computed(() => props.stage === 'completed' ? 100 :
     <div class="video-progress__status" role="status">
       <span>{{ label }}</span><strong v-if="amount !== null">{{ amount }}%</strong>
     </div>
-    <q-linear-progress :indeterminate="amount === null" :value="(amount ?? 0) / 100" color="teal-4" track-color="blue-grey-9" rounded
+    <q-linear-progress :indeterminate="amount === null" :value="(amount ?? 0) / 100" :color="isDark ? 'teal-4' : 'teal-8'" :track-color="isDark ? 'blue-grey-9' : 'teal-2'" rounded
       size="6px" aria-label="Progresso da geração de vídeo" />
   </div>
 </template>

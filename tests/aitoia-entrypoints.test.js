@@ -48,13 +48,15 @@ test('the app installation offer adapts to the current device', () => {
   assert.equal(offersAitoInstall({ name: 'communication-admin' }), false)
 })
 
-test('the Codex offer is available to clients and visitors at fifteen-minute intervals', () => {
-  assert.equal(offersCodex({ name: 'aito-ia' }, false), true)
+test('the Codex offer is limited to the customer app at fifteen-minute intervals', () => {
+  for (const name of ['aito-ia', 'aito-ia-video-studio', 'aito-ia-marketing-studio', 'landing-3d', 'aito-codex-product']) {
+    assert.equal(offersCodex({ name }, false), false)
+  }
   assert.equal(offersCodex({ name: 'user-app', query: { tab: 'products' } }, false), true)
   assert.equal(offersCodex({ name: 'communication-admin' }, false), false)
   assert.equal(offersCodex({ name: 'bio-links' }, false), false)
-  assert.equal(offersCodex({ name: 'aito-ia' }, true), false)
-  assert.equal(offersCodex({ name: 'aito-ia', query: { auth: 'login' } }, false), false)
+  assert.equal(offersCodex({ name: 'user-app' }, true), false)
+  assert.equal(offersCodex({ name: 'user-app', query: { tab: 'profile' } }, false), false)
   const now = 990_000
   assert.equal(codexOfferDelay(now, null), 0)
   assert.equal(codexOfferInterval, 15 * 60 * 1000)

@@ -173,4 +173,20 @@ watch(() => props.modelValue, (visible) => {
 .auth-dialog__separator { display: flex; margin: 1rem 0; align-items: center; gap: .65rem; color: rgba(225, 255, 249, .4); font-size: .68rem; }
 .auth-dialog__separator::before, .auth-dialog__separator::after { flex: 1; height: 1px; content: ''; background: rgba(19, 188, 157, .2); }
 .auth-dialog__project { min-height: 2.7rem; border-color: rgba(143, 255, 238, .42); border-radius: 999px; color: #8fffee; background: rgba(19, 188, 157, .04); font-size: .74rem; }
+html[data-aito-ia-theme='light'] .auth-dialog { border-color: var(--aito-ai-line); color: var(--aito-ai-text); background: var(--aito-ai-glow), var(--aito-ai-surface); box-shadow: 0 26px 72px var(--aito-ai-shadow); }
+html[data-aito-ia-theme='light'] .auth-dialog h3 { color: var(--aito-ai-text); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__control) { color: var(--aito-ai-text); background: var(--aito-ai-panel); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__native),
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__input) { color: var(--aito-ai-text) !important; caret-color: var(--aito-ai-accent); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__label),
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__bottom),
+html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__tabs button, .auth-dialog__separator) { color: var(--aito-ai-muted); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__marginal),
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-btn--flat),
+html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__eyebrow, .auth-dialog__action .q-icon, .auth-dialog__action .q-spinner) { color: var(--aito-ai-accent); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field__messages) { color: var(--aito-ai-error); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field--outlined .q-field__control:before) { border-color: var(--aito-ai-line); }
+html[data-aito-ia-theme='light'] .auth-dialog :deep(.q-field--focused .q-field__control:after) { border-color: var(--aito-ai-accent-strong); }
+html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__action, .auth-dialog__project) { color: var(--aito-ai-text); border-color: var(--aito-ai-line); background: var(--aito-ai-panel); }
+html[data-aito-ia-theme='light'] .auth-dialog :is(.auth-dialog__tabs .is-active, .auth-dialog__action:hover, .auth-dialog__action:focus-visible) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 </style>

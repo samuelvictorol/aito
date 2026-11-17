@@ -248,6 +248,7 @@ onBeforeUnmount(() => {
 .model-carousel__card-action { position: absolute; inset: 0; display: flex; justify-content: flex-end; align-items: flex-start; padding: 10px; border: 0; border-radius: inherit; color: var(--aito-ai-text); background: transparent; cursor: pointer; }
 .model-carousel__card-action:focus-visible { outline: 2px solid var(--aito-ai-purple); outline-offset: -2px; }
 .model-carousel__card-action :deep(.q-icon) { width: 27px; height: 27px; border-radius: 7px; background: #092322eb; }
+html[data-aito-ia-theme='light'] .model-carousel__card-action :deep(.q-icon) { background: var(--aito-ai-panel); }
 .model-carousel__card-action[aria-pressed='true'] :deep(.q-icon) { color: var(--aito-ai-accent); }
 .model-carousel__controls { position: relative; align-self: stretch; display: grid; align-items: center; }
 .model-carousel__control { display: inline-grid; width: 34px; height: 36px; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-accent); background: var(--aito-ai-panel); cursor: pointer; }
