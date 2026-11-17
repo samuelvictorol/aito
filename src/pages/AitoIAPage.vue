@@ -22,7 +22,6 @@ import 'src/css/aitoia-theme.css'
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const AitoIAChatVideo = defineAsyncComponent(() => import('components/AitoIAChatVideo.vue'))
-const AitoVoiceSamples = defineAsyncComponent(() => import('components/AitoVoiceSamples.vue'))
 useMeta({
   title: 'AitoIA | Chat com AitoTokens',
   link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/' } },
@@ -322,8 +321,7 @@ onBeforeUnmount(() => videoSwitch?.abort())
           <div v-if="efforts.length" class="aito-studio__reasoning"><div><label for="aito-studio-effort">Potência</label><strong>{{ effortLabels[effort] || effort }}</strong></div><input id="aito-studio-effort" v-model.number="effortIndex" :aria-valuetext="effortLabels[effort] || effort" type="range" min="0" :max="Math.max(1, efforts.length - 1)" :disabled="efforts.length === 1" /></div>
           <label v-if="speeds.length">Velocidade<select v-model="speed"><option v-for="option in speeds" :key="option" :value="option">{{ option === 'priority' ? 'Rápida' : 'Padrão' }}</option></select></label>
           <p v-if="settingsError" role="alert" class="aito-studio__setting-error">{{ settingsError }}</p>
-          <p v-if="!signedIn" class="aito-studio__privacy">Explore os modelos e as vozes. Entre com sua conta para gerar conteúdo.</p>
-          <AitoVoiceSamples />
+          <p v-if="!signedIn" class="aito-studio__privacy">Explore os modelos. Entre com sua conta para gerar conteúdo.</p>
         </div>
       </q-card>
     </q-dialog>
