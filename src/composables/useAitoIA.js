@@ -34,7 +34,7 @@ const paidOrders = new Set(['paid', 'approved', 'applied'])
 const statusOf = error => error.response?.status
 const errorMessage = (error, fallback) => error.response?.data?.message || fallback
 
-export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
+export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredModel = '' } = {}) {
   const session = shallowRef(null)
   const sessionLoading = ref(false)
   const status = ref(null)
@@ -241,7 +241,10 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
       const catalog = data?.data
       if (!Array.isArray(catalog?.models)) throw new TypeError('Catálogo de modelos inválido.')
       models.value = catalog.models
-      if (!currentModel.value) model.value = models.value.find(item => item.id === catalog.defaultModel)?.id || models.value[0]?.id || ''
+      if (!currentModel.value) {
+        model.value = models.value.find(item => item.id === preferredModel)?.id ||
+          models.value.find(item => item.id === catalog.defaultModel)?.id || models.value[0]?.id || ''
+      }
     } catch (cause) {
       if (sessionEpoch !== epoch) return
       if (statusOf(cause) === 401) { forgetSession(); return }

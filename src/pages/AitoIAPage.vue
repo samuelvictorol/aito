@@ -27,7 +27,7 @@ const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
 const { isDark } = useAitoIATheme()
-const state = useAitoIA({ allowAdmin: true })
+const state = useAitoIA({ allowAdmin: true, preferredModel: 'gpt-6.2-astra' })
 const { videoInMaintenance } = useAitoAvailability()
 const { signedIn, adminMode, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch, supportsWebSearch,
   modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
