@@ -85,6 +85,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
   const currentModel = computed(() => models.value.find(item => item.id === model.value))
   const efforts = computed(() => currentModel.value?.efforts || [])
   const speeds = computed(() => currentModel.value?.speeds || [])
+  const supportsWebSearch = computed(() => currentModel.value?.webSearch !== false)
   const loadingConversation = computed(() => request.value?.chatId === activeId.value)
   const hasInput = computed(() => Boolean(draft.value.trim() || attachments.value.length))
 
@@ -237,8 +238,10 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
         ? generationApi.get('/aitoia/models', { params: refresh ? { refresh: 1 } : undefined })
         : api.get('/aitoia/models/catalog'))
       if (sessionEpoch !== epoch) return
-      models.value = data.data?.models || []
-      if (!currentModel.value) model.value = data.data?.defaultModel || models.value[0]?.id || ''
+      const catalog = data?.data
+      if (!Array.isArray(catalog?.models)) throw new TypeError('Catálogo de modelos inválido.')
+      models.value = catalog.models
+      if (!currentModel.value) model.value = models.value.find(item => item.id === catalog.defaultModel)?.id || models.value[0]?.id || ''
     } catch (cause) {
       if (sessionEpoch !== epoch) return
       if (statusOf(cause) === 401) { forgetSession(); return }
@@ -251,6 +254,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
   watch(currentModel, () => {
     if (!efforts.value.includes(effort.value)) effort.value = efforts.value.includes('medium') ? 'medium' : efforts.value[0] || ''
     if (!speeds.value.includes(speed.value)) speed.value = speeds.value[0] || 'default'
+    if (!supportsWebSearch.value) webSearch.value = false
   })
 
   async function syncSession({ keepDraft = false } = {}) {
@@ -375,8 +379,9 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
     const id = crypto.randomUUID()
     const sentModel = model.value
     const sentLabel = currentModel.value.label
+    const sendEffort = effort.value && (effort.value !== 'none' || efforts.value.length > 1)
     const parameters = { model: sentModel, service_tier: speed.value, walletId: walletId.value,
-      ...(effort.value && { reasoning: { effort: effort.value } }), ...(webSearch.value && { webSearch: true }) }
+      ...(sendEffort && { reasoning: { effort: effort.value } }), ...(webSearch.value && supportsWebSearch.value && { webSearch: true }) }
     let imageMessage
     let audioCost = 0
     request.value = { chatId: chat.id, controller, id }
@@ -647,7 +652,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false } = {}) {
   })
 
   return { accountId, signedIn, adminMode, access, generationApi, sessionLoading, status, walletId, models, model, currentModel, effort, efforts,
-    speed, speeds, webSearch, modelLoading, settingsError, walletError, error, contextShortened,
+    speed, speeds, webSearch, supportsWebSearch, modelLoading, settingsError, walletError, error, contextShortened,
     draft, attachments, chats, activeId, active, chatLimitReached, chatLimitMessage, request, pending, history, historyLoading, historyTotal,
     historyOffset, historyLimit, walletLoading, checkoutBusy, paymentBusy, paymentNotice, chatList, storageError,
     loadingConversation, hasInput, imageQuote, quoteImage: processImage, confirmImage, syncSession, refreshStatus, refreshModels, selectChat, renameChat, removeChat,

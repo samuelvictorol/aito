@@ -29,7 +29,7 @@ const $q = useQuasar()
 const { isDark } = useAitoIATheme()
 const state = useAitoIA({ allowAdmin: true })
 const { videoInMaintenance } = useAitoAvailability()
-const { signedIn, adminMode, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch,
+const { signedIn, adminMode, sessionLoading, accountId, status, model, models, currentModel, effort, efforts, speed, speeds, webSearch, supportsWebSearch,
   modelLoading, settingsError, walletError, error, contextShortened, draft, attachments, chats,
   activeId, active, chatLimitReached, chatLimitMessage, request, chatList, storageError, loadingConversation, hasInput, walletLoading, imageQuote } = state
 const composer = ref(null)
@@ -38,6 +38,11 @@ const authOpen = ref(false)
 const authMode = ref('register')
 const walletOpen = ref(false)
 const settingsOpen = ref(false)
+const modelQuery = ref('')
+const modelOptions = computed(() => {
+  const terms = modelQuery.value.trim().toLowerCase().split(/\s+/)
+  return models.value.filter(({ id, label }) => terms.every(term => `${label || ''} ${id}`.toLowerCase().includes(term)))
+})
 const sidebarOpen = ref(false)
 const dialog = ref(null)
 const renamed = ref('')
@@ -80,8 +85,12 @@ function showWallet() {
   state.loadHistory()
 }
 function showSettings() {
+  modelQuery.value = ''
   settingsOpen.value = true
   if (!models.value.length) state.refreshModels()
+}
+function searchModels(value, update) {
+  update(() => { modelQuery.value = value })
 }
 function requestSend() {
   if (!signedIn.value) { showAuth(); return }
@@ -285,7 +294,7 @@ onBeforeUnmount(() => videoSwitch?.abort())
           <div class="aito-studio__tools">
             <input ref="fileInput" type="file" multiple hidden @change="pickFiles" />
             <button type="button" class="aito-studio__icon" aria-label="Anexar arquivos" @click="signedIn ? fileInput?.click() : showAuth()"><q-icon name="mdi-paperclip" size="22px" /></button>
-            <button type="button" class="aito-studio__tool" :aria-pressed="webSearch" @click="signedIn ? webSearch = !webSearch : showAuth()"><q-icon name="mdi-web" size="17px" /><span>Buscar na web</span></button>
+            <button v-if="supportsWebSearch" type="button" class="aito-studio__tool" :aria-pressed="webSearch" @click="signedIn ? webSearch = !webSearch : showAuth()"><q-icon name="mdi-web" size="17px" /><span>Buscar na web</span></button>
             <span class="aito-studio__spacer" />
             <button type="button" class="aito-studio__tool aito-studio__effort" aria-label="Configurar potência" @click="showSettings"><q-icon name="mdi-lightning-bolt-outline" size="17px" /><span>{{ effortLabels[effort] || 'Potência' }}</span></button>
             <button v-if="request" type="button" class="aito-studio__send" aria-label="Parar de aguardar resposta" title="A solicitação já enviada ainda pode consumir créditos." @click="stopWaiting"><q-icon name="mdi-stop" size="24px" /></button>
@@ -313,10 +322,23 @@ onBeforeUnmount(() => videoSwitch?.abort())
         <div class="aito-studio__dialog-head"><q-icon name="mdi-tune-variant" size="22px" /><h2>Modelo e potência</h2><button v-close-popup type="button" class="aito-studio__icon" aria-label="Fechar configurações"><q-icon name="mdi-close" size="21px" /></button></div>
         <div class="aito-studio__settings">
           <div class="aito-studio__select-row">
-            <label>Modelo<select v-model="model" :disabled="!models.length || modelLoading"><option v-if="!models.length" value="">{{ modelLoading ? 'Carregando…' : 'Nenhum modelo disponível' }}</option><option v-for="option in models" :key="option.id" :value="option.id">{{ option.label }}</option></select></label>
+            <q-select v-model="model" :display-value="currentModel?.label || ''" :options="modelOptions"
+              option-value="id" option-label="label" emit-value map-options outlined dense use-input
+              :input-debounce="0" :dark="isDark" :color="isDark ? 'teal-3' : 'teal-8'" :disable="modelLoading"
+              :loading="modelLoading" label="Modelo" class="aito-studio__model-select" @filter="searchModels">
+              <template #option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section>
+                    <q-item-label>{{ scope.opt.label }}</q-item-label>
+                    <q-item-label caption>{{ scope.opt.id }}<template v-if="scope.opt.legacy"> · Versão anterior</template></q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+              <template #no-option><q-item><q-item-section>Nenhum modelo encontrado.</q-item-section></q-item></template>
+            </q-select>
             <button type="button" class="aito-studio__icon" aria-label="Atualizar modelos" :disabled="modelLoading" @click="state.refreshModels(true)"><q-icon name="mdi-refresh" size="23px" /></button>
           </div>
-          <div v-if="efforts.length" class="aito-studio__reasoning"><div><label for="aito-studio-effort">Potência</label><strong>{{ effortLabels[effort] || effort }}</strong></div><input id="aito-studio-effort" v-model.number="effortIndex" :aria-valuetext="effortLabels[effort] || effort" type="range" min="0" :max="Math.max(1, efforts.length - 1)" :disabled="efforts.length === 1" /></div>
+          <div v-if="efforts.length > 1" class="aito-studio__reasoning"><div><label for="aito-studio-effort">Potência</label><strong>{{ effortLabels[effort] || effort }}</strong></div><input id="aito-studio-effort" v-model.number="effortIndex" :aria-valuetext="effortLabels[effort] || effort" type="range" min="0" :max="efforts.length - 1" /></div>
           <label v-if="speeds.length">Velocidade<select v-model="speed"><option v-for="option in speeds" :key="option" :value="option">{{ option === 'priority' ? 'Rápida' : 'Padrão' }}</option></select></label>
           <p v-if="settingsError" role="alert" class="aito-studio__setting-error">{{ settingsError }}</p>
           <p v-if="!signedIn" class="aito-studio__privacy">Explore os modelos. Entre com sua conta para gerar conteúdo.</p>
@@ -424,9 +446,10 @@ onBeforeUnmount(() => videoSwitch?.abort())
 .aito-studio__dialog-head > .q-icon { color: var(--aito-ai-purple); }
 .aito-studio__dialog-head h2 { flex: 1; margin: 0; font-size: 1.12rem; font-weight: 750; line-height: 1.25; }
 .aito-studio__settings { display: grid; gap: 13px; padding: 12px 0 2px; }
-.aito-studio__settings label { display: grid; flex: 1; gap: 5px; min-width: 0; color: var(--aito-ai-muted); font-size: .79rem; }
-.aito-studio__settings select, .aito-studio__settings label input:not([type=range]) { width: 100%; min-height: 39px; padding: 5px 8px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-raised); }
-.aito-studio__select-row { display: flex; gap: 6px; align-items: end; }
+.aito-studio__settings > label { display: grid; flex: 1; gap: 5px; min-width: 0; color: var(--aito-ai-muted); font-size: .79rem; }
+.aito-studio__settings > label :is(select, input) { width: 100%; min-height: 39px; padding: 5px 8px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-raised); }
+.aito-studio__select-row { display: flex; gap: 6px; align-items: center; }
+.aito-studio__model-select { flex: 1; min-width: 0; }
 .aito-studio__reasoning { padding: 10px; border: 1px solid var(--aito-ai-purple-line); border-radius: 9px; background: var(--aito-ai-purple-soft); }
 .aito-studio__reasoning div { display: flex; align-items: center; gap: 6px; }
 .aito-studio__reasoning strong { color: var(--aito-ai-purple); font-size: .82rem; }
