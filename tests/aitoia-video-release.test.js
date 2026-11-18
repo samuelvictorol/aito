@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoReleasePending } from '../src/services/aitoiaVideoRelease.js'
+import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoRefundNotice, videoReleasePending } from '../src/services/aitoiaVideoRelease.js'
 import { remakeSceneIntent } from '../src/services/aitoiaVideoRemakePlan.js'
 
 test('a failed generation remains financially pending until a zero-charge released snapshot arrives', () => {
@@ -25,10 +25,23 @@ test('failed-release checks stop at their request budget, including repeated net
     assert.equal(result.retry, attempt < 8)
     assert.equal(result.pending, true)
   }
-  assert.match(releasePendingMessage(false), /Verificar liberação/)
+  assert.match(releasePendingMessage(false), /estorno ainda está em processamento/)
   assert.equal(monitor.observe(pending).retry, false)
   assert.equal(monitor.observe({ ...pending, billedUsdCents: 0, billingPending: false }).released, true)
   assert.equal(monitor.observe({ id: 'new-job', status: 'failed', billingPending: true }).retry, true)
+})
+
+test('generation notices distinguish pending, verified, legacy and unconfirmed refunds', () => {
+  const pending = { id: 'one', status: 'failed', refundPending: true }
+  assert.match(videoRefundNotice(pending), /em processamento/)
+  const settled = mergeVideoGeneration(pending, {
+    id: 'one', status: 'failed', billedUsdCents: 0, refundedAt: '2026-11-18T13:00:00Z', refundedAitoTokens: 15500,
+  })
+  assert.equal(videoRefundNotice(settled), '15.500 AitoTokens estornados à sua carteira.')
+  assert.match(videoRefundNotice({ ...settled, refundedAitoTokens: 0 }), /Estorno confirmado/)
+  assert.equal(videoRefundNotice({ status: 'failed', billedUsdCents: 0 }), 'Reserva liberada.')
+  assert.equal(videoRefundNotice({ status: 'failed', billedUsdCents: 20 }), '')
+  assert.equal(videoRefundNotice({ status: 'completed', billedUsdCents: 0 }), '')
 })
 
 test('elapsed time bounds release checks and a nonzero charge is never labeled refunded', () => {

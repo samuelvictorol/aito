@@ -1,11 +1,9 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { useMeta, useQuasar } from 'quasar'
+import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import IAChatComponent from 'components/IAChatComponent.vue'
-import { notificationGeneratorSeo } from 'src/data/notificationGeneratorSeo'
 import { emptyNotification, templateValue, readTemplates, writeTemplate, support, enableNotifications, compactImage, keepLocalImage } from 'src/services/notification-lab'
-useMeta(notificationGeneratorSeo)
 const $q = useQuasar(), form = reactive(emptyNotification()), templates = ref(readTemplates()), config = ref(null), state = ref(support())
 const assistant = ref(false), installDialog = ref(false), review = ref(false), saveDialog = ref(false), slot = ref(0), imageFile = ref(null), mode = ref('upload')
 const enabling = ref(false), preparingImage = ref(false), scheduling = ref(false), enabled = ref(false), batch = ref(null), status = ref(''), remaining = ref(0), error = ref(''), screen = ref('ios')

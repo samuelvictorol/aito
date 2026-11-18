@@ -769,7 +769,7 @@ onBeforeUnmount(() => {
             :label="scene.planQuote ? 'Confirmar preparação' : 'Melhorar Prompt de Cena'" :disable="lockedScene(scene)"
             :loading="isWorking(scene, 'prepare') || isWorking(scene, 'plan-price')" @click="planScene(scene)" />
           <q-btn v-if="scene.quote || scene.job || scene.submitted" no-caps unelevated color="teal-8" icon="mdi-movie-open-play-outline"
-            :label="videoReleasePending(scene.job) ? 'Verificar liberação' : scene.job || scene.submitted ? 'Verificar cena' : scene.quote?.estimated ? 'Confirmar reserva e refazer' : 'Confirmar e refazer'"
+            :label="videoReleasePending(scene.job) ? 'Verificar estorno' : scene.job || scene.submitted ? 'Verificar cena' : scene.quote?.estimated ? 'Confirmar reserva e refazer' : 'Confirmar e refazer'"
             :disable="locked" @click="renderScene(scene)" />
           <q-btn v-else-if="!scene.recovered" no-caps outline :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-calculator-variant-outline" label="Cotar cena"
             :disable="locked || !canQuote(scene) || (scene.captions && !scene.caption.trim())" :loading="isWorking(scene, 'quote')" @click="quoteScene(scene)" />

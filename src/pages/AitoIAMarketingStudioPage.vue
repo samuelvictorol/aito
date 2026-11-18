@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { useRoute } from 'vue-router'
 import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoAboutLink from 'components/AitoAboutLink.vue'
-import { useMeta, useQuasar } from 'quasar'
+import { useQuasar } from 'quasar'
 import { api as publicApi } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
@@ -93,7 +93,6 @@ const referenceCount = computed(() => references.value.length + activeKit.value.
 const locked = computed(() => busy.value || uploading.value || !!quote.value)
 const output = computed(() => images.value.find(image => image.id === imageId.value) || null)
 
-useMeta({ title: 'AitoIA | Estúdio de Marketing' })
 useAitoWorkGuard(busy, () => { blockedExit.value = true })
 watch(busy, active => { if (!active) blockedExit.value = false })
 

@@ -11,7 +11,7 @@ import { chatVideoModels } from 'src/data/aitoiaVideoCatalog'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { readAnswer } from 'src/services/aitoiaChat'
 import { saveVideoDraft } from 'src/services/aitoiaVideoDraft'
-import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
+import { canRetryVideoSubmission, listVideoGenerations, sameVideoGeneration, updateTrackedVideoJob, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
@@ -31,7 +31,9 @@ const prompt = ref((props.initialPrompt || '').slice(0, 2000))
 const modelId = ref('')
 const presetId = ref('')
 const quote = shallowRef(null)
-const job = shallowRef(null)
+const jobs = shallowRef([])
+const setJob = job => { jobs.value = updateTrackedVideoJob(jobs.value, job) }
+const removeJob = job => { jobs.value = jobs.value.filter(item => !sameVideoGeneration(item, job)) }
 const clip = shallowRef(null)
 const quoteCost = computed(() => aitoTokenCost(quote.value?.billedUsdCents, status.value?.aitoTokensPerUsd))
 const reservedCost = computed(() => aitoTokenCost(clip.value?.reservedUsdCents, status.value?.aitoTokensPerUsd))
@@ -80,10 +82,15 @@ async function loadCatalog() {
     ])
     controller.signal.throwIfAborted()
     if (!api.current()) return
-    if (!job.value && !clip.value && recent.status === 'fulfilled') {
-      const jobs = recent.value.filter(item => !wasDismissed(item))
-      job.value = jobs.find(item => videoGenerationActive(item.status) || videoReleasePending(item)) || jobs.find(item => item.status === 'completed') || null
-      if (job.value) schedulePoll(250)
+    if (recent.status === 'fulfilled') {
+      const available = recent.value.filter(item => !wasDismissed(item))
+      const pending = available.filter(item => videoGenerationActive(item.status) || videoReleasePending(item))
+      const previousClip = !clip.value && available.find(item => item.status === 'completed')
+      if (previousClip) pending.push(previousClip)
+      for (const job of pending) {
+        if (!jobs.value.some(item => sameVideoGeneration(item, job))) setJob(job)
+      }
+      if (jobs.value.length) schedulePoll(250)
     }
     if (catalogResponse.status === 'rejected') throw catalogResponse.reason
     if (!cached) catalog.value = catalogResponse.value.data.data
@@ -105,7 +112,7 @@ watch(accountId, (id, previous) => {
     imageReferences = null
     quote.value = null
     clearClip()
-    job.value = null
+    jobs.value = []
     catalog.value = null
     analysis.value = ''
   }
@@ -144,7 +151,7 @@ async function run(label, perform, paid = true, background = false) {
   if (!background) error.value = ''
   try { await perform(controller.signal, api) }
   catch (cause) {
-    if (!controller.signal.aborted && api.current() && (!background || !job.value || job.value.status === 'completed')) {
+    if (!controller.signal.aborted && api.current() && !background) {
       error.value = cause.response?.data?.message || cause.message || 'Não foi possível concluir esta ação.'
       if (cause.response?.status === 402) emit('wallet')
     }
@@ -204,26 +211,29 @@ watch(removedGeneration, item => {
   dismissedIds.add(item.id)
   if (item.requestId) dismissedRequests.add(item.requestId)
   if (clip.value?.id === item.id) clearClip()
-  if (wasDismissed(job.value)) {
-    clearTimeout(pollTimer)
-    operation?.abort()
-    job.value = null
-  }
+  const job = jobs.value.find(wasDismissed)
+  if (job) removeJob(job)
 }, { flush: 'sync' })
-function schedulePoll(delay = videoReleasePending(job.value) ? 2000 : 9000) {
+function schedulePoll(delay = jobs.value.some(item => videoReleasePending(item) && !item.releasePollingStopped) ? 2000 : 9000) {
   clearTimeout(pollTimer)
-  if (!disposed && job.value && !job.value.releasePollingStopped) pollTimer = setTimeout(() => {
+  if (!disposed && jobs.value.some(item => !item.releasePollingStopped)) pollTimer = setTimeout(() => {
     if (busy.value) schedulePoll()
-    else check(false)
+    else check()
   }, delay)
 }
-function check(manual = true) {
+function check(selected) {
   clearTimeout(pollTimer)
-  void run('Consultando clipe…', poll, false, !manual).finally(() => schedulePoll())
+  const pending = selected ? [selected] : jobs.value.filter(item => !item.releasePollingStopped)
+  void run('Consultando clipes…', async (signal, api) => {
+    const results = await Promise.allSettled(pending.map(job => poll(job, signal, api)))
+    const failure = results.find(result => result.status === 'rejected' && (selected || result.reason?.terminal))
+    if (failure && !signal.aborted && api.current()) {
+      error.value = failure.reason.response?.data?.message || failure.reason.message || 'Não foi possível atualizar o clipe.'
+    }
+  }, false, !selected).finally(() => schedulePoll())
 }
-async function poll(signal, { get, current }) {
-  const pending = job.value
-  if (!pending) return
+function terminalError(message) { return Object.assign(new Error(message), { terminal: true }) }
+async function poll(pending, signal, { get, current }) {
   let result
   try {
     if (!pending.id) {
@@ -236,12 +246,12 @@ async function poll(signal, { get, current }) {
     signal.throwIfAborted()
     if (wasDismissed(pending)) return
     if (current() && [404, 410].includes(cause.response?.status)) {
-      job.value = null
-      throw new Error('A geração não está mais disponível. Consulte a carteira para conferir a cobrança ou a liberação da reserva.')
+      removeJob(pending)
+      throw terminalError('A geração não está mais disponível. Consulte a carteira para conferir a cobrança ou a liberação da reserva.')
     }
     if (current() && videoReleasePending(pending)) {
       const release = releaseMonitor.observe(pending)
-      job.value = { ...pending, releasePollingStopped: !release.retry }
+      setJob({ ...pending, releasePollingStopped: !release.retry })
       error.value = releasePendingMessage(release.retry)
       return
     }
@@ -249,36 +259,37 @@ async function poll(signal, { get, current }) {
   }
   signal.throwIfAborted()
   if (!current() || wasDismissed(pending) || wasDismissed(result)) return
-  quote.value = null
-  job.value = mergeVideoGeneration(pending, result)
+  const merged = mergeVideoGeneration(pending, result)
+  setJob(merged)
   if (videoGenerationActive(result.status)) return
   if (result.status !== 'completed') {
     const release = releaseMonitor.observe(result)
     if (release.pending) {
-      job.value = { ...job.value, releasePollingStopped: !release.retry }
+      setJob({ ...merged, releasePollingStopped: !release.retry })
       error.value = releasePendingMessage(release.retry)
       return
     }
-    job.value = null
-    throw new Error(release.released ? releasedVideoMessage(result) : result.message || 'O provedor encerrou esta geração.')
+    removeJob(merged)
+    throw terminalError(release.released ? releasedVideoMessage(result) : result.message || 'O provedor encerrou esta geração.')
   }
   const file = await readGeneratedClipForJob({ ...result, remoteUrl: result.url }, signal, get)
   signal.throwIfAborted()
   if (!current() || wasDismissed(result)) return
-  clearClip()
+  removeJob(merged)
   const sourceExpiry = videoGenerationExpiry(result.expiresAt, Date.now() + AITOIA_RETENTION_MS)
   const playbackExpiry = Math.min(sourceExpiry, videoGenerationExpiry(result.orphanExpiresAt, sourceExpiry))
-  if (playbackExpiry <= Date.now()) { job.value = null; return }
+  if (playbackExpiry <= Date.now() || Date.parse(clip.value?.createdAt) > Date.parse(result.createdAt)) return
+  clearClip()
   clip.value = { ...result, file, url: URL.createObjectURL(file), expiresAt: sourceExpiry }
   clipExpiryTimer = setTimeout(clearClip, playbackExpiry - Date.now())
-  job.value = null
 }
 
 function generate() {
-  if (!quote.value || job.value || videoInMaintenance.value) return
+  if (!quote.value || videoInMaintenance.value) return
   const { body, quoteToken, requestId } = quote.value
   run('Gerando clipe…', async (signal, api) => {
-    job.value = { requestId, status: 'submitting', submittedAt: Date.now() }
+    const job = { requestId, status: 'submitting', submittedAt: Date.now() }
+    setJob(job)
     try {
       const { data } = await api.post('/aitoia/video/generations', { ...body, quoteToken },
         { headers: { 'X-Aito-Request-Id': requestId }, signal })
@@ -286,10 +297,13 @@ function generate() {
       if (!api.current() || wasDismissed({ ...data?.data, requestId })) return
       if (!data?.data?.id) throw new Error('O pedido ainda não foi confirmado. Verifique a geração novamente.')
       quote.value = null
-      job.value = { ...job.value, ...data.data }
+      setJob({ ...job, ...data.data })
     } catch (cause) {
-      if (api.current() && !canRetryVideoSubmission(cause)) job.value = null
-      if (api.current() && ['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
+      if (api.current()) {
+        if (!canRetryVideoSubmission(cause)) removeJob(job)
+        else quote.value = null
+        if (['AITO_VIDEO_QUOTE', 'AITO_MEDIA_PRICE_CHANGED'].includes(cause.response?.data?.code)) quote.value = null
+      }
       throw cause
     }
   }).finally(() => schedulePoll(500))
@@ -350,8 +364,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
     </div>
     <p v-if="imageBases.length < minImages" class="chat-video__pricing">Adicione {{ minImages === 1 ? 'uma imagem' : `pelo menos ${minImages} imagens` }} para usar este modelo.</p>
     <div class="chat-video__actions">
-      <button v-if="job" type="button" :disabled="busy" @click="check()">{{ videoReleasePending(job) ? 'Verificar liberação' : 'Verificar geração' }}</button>
-      <template v-else-if="!videoInMaintenance">
+      <template v-if="!videoInMaintenance">
         <button v-if="!signedIn" type="button" @click="emit('login')">Entrar para gerar</button>
         <button v-else-if="quote" type="button" :disabled="busy" @click="generate">{{ quote.estimated ? 'Confirmar reserva e gerar' : 'Confirmar geração' }}<template v-if="quoteCost"> · Até {{ quoteCost }}</template></button>
         <button v-else-if="models.length" type="button" :disabled="busy || !canEstimate" @click="estimate">{{ base || imageBases.length ? 'Enviar referências à Higgsfield e cotar' : 'Consultar preço' }}</button>
@@ -360,7 +373,11 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
       <span v-if="action" role="status"><q-spinner size="16px" /> {{ action }}</span>
     </div>
     <AitoIAMaintenance v-if="videoInMaintenance" area="video" compact />
-    <AitoVideoProgress v-if="job && videoGenerationActive(job.status)" :stage="job.status || 'queued'" :percent="job.progress" />
+    <div v-for="job in jobs" :key="job.requestId || job.id" class="chat-video__job">
+      <small v-if="job.modelLabel">{{ job.modelLabel }}</small>
+      <AitoVideoProgress v-if="videoGenerationActive(job.status)" :stage="job.status" :percent="job.progress" />
+      <button type="button" :disabled="busy" @click="check(job)">{{ videoReleasePending(job) ? 'Verificar estorno' : 'Verificar geração' }}</button>
+    </div>
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
     <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
     <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" />
@@ -382,6 +399,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
 .chat-video :is(textarea, select) { min-width: 0; padding: 6px; border: 1px solid var(--aito-ai-line); border-radius: 7px; color: var(--aito-ai-text); background: var(--aito-ai-panel); font: inherit; }
 .chat-video__choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .chat-video__actions span { color: var(--aito-ai-muted); font-size: .76rem; overflow-wrap: anywhere; }
+.chat-video__job { display: grid; justify-items: start; gap: 6px; padding: 8px; border: 1px solid var(--aito-ai-line); border-radius: 7px; }
 .chat-video__error { margin: 0; color: var(--aito-ai-error); font-size: .8rem; }
 .chat-video__pricing { margin: 0; color: var(--aito-ai-gold); font-size: .8rem; }
 .chat-video__result video { display: block; width: 100%; max-height: 290px; margin-bottom: 6px; border-radius: 7px; background: var(--aito-ai-bg); }

@@ -2,6 +2,26 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canRemoveGeneration, followGeneration, forgetLocalGeneration, generationIdentity, localGenerationActivity } from '../src/services/aitoiaGenerationActivity.js'
 import { revealGeneratedVideo } from '../src/services/aitoiaGeneratedFocus.js'
+import { canRetryVideoSubmission, updateTrackedVideoJob } from '../src/services/aitoiaVideoJobs.js'
+
+test('three submissions retain independent project placements as provider IDs arrive', () => {
+  const first = { requestId: 'first', status: 'submitting', scriptTarget: { id: 'scene-a' } }
+  const second = { requestId: 'second', status: 'submitting', afterSceneId: 'scene-b' }
+  const third = { requestId: 'third', status: 'submitting', afterSceneId: 'scene-c' }
+  const jobs = [first, second, third]
+  const accepted = updateTrackedVideoJob(jobs, { ...second, id: 'second-id', status: 'queued' })
+  assert.deepEqual(accepted.map(job => job.status), ['submitting', 'queued', 'submitting'])
+  assert.deepEqual(accepted.map(job => job.scriptTarget?.id || job.afterSceneId), ['scene-a', 'scene-b', 'scene-c'])
+  const updated = updateTrackedVideoJob(accepted, { ...accepted[1], requestId: undefined, status: 'in_progress' })
+  assert.equal(updated.length, 3)
+  assert.equal(updated[1].status, 'in_progress')
+  assert.equal(jobs[1].status, 'submitting')
+})
+
+test('a fourth request rejected by the customer queue does not enter recovery', () => {
+  assert.equal(canRetryVideoSubmission({ response: { status: 429, data: { code: 'AITO_MEDIA_ACTIVE' } } }), false)
+  assert.equal(canRetryVideoSubmission({ response: { status: 503 } }), true)
+})
 
 test('removing a failed request without a provider id preserves other requests and other accounts', async () => {
   localGenerationActivity.value = []

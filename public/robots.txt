@@ -7,5 +7,6 @@ Disallow: /customer
 Disallow: /comunicacao
 Disallow: /produto/acesso
 Disallow: /auth
+Disallow: /videostudio-tester
 
 Sitemap: https://aitosoftwares.com/sitemap.xml

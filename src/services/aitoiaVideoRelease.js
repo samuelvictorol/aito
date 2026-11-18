@@ -1,17 +1,27 @@
 const failedStates = new Set(['failed', 'nsfw', 'canceled'])
 export const failedVideo = job => failedStates.has(job?.status)
-export const videoReleasePending = job => failedVideo(job) && job.billingPending === true
+export const videoReleasePending = job => failedVideo(job) && (job.refundPending === true || job.billingPending === true)
 export function mergeVideoGeneration(previous, next) {
-  const merged = { ...previous, ...next, billingPending: next.billingPending === true }
+  const merged = { ...previous, ...next, billingPending: next.billingPending === true, refundPending: next.refundPending === true }
   if (next.billedUsdCents !== undefined && !merged.billingPending) delete merged.reservedUsdCents
   return merged
 }
+export function videoRefundNotice(job) {
+  if (!failedVideo(job)) return ''
+  if (videoReleasePending(job)) return 'Estorno automático em processamento.'
+  if (job.refundedAt) {
+    return job.refundedAitoTokens > 0
+      ? `${new Intl.NumberFormat('pt-BR').format(job.refundedAitoTokens)} AitoTokens estornados à sua carteira.`
+      : 'Estorno confirmado na sua carteira.'
+  }
+  return job.billedUsdCents === 0 ? 'Reserva liberada.' : ''
+}
 export const releasePendingMessage = retry => retry
-  ? 'A geração falhou. Aguardando confirmação da liberação da reserva…'
-  : 'A geração falhou e a liberação da reserva ainda não foi confirmada. Use “Verificar liberação” para conferir o saldo. A geração não será reenviada.'
+  ? 'A geração falhou. Estorno automático em processamento…'
+  : 'O estorno ainda está em processamento. Use o botão de verificação para conferir a situação.'
 export function releasedVideoMessage(job) {
   const reason = typeof job.message === 'string' ? job.message.replace(/\s*A reserva (?:será|foi) liberada\.?\s*$/, '').trim() : ''
-  return `${reason || 'A geração não foi concluída.'} A reserva foi liberada.`
+  return `${reason || 'A geração não foi concluída.'} ${job.refundedAt ? videoRefundNotice(job) : 'A reserva foi liberada.'}`
 }
 
 // Failed delivery and settled billing are different events. Bound automatic

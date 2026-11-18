@@ -1,13 +1,3 @@
-<script setup>
-import { useMeta } from 'quasar'
-
-useMeta({
-  title: 'AitoCodex Theme',
-  meta: { description: { name: 'description', content: 'Baixe o tema AitoCodex com a paleta AitoSoftwares e o mascote AitoIA.' } },
-  link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/aitocodex-theme' } },
-})
-</script>
-
 <template>
   <main class="codex-theme">
     <div class="codex-theme__landscape" aria-hidden="true"></div>

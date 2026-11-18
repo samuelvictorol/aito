@@ -3,7 +3,7 @@ import AitoGenerationIndicator from 'components/AitoGenerationIndicator.vue'
 import AitoAboutLink from 'components/AitoAboutLink.vue'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useMeta, useQuasar } from 'quasar'
+import { useQuasar } from 'quasar'
 import AitoIAAttachment from 'components/AitoIAAttachment.vue'
 import AitoIAResponse from 'components/AitoIAResponse.vue'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
@@ -13,6 +13,7 @@ import { useAitoAvailability } from 'src/composables/useAitoAvailability'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { useAitoWorkGuard } from 'src/composables/useAitoWorkGuard'
 import { chatVideoModels } from 'src/data/aitoiaVideoCatalog'
+import { homeIntro, homeLinks, publicPages } from 'src/data/publicPagesSeo'
 import { fileKind, MAX_PROMPT_LENGTH } from 'src/services/aitoiaChat'
 import { requestsVideoGeneration, saveVideoDraft } from 'src/services/aitoiaVideoDraft'
 import { checkImageReference, normalizeVideoReference } from 'src/services/aitoiaVideoRemote'
@@ -22,11 +23,6 @@ import 'src/css/aitoia-theme.css'
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const AitoIAChatVideo = defineAsyncComponent(() => import('components/AitoIAChatVideo.vue'))
-useMeta({
-  title: 'AitoIA | Chat com AitoTokens',
-  link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/' } },
-  meta: { description: { name: 'description', content: 'Converse com os modelos OpenAI usando AitoTokens. Compare modelos e mantenha suas conversas no seu navegador.' } },
-})
 const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
@@ -261,11 +257,14 @@ onBeforeUnmount(() => videoSwitch?.abort())
 
       <section v-else class="aito-studio__welcome" aria-labelledby="aito-ia-title">
         <div class="aito-studio__orb"><img src="/ia.gif" alt="" width="88" height="88" /></div>
-        <h1 id="aito-ia-title">No que vamos trabalhar?</h1>
-        <p>Converse, crie imagens e prepare arquivos para baixar.</p>
+        <h1 id="aito-ia-title">{{ publicPages['/'].heading }}</h1>
+        <p>{{ homeIntro }}</p>
         <div class="aito-studio__ideas">
           <button v-for="idea in promptIdeas" :key="idea.title" type="button" @click="selectIdea(idea)"><q-icon :name="idea.icon" size="19px" /> {{ idea.title }}<q-icon name="mdi-arrow-top-right" size="13px" /></button>
         </div>
+        <nav class="aito-studio__related" aria-label="Produtos e serviços da AitoSoftwares">
+          <router-link v-for="link in homeLinks" :key="link.path" :to="link.path">{{ link.label }}</router-link>
+        </nav>
       </section>
 
       <div class="aito-studio__bottom">
@@ -386,6 +385,8 @@ onBeforeUnmount(() => videoSwitch?.abort())
 .aito-studio__ideas button:hover { background: var(--aito-ai-raised); border-color: var(--aito-ai-accent-strong); }
 .aito-studio__ideas button .q-icon { color: var(--aito-ai-purple); }
 .aito-studio__ideas button .q-icon:last-child { opacity: .65; }
+.aito-studio__related { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; max-width: 34rem; margin-top: 14px; }
+.aito-studio__related a { display: inline-flex; align-items: center; min-height: 26px; color: var(--aito-ai-accent-strong); font-size: .76rem; text-underline-offset: 3px; }
 .aito-studio__messages { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .aito-studio__message-list { display: flex; flex-direction: column; gap: 20px; width: min(760px, 100%); margin: 0 auto; padding: 19px 24px 28px; }
 .aito-studio__conversation-title { margin: 0; color: var(--aito-ai-muted); font-size: .75rem; overflow-wrap: anywhere; }

@@ -1,5 +1,14 @@
 export const videoGenerationActive = status => ['submitting', 'queued', 'in_progress', 'pending', 'processing', 'running', 'uncertain'].includes(status)
 
+export const sameVideoGeneration = (left, right) => Boolean(
+  left?.id && left.id === right?.id || left?.requestId && left.requestId === right?.requestId,
+)
+
+export function updateTrackedVideoJob(jobs, job) {
+  const index = jobs.findIndex(item => sameVideoGeneration(item, job))
+  return index < 0 ? [...jobs, job] : jobs.map((item, position) => position === index ? job : item)
+}
+
 export const videoGenerationExpiry = (value, fallback) => {
   const time = typeof value === 'number' ? value : Date.parse(value)
   return Number.isFinite(time) ? time : fallback

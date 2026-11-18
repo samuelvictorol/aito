@@ -1,12 +1,5 @@
 <script setup>
-import { useMeta } from 'quasar'
 import 'src/css/aitoia-theme.css'
-
-useMeta({
-  title: 'AitoSoftwares | Links',
-  meta: { description: { name: 'description', content: 'Encontre a Aito IA, o AitoCodex, os estúdios de criação, as soluções para WhatsApp e o Lembr.it.' } },
-  link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/links' } },
-})
 </script>
 
 <template>

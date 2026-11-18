@@ -18,7 +18,7 @@
 
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { useQuasar } from 'quasar'
+import { useMeta, useQuasar } from 'quasar'
 import CosmicScene from './components/CosmicScene.vue'
 import {screenLoading} from './services/screen-loading'
 import { installPlatform, isInstalledAito, offersAitoInstall } from './services/aitoInstall'
@@ -29,10 +29,15 @@ import { useAitoAvailabilityBoundary } from './composables/useAitoAvailability'
 import { installAitoIATheme } from './composables/useAitoIATheme'
 import './css/aitoia-theme.css'
 import { useRoute, useRouter } from 'vue-router'
+import { publicPageSeo } from './data/publicPagesSeo'
 
 const $q = useQuasar()
 const router = useRouter()
 const route = useRoute()
+if (typeof document !== 'undefined') {
+  document.head.querySelectorAll('[data-public-seo]').forEach(element => element.remove())
+}
+useMeta(() => publicPageSeo(route.path))
 installAitoIATheme(route)
 const { maintenance, checkingAvailability, refreshAvailability } = useAitoAvailabilityBoundary(route, router)
 const AitoInstallDialog = defineAsyncComponent(() => import('./components/AitoInstallDialog.vue'))

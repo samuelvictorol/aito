@@ -1,9 +1,8 @@
 <script setup>
 import 'src/css/solutions-polish.css'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMeta } from 'quasar'
-import { description as siteDescription } from '../../package.json'
 import AuthDialog from 'components/AuthDialog.vue'
 import DesktopSolutionFeatures from 'components/DesktopSolutionFeatures.vue'
 import IAChatComponent from 'components/IAChatComponent.vue'
@@ -43,26 +42,7 @@ const modules = [
   { id: 'chatbots', tone: 'green', icon: 'mdi-qrcode', title: 'WhatsApp Bot Builder', text: 'Chatbots e atendimento em equipe.' },
 ]
 
-const seo = computed(() => desktopSolutionsSeo(offer.value))
-useMeta(() => seo.value)
-
-// Quasar manages the product description while this route is open.
-let genericDescription
-onMounted(() => {
-  const staticMeta = document.head.querySelectorAll('[data-desktop-seo]')
-  genericDescription = document.head.querySelector('meta[name="description"]:not([data-qmeta], [data-desktop-seo])')
-  if (!genericDescription) {
-    genericDescription = document.createElement('meta')
-    genericDescription.name = 'description'
-    genericDescription.content = siteDescription
-  }
-  genericDescription.remove()
-  staticMeta.forEach(element => element.remove())
-})
-onBeforeUnmount(() => {
-  if (genericDescription) document.head.appendChild(genericDescription)
-  if (document.title === seo.value.title) document.title = 'AITOSOFTWARES'
-})
+useMeta(() => ({ script: desktopSolutionsSeo(offer.value).script }))
 
 function money(cents) {
   return cents == null ? 'Consulte disponibilidade' : (Number(cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })

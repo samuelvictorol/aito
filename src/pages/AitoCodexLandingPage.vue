@@ -1,6 +1,5 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useMeta } from 'quasar'
 import AitoCodexInstallDialog from 'components/AitoCodexInstallDialog.vue'
 import AitoCodexInstallVideo from 'components/AitoCodexInstallVideo.vue'
 import AitoCodexThemeShortcut from 'components/AitoCodexThemeShortcut.vue'
@@ -35,11 +34,6 @@ const actions = [
   { icon: 'mdi-update', title: 'Atualizar o plugin', prompt: '@AitoIA abra o atualizador', text: 'Confira a nova versão e confirme o download. A AitoKey continua salva no Windows.' },
 ]
 
-useMeta({
-  title: 'AitoIA para Codex | GPT-6.1 e Higgsfield com AitoTokens',
-  meta: { description: { name: 'description', content: 'Use GPT-6.1 no Codex oficial para Windows e crie vídeos com Higgsfield no AitoIA usando a mesma carteira. Ganhe 25.000 AitoTokens no cadastro com Google e mais 25.000 ao entrar por 3 dias seguidos.' } },
-  link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/aitoia-codex' } },
-})
 </script>
 
 <template>

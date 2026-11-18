@@ -2,7 +2,6 @@
 import 'src/css/solutions-polish.css'
 import MultichannelBenefits from 'components/MultichannelBenefits.vue'
 import { computed, ref } from 'vue'
-import { useMeta } from 'quasar'
 import KitProductCart from 'components/KitProductCart.vue'
 import KitSystemRequirements from 'components/KitSystemRequirements.vue'
 import SolutionMediaFrame from 'components/SolutionMediaFrame.vue'
@@ -11,7 +10,6 @@ import SolutionsInteractiveShowcase from 'components/SolutionsInteractiveShowcas
 import IAChatComponent from 'components/IAChatComponent.vue'
 import { defaultProductCatalog, productTermLabel, productLicenseTerm } from 'src/services/product-cart'
 import { solutionsMedia } from 'src/data/whatsappSolutionsMedia'
-useMeta({ title: 'Código-fonte Whitelabel AitoIA + Kit AitoNotify e WhatsApp Bot Builder | AitoSoftwares', meta: { description: { name: 'description', content: 'Código-fonte do AitoIA + Kit AitoNotify e WhatsApp Bot Builder para editar, integrar e publicar sua versão. Produto independente, com token Cloud vitalício. Desktop vendido separadamente.' } }, link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/whatsapp-solucoes-whitelabel' } } })
 const catalog = ref(defaultProductCatalog()), checkout = ref(null), assistantOpen = ref(false)
 const offer = computed(() => catalog.value.cloud)
 const heroVideo = computed(() => ({ src: offer.value.media?.heroVideo || '', poster: offer.value.media?.heroPoster || offer.value.media?.botFlow || '/whatsapp-solutions/experience/botbuilder-clinic.webp' }))

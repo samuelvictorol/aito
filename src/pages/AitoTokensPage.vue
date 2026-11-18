@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useMeta } from 'quasar'
 import { useRoute } from 'vue-router'
 import { api } from 'boot/axios'
 import AuthDialog from 'components/AuthDialog.vue'
@@ -10,9 +9,6 @@ import { aitoTokens, brl, usd, useAitoIA } from 'src/composables/useAitoIA'
 import { aitoTokenPackagePresentation } from 'src/services/aitoTokenPackagePresentation'
 import 'src/css/aitoia-theme.css'
 
-const title = 'AitoTokens | Créditos de IA para produtos e projetos'
-const description = 'Controle o consumo de IA com AitoTokens. Recarregue em reais, acompanhe o uso e conecte seu projeto com uma AitoKey.'
-const url = 'https://aitosoftwares.com/aitotokens'
 const contact = 'https://wa.me/5561982637685?text=Ol%C3%A1%21%20Quero%20conectar%20meu%20projeto%20ao%20AitoTokens.'
 
 const route = useRoute()
@@ -74,17 +70,6 @@ const questions = [
   { title: 'O saldo é perdido se eu trocar a AitoKey?', text: 'O saldo fica vinculado ao projeto. A AitoSoftwares pode substituir a chave, preservando os créditos e o histórico de uso.' },
 ]
 
-useMeta({
-  title,
-  meta: {
-    description: { name: 'description', content: description },
-    ogTitle: { property: 'og:title', content: title },
-    ogDescription: { property: 'og:description', content: description },
-    ogUrl: { property: 'og:url', content: url },
-    ogType: { property: 'og:type', content: 'website' },
-  },
-  link: { canonical: { rel: 'canonical', href: url } },
-})
 </script>
 
 <template>

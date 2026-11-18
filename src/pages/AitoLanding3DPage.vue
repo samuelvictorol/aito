@@ -254,7 +254,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useMeta, useQuasar } from 'quasar'
+import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from 'boot/axios'
 import LandingVideoMonitor from 'components/landing3d/LandingVideoMonitor.vue'
@@ -278,7 +278,6 @@ const isMobile = computed(() => window.innerWidth < 768)
 const $q = useQuasar()
 const router = useRouter()
 const route = useRoute()
-useMeta({ title: 'Quem Somos | AitoSoftwares', link: { canonical: { rel: 'canonical', href: 'https://aitosoftwares.com/sobre' } } })
 const USER_TOKEN_KEY = 'aito_user_token'
 const LANDING_SCENE_WATCHDOG_MS = 9000
 const LANDING_INTRO_CACHE_KEY = 'aito_landing_intro_seen_v1'

@@ -32,7 +32,7 @@ import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
 import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 import { scheduleInitialMasterCollapse } from 'src/services/aitoiaStudioPanel'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
-import { canRetryVideoSubmission, listVideoGenerations, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
+import { canRetryVideoSubmission, listVideoGenerations, sameVideoGeneration, updateTrackedVideoJob, videoGenerationActive, videoGenerationExpiry } from 'src/services/aitoiaVideoJobs'
 import { closeStudioMedia, cutDuration, cutStudioScene, drawStudioFrame, maxStudioScenes, openStudioMedia,
   recordStudioVideo, sceneSeconds, splitStudioClip, studioFrame, studioNarration, studioRenderSize, studioSubtitles, studioTimeline, studioVideoExports, videoFormats } from 'src/services/aitoiaVideo'
 import { cleanSceneScript, normalizeVoiceReference, parseVideoPlan, sceneScriptSeconds, studioAiSeconds, voiceComponentType } from 'src/services/aitoiaVideoPlan'
@@ -49,10 +49,10 @@ const { signedIn, adminMode, status, walletId, accountId, models } = wallet
 const route = useRoute()
 const router = useRouter()
 const testerMode = computed(() => route.name === 'video-studio-tester')
-useMeta(() => ({ title: testerMode.value ? 'AitoIA | Estúdio de vídeo de testes' : 'AitoIA | Estúdio de vídeo', meta: {
-  description: { name: 'description', content: 'Crie roteiros, narrações e vídeos com AitoIA. Monte cenas e exporte no navegador.' },
-  ...(testerMode.value && { robots: { name: 'robots', content: 'noindex, nofollow' } }),
-} }))
+useMeta(() => testerMode.value ? {
+  title: 'AitoIA | Estúdio de vídeo de testes',
+  meta: { robots: { name: 'robots', content: 'noindex, nofollow' } },
+} : {})
 watch(adminMode, current => {
   if (!current && testerMode.value) router.replace({ name: 'admin-login', query: { redirect: route.fullPath } })
 })
@@ -148,7 +148,11 @@ const wasRemovedGeneration = item => Boolean(item && (dismissedStudioIds.has(ite
   removedGeneratedIds.value.includes(item.id) || dismissedStudioRequests.has(item.requestId)))
 watch(accountId, () => { dismissedStudioIds.clear(); dismissedStudioRequests.clear() }, { flush: 'sync' })
 const generatedDuration = ref(0)
-const activeJob = shallowRef(null)
+const trackedJobs = shallowRef([])
+const setJob = job => { trackedJobs.value = updateTrackedVideoJob(trackedJobs.value, job) }
+const removeJob = job => { trackedJobs.value = trackedJobs.value.filter(item => !sameVideoGeneration(item, job)) }
+const scriptInQueue = id => Boolean(id) && trackedJobs.value.some(job => job.scriptTarget?.id === id)
+const transitionInQueue = (from, to) => trackedJobs.value.some(job => job.afterSceneId === from && job.timelineTransition?.beforeSceneId === to)
 const prompt = ref('')
 const scriptPrompt = ref('')
 const masterScript = ref('')
@@ -400,7 +404,7 @@ const { projects, records, activeId, loading: projectLoading, storageError, clou
   watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, masterScript, sceneScripts, scriptTarget,
     voiceReferenceId, prompt, generationMode, videoModel, referenceModelId,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
-    activeJob, projectComponents, componentTypes, remakeDraft, removedGeneratedIds, codeBackgroundFile],
+    trackedJobs, projectComponents, componentTypes, remakeDraft, removedGeneratedIds, codeBackgroundFile],
 })
 
 function importArchive(file) {
@@ -701,7 +705,7 @@ async function run(kind, action, { background = false } = {}) {
   activeOperation = controller
   busy.value = kind
   try { await action(controller.signal) } catch (cause) {
-    if (mounted && !controller.signal.aborted && (!background || !activeJob.value || activeJob.value.status === 'completed')) await report(cause)
+    if (mounted && !controller.signal.aborted && !background) await report(cause)
   }
   finally {
     if (activeOperation === controller) { activeOperation = null; busy.value = ''; progress.value = 0; blockedExit.value = false }
@@ -745,53 +749,50 @@ function jobStorage(change) {
 }
 function keepJob(job, finished = false) {
   if (!accountId.value || !activeId.value) return
-  const key = `${accountId.value}:${activeId.value}`
+  const key = `${accountId.value}:${activeId.value}:${job.requestId || job.id}`
   jobStorage(entries => {
+    const legacyKey = `${accountId.value}:${activeId.value}`
+    if (sameVideoGeneration(entries[legacyKey], job)) delete entries[legacyKey]
+    if (sameVideoGeneration(entries[accountId.value], job)) delete entries[accountId.value]
     entries[key] = {
       id: job.id, requestId: job.requestId, submittedAt: job.submittedAt, status: job.status,
       projectId: activeId.value, finished, expiresAt: Date.now() + jobLifetime,
       afterSceneId: job.afterSceneId, kind: job.kind, scriptTarget: job.scriptTarget, timelineTransition: job.timelineTransition,
+      billingPending: job.billingPending, refundPending: job.refundPending,
     }
   })
 }
-function scheduleStudioJob(delay = videoReleasePending(activeJob.value) ? 2000 : 9000) {
+function scheduleStudioJob(delay = trackedJobs.value.some(item => videoReleasePending(item) && !item.releasePollingStopped) ? 2000 : 9000) {
   clearTimeout(jobTimer)
-  if (mounted && activeJob.value && !activeJob.value.releasePollingStopped) jobTimer = setTimeout(() => {
-    if (busy.value || projectLoading.value) scheduleStudioJob()
-    else checkJob(true)
+  if (mounted && trackedJobs.value.some(item => !item.releasePollingStopped)) jobTimer = setTimeout(() => {
+    if (busy.value || remakeBusy.value || projectLoading.value) scheduleStudioJob()
+    else checkJob()
   }, delay)
 }
 function restoreJob() {
   if (!accountId.value || !activeId.value || projectLoading.value) return
-  if (wasRemovedGeneration(activeJob.value)) {
-    const removed = activeJob.value
-    clearTimeout(jobTimer)
-    activeJob.value = null
-    keepJob(removed, true)
-    return
-  }
-  if (activeJob.value) { scheduleStudioJob(250); return }
-  const saved = jobStorage(entries => entries[`${accountId.value}:${activeId.value}`] || entries[accountId.value])
-  if (saved?.finished || wasRemovedGeneration(saved) || saved?.projectId && saved.projectId !== activeId.value) return
-  if (saved && (saved.id || saved.requestId)) {
-    activeJob.value = { ...saved, status: saved.status || 'queued' }
-    tab.value = 'ai'
-    scheduleStudioJob(250)
-    return
-  }
   const owner = accountId.value
   const project = activeId.value
+  const projectKey = `${owner}:${project}`
+  const saved = jobStorage(entries => Object.entries(entries).filter(([key, job]) =>
+    key === projectKey || key.startsWith(`${projectKey}:`) || key === owner && (!job.projectId || job.projectId === project),
+  ).map(([, job]) => job)) || []
+  const finished = saved.filter(job => job.finished)
+  const hidden = job => wasRemovedGeneration(job) || finished.some(item => sameVideoGeneration(job, item))
+  trackedJobs.value = trackedJobs.value.filter(job => !hidden(job))
+  for (const job of saved) {
+    if (!hidden(job) && !trackedJobs.value.some(item => sameVideoGeneration(item, job))) setJob({ ...job, status: job.status || 'queued' })
+  }
+  if (trackedJobs.value.length) scheduleStudioJob(250)
   const access = wallet.access()
   void listVideoGenerations(access.get, { source: 'studio', projectId: project }).then(jobs => {
-    if (!mounted || !access.current() || owner !== accountId.value || project !== activeId.value || activeJob.value || projectLoading.value) return
-    const remaining = jobs.filter(item => !wasRemovedGeneration(item))
-    const job = remaining.find(item => videoGenerationActive(item.status) || videoReleasePending(item))
-      || remaining.find(item => item.status === 'completed' && !removedGeneratedIds.value.includes(item.id) &&
-        !clipLibrary.value.some(clip => clip.id === item.id))
-    if (!job) return
-    activeJob.value = job
-    keepJob(job)
-    scheduleStudioJob(250)
+    if (!mounted || !access.current() || owner !== accountId.value || project !== activeId.value || projectLoading.value) return
+    for (const job of jobs) {
+      if (hidden(job) || trackedJobs.value.some(item => sameVideoGeneration(item, job))) continue
+      if (videoGenerationActive(job.status) || videoReleasePending(job) ||
+        job.status === 'completed' && !clipLibrary.value.some(clip => clip.id === job.id)) setJob(job)
+    }
+    if (trackedJobs.value.length) scheduleStudioJob(250)
   }).catch(() => {})
 }
 watch([accountId, activeId, projectLoading], restoreJob)
@@ -809,12 +810,11 @@ watch(removedGeneration, item => {
     clipLibrary.value = clipLibrary.value.filter(clip => clip !== remoteOnly)
     if (generated.value?.id === item.id) selectGenerated(clipLibrary.value[0] || null)
   }
-  const job = activeJob.value
-  if (!wasRemovedGeneration(job)) return
-  clearTimeout(jobTimer)
-  if (busy.value === 'video' || busy.value === 'transition-generate') activeOperation?.abort()
-  activeJob.value = null
-  keepJob(job, true)
+  const job = trackedJobs.value.find(wasRemovedGeneration)
+  if (job) {
+    removeJob(job)
+    keepJob(job, true)
+  }
 }, { flush: 'sync' })
 
 function syncVideo(media, offset, animate) {
@@ -1145,7 +1145,7 @@ function scriptSceneConfig(item) {
 const scriptModelChoices = computed(() => new Map(sceneScripts.value.map(item => [item.id, scriptSceneConfig(item).choices])))
 
 async function prepareScriptScene(item) {
-  if (busy.value || activeJob.value || !item.prompt.trim() || !useCredits()) return
+  if (busy.value || scriptInQueue(item.id) || !item.prompt.trim() || !useCredits()) return
   const owner = accountId.value
   const project = activeId.value
   const existing = scenes.value.find(scene => scene.scriptId === item.id)
@@ -1467,13 +1467,13 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
     signal.throwIfAborted()
     if (wasRemovedGeneration(job)) return
     if (stillOwner() && projectId === activeId.value && [404, 410].includes(cause.response?.status)) {
-      activeJob.value = null
+      removeJob(job)
       keepJob(current, true)
       throw new Error('A geração não está mais disponível. Consulte a carteira para conferir a cobrança ou a liberação da reserva.')
     }
     if (stillOwner() && projectId === activeId.value && videoReleasePending(job)) {
       const release = releaseMonitor.observe(job)
-      activeJob.value = { ...job, releasePollingStopped: !release.retry }
+      setJob({ ...job, releasePollingStopped: !release.retry })
       error.value = releasePendingMessage(release.retry)
       return
     }
@@ -1483,7 +1483,7 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   if (!stillOwner() || projectId !== activeId.value || wasRemovedGeneration(current)) return
   if (videoGenerationActive(current.status)) {
     if (current.status !== job.status || current.id !== job.id || current.progress !== job.progress) {
-      activeJob.value = current
+      setJob(current)
       keepJob(current)
     }
     return
@@ -1491,16 +1491,16 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   if (current.status !== 'completed') {
     const release = releaseMonitor.observe(current)
     if (release.pending) {
-      activeJob.value = { ...current, releasePollingStopped: !release.retry }
-      keepJob(activeJob.value)
+      setJob({ ...current, releasePollingStopped: !release.retry })
+      keepJob(current)
       error.value = releasePendingMessage(release.retry)
       return
     }
-    activeJob.value = null
+    removeJob(current)
     keepJob(current, true)
     throw new Error(release.released ? releasedVideoMessage(current) : current.message || 'O provedor não conseguiu gerar o vídeo.')
   }
-  activeJob.value = current
+  setJob(current)
   const previous = clipLibrary.value.find(item => item.id === current.id)
   const asset = { id: current.id, remoteUrl: current.url, expiresAt: videoGenerationExpiry(current.expiresAt, Date.now() + AITOIA_RETENTION_MS),
     afterSceneId: job.afterSceneId, kind: job.kind || 'scene',
@@ -1509,12 +1509,12 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   catch (cause) {
     signal.throwIfAborted()
     if (cause.response?.status === 410 && stillOwner() && projectId === activeId.value) {
-      activeJob.value = null
+      removeJob(current)
       keepJob(current, true)
     }
     throw new Error('O clipe ainda está indisponível para download. Verifique a geração novamente.')
   }
-  if (!stillOwner() || projectId !== activeId.value) return
+  if (!stillOwner() || projectId !== activeId.value || wasRemovedGeneration(current)) return
   if (job.timelineTransition) asset.title = job.timelineTransition.title
   asset.expiresAt = storeClip(asset, { reveal: true }).expiresAt
   let applied = false
@@ -1537,7 +1537,7 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   signal.throwIfAborted()
   if (!stillOwner() || projectId !== activeId.value) return
   if (storageError.value) throw new Error('O clipe está disponível. Confira o armazenamento para salvar o projeto ou baixe uma cópia.')
-  activeJob.value = null
+  removeJob(current)
   keepJob(current, true)
   notice.value = job.timelineTransition && asset.file ? (applied ? 'Transição adicionada ao vídeo master e salva em Componentes › Cenas.' :
     'Transição salva em Componentes › Cenas. A posição original mudou ou a linha do tempo está cheia.') : applied ? 'Clipe aplicado à cena do roteiro.' :
@@ -1569,27 +1569,31 @@ function selectGenerated(clip) {
   generatedDuration.value = 0
   generated.value = clip
 }
-function checkJob(automatic = false) {
-  if (!activeJob.value || !accountId.value) return
-  const job = activeJob.value
+function checkJob(selected) {
+  if (!trackedJobs.value.length || !accountId.value) return
+  const pending = selected ? [selected] : trackedJobs.value.filter(item => !item.releasePollingStopped)
   const access = wallet.access()
   const project = activeId.value
   clearTimeout(jobTimer)
-  void run(job.timelineTransition && transitionDialogOpen.value ? 'transition-generate' : 'video', async signal => {
-    await readJob(job, signal, access)
-    if (!activeJob.value && job.timelineTransition) transitionDialogOpen.value = false
-  }, { background: automatic }).then(() => {
+  void run('video-check', async signal => {
+    for (const job of pending) {
+      try { await readJob(job, signal, access) }
+      catch (cause) {
+        signal.throwIfAborted()
+        if (selected || !trackedJobs.value.some(item => sameVideoGeneration(item, job))) await report(cause)
+      }
+    }
+  }, { background: !selected }).then(() => {
     if (!mounted || !access.current() || activeId.value !== project) return
-    if (error.value && job.timelineTransition) updateTimelineTransition({ error: error.value })
-    if (activeJob.value) scheduleStudioJob()
-    else wallet.refreshStatus({ silent: true })
+    scheduleStudioJob()
+    if (pending.some(job => !trackedJobs.value.some(item => sameVideoGeneration(item, job)))) wallet.refreshStatus({ silent: true })
   })
 }
 async function submitStudioJob(quote, placement, { post, current }, signal) {
   const projectId = activeId.value
   const { body, quoteToken, requestId } = quote
   const job = { ...placement, requestId, status: 'submitting', submittedAt: Date.now() }
-  activeJob.value = job
+  setJob(job)
   keepJob(job)
   void saveProject()
   try {
@@ -1599,16 +1603,17 @@ async function submitStudioJob(quote, placement, { post, current }, signal) {
     signal.throwIfAborted()
     if (!current() || projectId !== activeId.value || wasRemovedGeneration({ ...data?.data, requestId })) return
     if (!data?.data?.id) throw new Error('O pedido ainda não foi confirmado. Verifique a geração novamente.')
-    activeJob.value = { ...job, ...data.data }
-    keepJob(activeJob.value)
+    const accepted = { ...job, ...data.data }
+    setJob(accepted)
+    keepJob(accepted)
   } catch (cause) {
     if (current() && projectId === activeId.value && !canRetryVideoSubmission(cause)) {
-      activeJob.value = null
+      removeJob(job)
       keepJob(job, true)
     }
     throw cause
   } finally {
-    if (current() && projectId === activeId.value && activeJob.value) scheduleStudioJob(500)
+    if (current() && projectId === activeId.value && trackedJobs.value.length) scheduleStudioJob(500)
   }
 }
 function removeGenerated(target = generated.value) {
@@ -1723,7 +1728,8 @@ function openTimelineTransition(index) {
   const before = scenes.value[index]
   const after = scenes.value[index + 1]
   if (!signedIn.value) { showAuth(); return }
-  if (!mayEdit.value || busy.value || activeJob.value || !transitionReady(before, after) || scenes.value.length >= maxStudioScenes) return
+  if (!mayEdit.value || busy.value || !transitionReady(before, after) ||
+      transitionInQueue(before.id, after.id) || scenes.value.length >= maxStudioScenes) return
   timelineTransition.value = { before, after, index, prompt: '', files: [], quote: null, error: '' }
   transitionDialogOpen.value = true
   if (!options.value && !optionsLoading.value) void loadOptions()
@@ -1752,7 +1758,8 @@ async function createTimelineTransition() {
   const draft = timelineTransition.value
   const model = transitionDialogModel.value
   const preset = transitionDialogOffer.value
-  if (!draft?.prompt.trim() || !model || !preset || draft.files.length > maxTimelineTransitionFiles.value || activeJob.value || !useCredits()) return
+  if (!draft?.prompt.trim() || !model || !preset || draft.files.length > maxTimelineTransitionFiles.value ||
+      transitionInQueue(draft.before.id, draft.after.id) || !useCredits()) return
   const access = wallet.access()
   const selectedWallet = walletId.value
   updateTimelineTransition({ error: '' })
@@ -1788,7 +1795,8 @@ async function createTimelineTransition() {
     try {
       await submitStudioJob(quote, { kind: 'transition', afterSceneId: draft.before.id,
         timelineTransition: { beforeSceneId: draft.after.id, title: `transition-${draft.index + 1}-${draft.index + 2}`, prompt: request.prompt } }, access, signal)
-      updateTimelineTransition({ quote: null })
+      notice.value = 'Transição enviada para a fila de geração.'
+      transitionDialogOpen.value = false
     } catch (cause) {
       if ([409, 410].includes(cause.response?.status)) updateTimelineTransition({ quote: null })
       throw cause
@@ -1931,7 +1939,7 @@ async function quoteVideo() {
   })
 }
 async function makeVideo() {
-  if (busy.value || activeJob.value || !canQuoteVideo.value || !useCredits()) return
+  if (busy.value || scriptInQueue(scriptTarget.value?.id) || !canQuoteVideo.value || !useCredits()) return
   if (!videoQuote.value) return quoteVideo()
   const access = wallet.access()
   await run('video', async signal => {
@@ -1939,6 +1947,8 @@ async function makeVideo() {
       const placement = { afterSceneId: insertionAfter.value, kind: transitionMode.value ? 'transition' : 'scene', scriptTarget: scriptTarget.value }
       await submitStudioJob(videoQuote.value, placement, access, signal)
       videoQuote.value = null
+      scriptTarget.value = null
+      notice.value = 'Clipe enviado para a fila de geração.'
     } catch (cause) {
       if (cause.response?.status === 409) videoQuote.value = null
       throw cause
@@ -2085,7 +2095,7 @@ function resetProject() {
   componentForm.value = null
   voiceReferenceId.value = ''
   clearTimeout(jobTimer)
-  activeJob.value = null
+  trackedJobs.value = []
   scriptPrompt.value = ''
   masterScript.value = ''
   sceneScripts.value = []
@@ -2124,7 +2134,7 @@ function snapshotProject() {
     insertionAfter: insertionAfter.value,
     componentTypes: componentTypes.value, components: projectComponents.value, remake: remakeDraft.value,
     clips: clipLibrary.value.map(({ url, ...clip }) => ({ ...clip, ...(clip.expiresAt <= Date.now() && { file: undefined, remoteUrl: undefined, expired: true }) })),
-    selectedClipId: generated.value?.id, activeJob: activeJob.value, removedGeneratedIds: removedGeneratedIds.value }
+    selectedClipId: generated.value?.id, trackedJobs: trackedJobs.value, removedGeneratedIds: removedGeneratedIds.value }
 }
 
 async function restoreProject(project, signal) {
@@ -2183,7 +2193,8 @@ async function restoreProject(project, signal) {
       } catch { return [] }
     })
     selectGenerated(clipLibrary.value.find(item => item.id === project.selectedClipId) || clipLibrary.value[0] || null)
-    activeJob.value = wasRemovedGeneration(project.activeJob) ? null : project.activeJob || null
+    const previousJobs = Array.isArray(project.trackedJobs) ? project.trackedJobs : [project.activeJob]
+    trackedJobs.value = previousJobs.filter(job => (job?.id || job?.requestId) && !wasRemovedGeneration(job))
   } finally {
     if (!opened) localMedia.forEach(closeStudioMedia)
   }
@@ -2335,10 +2346,6 @@ onBeforeUnmount(() => {
       <p v-if="!signedIn && !testerMode" class="video-studio__notice"><q-icon name="mdi-gift-outline" size="20px" /> Ganhe 25.000 AitoTokens com Google e mais 25.000 ao voltar por 3 dias seguidos.</p>
       <p v-else-if="blockedExit" role="status" class="video-studio__notice"><q-icon name="mdi-progress-clock" size="20px" /> Aguarde a conclusão do trabalho antes de sair do estúdio.</p>
       <p v-else-if="notice" role="status" class="video-studio__notice"><q-icon name="mdi-check-circle-outline" size="20px" /> {{ notice }}</p>
-      <div v-if="activeJob?.timelineTransition && !transitionDialogOpen && !busy" class="video-studio__notice video-studio__draft">
-        <q-icon name="mdi-transition" size="20px" /> <span>Há uma transição pendente neste projeto.</span>
-        <button type="button" class="video-studio__secondary" :disabled="remakeBusy || projectLoading" @click="checkJob()">Verificar transição</button>
-      </div>
 
       <div v-if="draft" class="video-studio__notice video-studio__draft">
         <q-icon name="mdi-message-arrow-right-outline" size="22px" />
@@ -2367,7 +2374,7 @@ onBeforeUnmount(() => {
           </div>
           <q-expansion-item v-if="!remakeMode" v-model="modelListOpen" class="video-studio__catalog-models" icon="mdi-movie-open-outline" label="Modelos de vídeo" :caption="selectedModelName">
             <AitoVideoModelCarousel v-if="modelCards.length" :cards="modelCards" :selected-id="selectedConfig?.id" :active="modelListOpen"
-              :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" @select="selectVideoModel" />
+              :disabled="!mayEdit || Boolean(busy)" @select="selectVideoModel" />
             <p v-else class="video-studio__catalog-empty">{{ optionsLoading ? 'Carregando modelos de vídeo…' : optionsError ||
               (hasReference || reference || referenceImages.length || voiceReference
                 ? 'Nenhum modelo deste modo aceita as referências anexadas.' : 'Nenhum modelo disponível para este modo.') }}</p>
@@ -2425,7 +2432,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="video-studio__actions">
                 <button class="video-studio__secondary" type="button" :disabled="!selectedScene.media?.isVideo || Boolean(busy)" @click="buildContinuity"><q-icon name="mdi-movie-open-outline" size="18px" /> Gerar próxima cena</button>
-                <button class="video-studio__secondary" type="button" :disabled="!transitionReady(selectedScene, nextScene) || Boolean(busy) || Boolean(activeJob) || scenes.length >= maxStudioScenes" @click="openTimelineTransition(scenes.indexOf(selectedScene))"><q-icon name="mdi-transition" size="18px" /> Gerar transição</button>
+                <button class="video-studio__secondary" type="button" :disabled="!transitionReady(selectedScene, nextScene) || Boolean(busy) || transitionInQueue(selectedScene.id, nextScene?.id) || scenes.length >= maxStudioScenes" @click="openTimelineTransition(scenes.indexOf(selectedScene))"><q-icon name="mdi-transition" size="18px" /> Gerar transição</button>
                 <span v-if="!transitionReady(selectedScene, nextScene)" class="video-studio__hint">Adicione mídia nas duas cenas para criar a transição.</span>
               </div>
             </template>
@@ -2472,13 +2479,13 @@ onBeforeUnmount(() => {
             </div>
             <AitoVideoModelSelect v-if="clipModels.length"
               :model-value="selectedConfig?.id" :models="clipModels"
-              :disable="!mayEdit || Boolean(busy) || Boolean(activeJob)"
+              :disable="!mayEdit || Boolean(busy)"
               @update:model-value="selectVideoModel" />
             <label>{{ transitionMode ? 'Como a transição deve acontecer?' : 'Descrição do clipe' }}
               <textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="2000" :placeholder="transitionMode ? 'Ex.: faça a câmera avançar entre as duas cenas com um movimento suave…' : 'Descreva o cenário, o movimento de câmera, o estilo e as falas dos personagens…'" :disabled="!mayEdit" />
             </label>
             <div v-if="generationMode === 'reference' && !reference && !referenceImages.length && !voiceReference" class="video-studio__actions">
-              <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob)" @click="usePromptOnly">
+              <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="usePromptOnly">
                 <q-icon name="mdi-text-box-outline" size="18px" /> Usar apenas a descrição
               </button>
             </div>
@@ -2572,14 +2579,21 @@ onBeforeUnmount(() => {
             </p>
             <div class="video-studio__actions">
               <button v-if="!signedIn" class="video-studio__primary" type="button" @click="showAuth()">Criar conta para usar IA</button>
-              <button v-else-if="activeJob && !busy" class="video-studio__primary" type="button" @click="checkJob()"><q-icon name="mdi-refresh" size="20px" /> {{ videoReleasePending(activeJob) ? 'Verificar liberação' : 'Verificar geração' }}</button>
-              <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || Boolean(busy) || !canQuoteVideo" @click="makeVideo"><q-spinner v-if="busy === 'video' || busy === 'quote'" size="19px" /><q-icon v-else :name="videoQuote ? 'mdi-movie-open-play-outline' : 'mdi-calculator-variant-outline'" size="19px" /> {{ busy === 'video' ? 'Gerando clipe…' : busy === 'quote' ? 'Consultando preço…' : videoQuote?.estimated ? 'Confirmar reserva e gerar' : videoQuote ? 'Confirmar geração' : 'Consultar preço' }}<span v-if="quoteCost && !busy"> · Até {{ quoteCost }}</span></button>
+              <button v-else class="video-studio__primary" type="button" :disabled="!mayEdit || Boolean(busy) || !canQuoteVideo || scriptInQueue(scriptTarget?.id)" @click="makeVideo"><q-spinner v-if="busy === 'video' || busy === 'quote'" size="19px" /><q-icon v-else :name="videoQuote ? 'mdi-movie-open-play-outline' : 'mdi-calculator-variant-outline'" size="19px" /> {{ busy === 'video' ? 'Enviando para a fila…' : busy === 'quote' ? 'Consultando preço…' : videoQuote?.estimated ? 'Confirmar reserva e gerar' : videoQuote ? 'Confirmar geração' : 'Consultar preço' }}<span v-if="quoteCost && !busy"> · Até {{ quoteCost }}</span></button>
             </div>
           </div>
         </section>
 
         <section v-if="tab === 'ai' && !remakeMode" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
             <header><h2>Clipes do projeto</h2><span v-if="clipLibrary.length">{{ clipLibrary.length }} {{ clipLibrary.length === 1 ? 'clipe' : 'clipes' }}</span></header>
+            <article v-for="job in trackedJobs" :key="job.requestId || job.id" class="video-studio__queued-clip">
+              <small>{{ job.scriptTarget?.title || (job.timelineTransition ? 'Transição' : job.modelLabel || 'Clipe') }}</small>
+              <AitoVideoProgress v-if="videoGenerationActive(job.status)" :stage="job.status" :percent="job.progress" />
+              <small v-else-if="videoReleasePending(job)" role="status">Estorno em processamento.</small>
+              <button type="button" class="video-studio__secondary" :disabled="Boolean(busy) || remakeBusy || projectLoading" @click="checkJob(job)">
+                <q-icon name="mdi-refresh" size="16px" /> {{ videoReleasePending(job) ? 'Verificar estorno' : 'Verificar geração' }}
+              </button>
+            </article>
             <div v-if="generated" class="video-studio__generated">
               <div class="video-studio__clip-list" role="group" aria-label="Clipes gerados"><button v-for="clip in clipLibrary" :key="clip.id" class="video-studio__secondary" type="button" :aria-pressed="clip.id === generated.id" :disabled="!mayEdit" @click="selectGenerated(clip)">Clipe {{ clip.number }}</button></div>
               <p v-if="generated.expired" class="video-studio__hint">Este clipe expirou. Baixe os demais clipes ou gere uma nova cena.</p>
@@ -2599,12 +2613,9 @@ onBeforeUnmount(() => {
               </div>
               <p v-if="generatedDuration > 15" class="video-studio__hint">Ao adicionar à sequência, o clipe é dividido em cenas de até 15 s.</p>
             </div>
-            <div v-if="!generated || busy === 'video'" class="video-studio__clip-empty" role="status">
-              <q-spinner v-if="busy === 'video'" size="30px" /><q-icon v-else name="mdi-filmstrip-box-multiple" size="32px" />
-              <AitoVideoProgress v-if="videoGenerationActive(activeJob?.status) || (busy === 'video' && !videoReleasePending(activeJob))" :stage="activeJob?.status || 'submitting'" :percent="activeJob?.progress" />
-              <p v-else-if="videoReleasePending(activeJob)" role="status">A geração falhou. Aguardando confirmação da liberação da reserva.</p>
-              <p v-else-if="activeJob">Geração pendente. Clique em Verificar geração para acompanhar.</p>
-              <p v-else>Os vídeos gerados aparecem aqui.</p>
+            <div v-if="!generated && !trackedJobs.length" class="video-studio__clip-empty" role="status">
+              <q-icon name="mdi-filmstrip-box-multiple" size="32px" />
+              <p>Os vídeos gerados aparecem aqui.</p>
             </div>
         </section>
 
@@ -2690,7 +2701,7 @@ onBeforeUnmount(() => {
             </button>
             <span v-if="index < scenes.length - 1" class="video-studio__transition-slot">
               <button type="button" class="video-studio__transition-add" :aria-label="`Adicionar transição entre cenas ${index + 1} e ${index + 2}`"
-                :disabled="!mayEdit || Boolean(busy) || Boolean(activeJob) || scenes.length >= maxStudioScenes || !transitionReady(scene, scenes[index + 1])"
+                :disabled="!mayEdit || Boolean(busy) || transitionInQueue(scene.id, scenes[index + 1]?.id) || scenes.length >= maxStudioScenes || !transitionReady(scene, scenes[index + 1])"
                 @click="openTimelineTransition(index)"><q-icon name="mdi-plus" size="18px" /></button>
               <q-tooltip>{{ transitionReady(scene, scenes[index + 1]) ? (scenes.length >= maxStudioScenes ? 'Libere espaço no vídeo master' : 'Gerar transição com IA') : 'Adicione mídia nas duas cenas' }}</q-tooltip>
             </span>
@@ -2713,21 +2724,21 @@ onBeforeUnmount(() => {
             <span><strong>Quadro inicial</strong>{{ timelineTransition.after.heading || `Cena ${timelineTransition.index + 2}` }}</span>
           </div>
           <AitoVideoModelSelect v-if="transitionDialogModels.length" :model-value="transitionDialogModel?.id" :models="transitionDialogModels"
-            :disable="Boolean(busy) || Boolean(activeJob)"
+            :disable="Boolean(busy)"
             @update:model-value="value => updateTimelineTransition({ modelId: value, quote: null, error: '' })" />
-          <label>Como conectar as cenas?<textarea :value="timelineTransition.prompt" rows="3" maxlength="2000" :disabled="Boolean(busy) || Boolean(activeJob)"
+          <label>Como conectar as cenas?<textarea :value="timelineTransition.prompt" rows="3" maxlength="2000" :disabled="Boolean(busy)"
             placeholder="Ex.: A câmera passa pela porta e acompanha a personagem até a próxima cena."
             @input="updateTimelineTransition({ prompt: $event.target.value, quote: null, error: '' })" /></label>
           <input ref="transitionFileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
             @change="addTimelineTransitionFiles($event.target.files); $event.target.value = ''" />
-          <button v-if="maxTimelineTransitionFiles" class="video-studio__secondary" type="button" :disabled="Boolean(busy) || Boolean(activeJob) || timelineTransition.files.length >= maxTimelineTransitionFiles"
+          <button v-if="maxTimelineTransitionFiles" class="video-studio__secondary" type="button" :disabled="Boolean(busy) || timelineTransition.files.length >= maxTimelineTransitionFiles"
             @click="transitionFileInput?.click()" @dragover.prevent @drop.prevent="addTimelineTransitionFiles($event.dataTransfer.files)">
             <q-icon name="mdi-paperclip" size="18px" /> Anexar imagens opcionais ({{ timelineTransition.files.length }}/{{ maxTimelineTransitionFiles }})
           </button>
           <ul v-if="timelineTransition.files.length" class="video-studio__transition-filelist">
             <li v-for="(file, index) in timelineTransition.files" :key="index">
               <span>{{ file.name }}</span>
-              <q-btn flat round dense icon="mdi-close" :aria-label="`Remover ${file.name}`" :disable="Boolean(busy) || Boolean(activeJob)"
+              <q-btn flat round dense icon="mdi-close" :aria-label="`Remover ${file.name}`" :disable="Boolean(busy)"
                 @click="updateTimelineTransition({ files: timelineTransition.files.filter((_, row) => row !== index), quote: null, error: '' })" />
             </li>
           </ul>
@@ -2736,16 +2747,13 @@ onBeforeUnmount(() => {
           <p v-else-if="optionsLoading" class="video-studio__hint" role="status">Consultando modelo de transição…</p>
           <p v-else-if="!transitionDialogOffer" class="video-studio__hint" role="status">O modelo de transição está indisponível para este formato.</p>
           <p v-if="timelineTransition.quote && transitionDialogOffer && !busy" class="video-studio__estimate" role="status">Até {{ tokenCost(timelineTransition.quote.billedUsdCents) }} · {{ transitionDialogOffer.seconds }} s · {{ transitionDialogOffer.resolution }}</p>
-          <AitoVideoProgress v-if="activeJob?.timelineTransition || busy === 'transition-generate'"
-            :stage="activeJob?.status || 'submitting'" :percent="activeJob?.progress" />
+          <AitoVideoProgress v-if="busy === 'transition-generate'" stage="submitting" />
         </q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps label="Fechar" :disable="Boolean(busy)" />
-          <q-btn v-if="activeJob?.timelineTransition" no-caps unelevated color="teal-8" icon="mdi-refresh" label="Verificar transição"
-            :disable="Boolean(busy)" @click="checkJob()" />
-          <q-btn v-else no-caps unelevated color="teal-8" icon="mdi-transition"
+          <q-btn v-if="timelineTransition" no-caps unelevated color="teal-8" icon="mdi-transition"
             :label="timelineTransition.quote ? 'Confirmar e gerar' : 'Cotar transição'" :loading="busy === 'transition-quote'"
-            :disable="Boolean(busy) || Boolean(activeJob) || !transitionDialogOffer || timelineTransition.files.length > maxTimelineTransitionFiles || !timelineTransition.prompt.trim()" @click="createTimelineTransition" />
+            :disable="Boolean(busy) || transitionInQueue(timelineTransition.before.id, timelineTransition.after.id) || !transitionDialogOffer || timelineTransition.files.length > maxTimelineTransitionFiles || !timelineTransition.prompt.trim()" @click="createTimelineTransition" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -2815,12 +2823,12 @@ onBeforeUnmount(() => {
               :model-value="item.componentIds" :options="projectComponents" :max-values="12" option-label="title" option-value="id" :disable="Boolean(busy)"
               @update:model-value="value => updateScriptScene(item.id, { componentIds: value })" />
             <AitoVideoModelSelect v-if="scriptModelChoices.get(item.id)?.length" :model-value="item.modelId || ''"
-              :models="[{ id: '', label: 'Seleção automática' }, ...scriptModelChoices.get(item.id)]" :disable="Boolean(busy) || Boolean(activeJob)"
+              :models="[{ id: '', label: 'Seleção automática' }, ...scriptModelChoices.get(item.id)]" :disable="Boolean(busy)"
               @update:model-value="value => updateScriptScene(item.id, { modelId: value })" />
             <p v-else-if="options && !optionsLoading" class="video-studio__hint">Nenhum modelo aceita esta combinação de duração, proporção e referências.</p>
             <div class="video-studio__actions">
               <q-btn outline no-caps icon="mdi-creation-outline" label="Refinar com IA" :disable="Boolean(busy) || !item.prompt.trim()" @click="writeProjectScript('refine', item)" />
-              <button type="button" class="video-studio__primary" :disabled="Boolean(busy) || Boolean(activeJob) || !item.prompt.trim()" @click="prepareScriptScene(item)">
+              <button type="button" class="video-studio__primary" :disabled="Boolean(busy) || scriptInQueue(item.id) || !item.prompt.trim()" @click="prepareScriptScene(item)">
                 <q-icon name="mdi-movie-open-play-outline" size="18px" /> {{ scenes.some(scene => scene.scriptId === item.id) ? 'Gerar de novo' : 'Gerar cena' }}
               </button>
             </div>
@@ -3090,6 +3098,7 @@ onBeforeUnmount(() => {
 .video-studio__audio-meta strong { overflow-wrap: anywhere; }
 .video-studio__generated { display: grid; gap: 8px; }
 .video-studio__clip-empty { display: grid; min-height: 160px; gap: 8px; padding: 14px; align-content: center; justify-items: center; border: 1px dashed var(--aito-ai-line); border-radius: 10px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); text-align: center; }
+.video-studio__queued-clip { display: grid; gap: 7px; justify-items: start; margin: 8px 0; padding: 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; }
 .video-studio__generation-modes, .video-studio__clip-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .video-studio__generation-modes { margin: 0 0 10px; }
 .video-studio__generation-modes [aria-pressed=true], .video-studio__clip-list [aria-pressed=true] { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); }

@@ -5,13 +5,14 @@ import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { canRemoveGeneration, forgetLocalGeneration, generationIdentity, localGenerationActivity } from 'src/services/aitoiaGenerationActivity'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
-import { videoGenerationActive } from 'src/services/aitoiaVideoJobs'
-import { failedVideo, videoReleasePending } from 'src/services/aitoiaVideoRelease'
+import { sameVideoGeneration, videoGenerationActive } from 'src/services/aitoiaVideoJobs'
+import { failedVideo, videoRefundNotice, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 
 const props = defineProps({ state: { type: Object, required: true } })
 const { accountId, access } = props.state
 const open = ref(false)
 const remoteJobs = shallowRef([])
+const customerQueue = shallowRef(null)
 const saturated = ref(false)
 const refreshing = ref(false)
 const refreshFailed = ref(false)
@@ -26,7 +27,6 @@ let pollTimer
 let pollRequest
 let previewRequest
 let removalRequest
-let releaseRefreshTimer
 let disposed = false
 
 const types = { remake: 'Cena refeita', studio: 'Clipe do estúdio', chat: 'Vídeo no chat' }
@@ -44,7 +44,7 @@ const jobs = computed(() => {
 })
 const active = computed(() => jobs.value.some(isActive))
 const latest = computed(() => jobs.value[0])
-const label = computed(() => active.value ? 'Ver andamento das gerações' : 'Ver resultados das gerações')
+const label = computed(() => active.value ? 'Ver andamento das gerações' : 'Ver gerações')
 const statusIcon = computed(() => latest.value?.status === 'completed' ? 'mdi-check-circle-outline' :
   latest.value?.status === 'uncertain' ? 'mdi-clock-alert-outline' : 'mdi-alert-circle-outline')
 
@@ -77,9 +77,16 @@ async function refresh() {
   try {
     const { data } = await owner.get('/aitoia/video/generations', { signal: controller.signal })
     if (!controller.signal.aborted && owner.current() && Array.isArray(data?.data?.jobs)) {
-      const { jobs: rows, activeGeneration, queue } = data.data
-      remoteJobs.value = activeGeneration && !rows.some(item => item.id === activeGeneration.id)
-        ? [activeGeneration, ...rows] : rows
+      const { jobs: rows, activeGeneration, activeGenerations, queue } = data.data
+      const activeRows = activeGenerations || (activeGeneration ? [activeGeneration] : [])
+      const next = [...activeRows.filter(job => !rows.some(item => sameVideoGeneration(item, job))), ...rows]
+      if (next.some(job => {
+        const previous = remoteJobs.value.find(item => sameVideoGeneration(item, job))
+        return previous && ((isActive(previous) && !isActive(job)) ||
+          (videoReleasePending(previous) && !videoReleasePending(job)))
+      })) void props.state.refreshStatus({ silent: true })
+      remoteJobs.value = next
+      customerQueue.value = data.data.customerQueue || null
       saturated.value = queue?.saturated === true
       refreshFailed.value = false
     }
@@ -104,7 +111,6 @@ function clearPreview() {
 }
 
 function reset() {
-  clearTimeout(releaseRefreshTimer)
   clearTimeout(pollTimer)
   pollRequest?.abort()
   pollRequest = null
@@ -120,6 +126,7 @@ watch(accountId, id => {
   reset()
   open.value = false
   remoteJobs.value = []
+  customerQueue.value = null
   saturated.value = false
   removedIds.value = new Set()
   refreshFailed.value = false
@@ -137,7 +144,7 @@ watch(open, visible => {
 onBeforeUnmount(() => { disposed = true; reset() })
 
 function askRemove(job) {
-  if (removing.value || isActive(job) || !canRemoveGeneration(job)) return
+  if (removing.value || isActive(job) || videoReleasePending(job) || !canRemoveGeneration(job)) return
   const owner = access()
   const ownerId = accountId.value
   const failed = job.status !== 'completed'
@@ -150,7 +157,7 @@ function askRemove(job) {
 }
 
 async function removeClip(job, owner, ownerId) {
-  if (removing.value || isActive(job) || !canRemoveGeneration(job)) return
+  if (removing.value || isActive(job) || videoReleasePending(job) || !canRemoveGeneration(job)) return
   const key = generationIdentity(job)
   const controller = new AbortController()
   removalRequest = controller
@@ -162,15 +169,6 @@ async function removeClip(job, owner, ownerId) {
       removedIds.value = new Set([...removedIds.value, key])
       remoteJobs.value = remoteJobs.value.filter(item => generationIdentity(item) !== key)
       forgetLocalGeneration(ownerId, job)
-      if (failedVideo(job)) {
-        void props.state.refreshStatus({ silent: true })
-        if (videoReleasePending(job)) {
-          clearTimeout(releaseRefreshTimer)
-          releaseRefreshTimer = setTimeout(() => {
-            if (!disposed && owner.current()) void props.state.refreshStatus({ silent: true })
-          }, 4500)
-        }
-      }
       if (job.id && (preview.value?.id === job.id || previewing.value === job.id)) clearPreview()
       queuePoll(350)
     }
@@ -208,10 +206,12 @@ async function openClip(job) {
 </script>
 
 <template>
-  <q-btn v-if="accountId && latest" flat dense round class="aito-generation-button"
+  <q-btn v-if="accountId" flat dense round class="aito-generation-button"
     :aria-label="label" aria-haspopup="dialog" @click="open = true">
     <q-spinner v-if="active" size="19px" color="teal-3" />
-    <q-icon v-else :name="statusIcon" :color="latest.status === 'completed' ? 'teal-3' : 'amber-4'" size="22px" />
+    <q-icon v-else-if="latest" :name="statusIcon" :color="latest.status === 'completed' ? 'teal-3' : 'amber-4'" size="22px" />
+    <q-icon v-else name="mdi-progress-clock" size="22px" />
+    <q-badge v-if="customerQueue?.active" floating rounded color="teal-8">{{ customerQueue.active }}</q-badge>
     <q-tooltip>{{ label }}</q-tooltip>
   </q-btn>
 
@@ -219,6 +219,7 @@ async function openClip(job) {
     <q-card class="aito-ai-theme aito-generation-dialog">
       <q-card-section class="aito-generation-dialog__header">
         <h2 id="aito-generation-heading">Gerações</h2>
+        <span v-if="customerQueue" class="aito-generation-dialog__counter" role="status">{{ customerQueue.active }}/{{ customerQueue.limit }} vídeos ativos</span>
         <q-btn flat dense round icon="mdi-refresh" aria-label="Atualizar gerações" :loading="refreshing" @click="refresh" />
         <q-btn v-close-popup flat dense round icon="mdi-close" aria-label="Fechar gerações" />
       </q-card-section>
@@ -226,19 +227,23 @@ async function openClip(job) {
         <div v-if="saturated" class="aito-generation-dialog__demand" role="status">
           <q-icon name="mdi-alert-outline" size="17px" /> A geração pode demorar mais devido à alta demanda de vídeos no AitoIA.
         </div>
+        <p v-if="customerQueue && customerQueue.active >= customerQueue.limit" role="status">Aguarde uma vaga na sua fila para enviar outro vídeo.</p>
         <p v-if="refreshFailed" role="status">Falha ao atualizar a fila. Tente novamente.</p>
         <p v-if="removalError" role="alert">{{ removalError }}</p>
         <p v-if="!jobs.length">Nenhuma geração recente.</p>
         <article v-for="item in jobs" :key="item.requestId || item.id">
           <strong>{{ item.title }}</strong>
           <small v-if="item.modelLabel">{{ item.modelLabel }}<template v-if="item.sourceSeconds"> · {{ item.sourceSeconds }} s</template></small>
-          <AitoVideoProgress v-if="item.kind === 'video' && isActive(item)" :stage="item.status" :percent="item.progress" />
-          <template v-else-if="isActive(item)">
+          <AitoVideoProgress v-if="item.kind === 'video' && videoGenerationActive(item.status)" :stage="item.status" :percent="item.progress" />
+          <template v-else-if="item.kind !== 'video' && isActive(item)">
             <q-linear-progress indeterminate rounded color="teal-4" aria-label="Geração em andamento" />
             <small role="status">Gerando {{ item.kind === 'image' ? 'imagem' : 'locução' }}</small>
           </template>
           <span v-else-if="item.status === 'completed'" class="aito-generation-dialog__done"><q-icon name="mdi-check-circle-outline" /> Concluída</span>
-          <small v-else role="status">{{ item.message || (item.status === 'uncertain' ? 'Aguardando confirmação do provedor.' : 'Geração encerrada.') }}</small>
+          <small v-else role="status">{{ item.message || (failedVideo(item) ? 'A geração falhou.' : 'Geração encerrada.') }}</small>
+          <span v-if="item.kind === 'video' && videoRefundNotice(item)" class="aito-generation-dialog__refund" role="status">
+            <q-icon :name="videoReleasePending(item) ? 'mdi-clock-outline' : 'mdi-cash-refund'" /> {{ videoRefundNotice(item) }}
+          </span>
           <div v-if="item.kind === 'video' && item.status === 'completed' && item.id" class="aito-generation-dialog__details">
             <small v-if="projectsFor(item).length">
               <q-icon name="mdi-folder-outline" size="16px" />
@@ -253,7 +258,7 @@ async function openClip(job) {
                 :loading="removing === item.id" :disable="Boolean(removing) && removing !== item.id" @click="askRemove(item)" />
             </div>
           </div>
-          <q-btn v-if="!isActive(item) && item.status !== 'completed' && canRemoveGeneration(item)" flat no-caps dense
+          <q-btn v-if="!isActive(item) && !videoReleasePending(item) && item.status !== 'completed' && canRemoveGeneration(item)" flat no-caps dense
             icon="mdi-delete-outline" label="Remover aviso" :aria-label="`Remover aviso de ${item.title}`"
             :loading="removing === generationIdentity(item)" :disable="Boolean(removing)" @click="askRemove(item)" />
           <template v-if="preview?.id === item.id">
@@ -272,6 +277,8 @@ async function openClip(job) {
 .aito-generation-dialog { width: min(550px, 100%); color: var(--aito-ai-text); background: var(--aito-ai-surface); border: 1px solid var(--aito-ai-line); }
 .aito-generation-dialog__header { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--aito-ai-line); }
 .aito-generation-dialog__header h2 { flex: 1; margin: 0; font-size: 1.2rem; line-height: 1.2; }
+.aito-generation-dialog__counter { color: var(--aito-ai-muted); font-size: .78rem; }
+.aito-generation-dialog__refund { display: inline-flex; align-items: center; gap: 5px; color: var(--aito-ai-accent); font-size: .82rem; }
 .aito-generation-dialog__list { display: grid; gap: 9px; max-height: min(70dvh, 540px); overflow-y: auto; }
 .aito-generation-dialog__list article { display: grid; gap: 6px; justify-items: start; padding: 11px; border: 1px solid var(--aito-ai-line); border-radius: 9px; background: var(--aito-ai-panel); }
 .aito-generation-dialog__demand { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 8px; color: #ffdbaf; background: #54321b; font-size: .82rem; }
