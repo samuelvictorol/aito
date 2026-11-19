@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
+import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
+import AdminPasswordDialog from './AdminPasswordDialog.vue'
 
 const props = defineProps({ live: { type: Boolean, default: true } })
 const $q = useQuasar()
@@ -12,6 +14,8 @@ const queue = ref(null)
 const limitDraft = ref('')
 const loading = ref(false)
 const savingLimit = ref(false)
+const passwordOpen = ref(false)
+let reviewedLimit
 const error = ref('')
 const checkedAt = ref(null)
 const filters = reactive({ owner: '', status: 'queued', source: null })
@@ -120,15 +124,23 @@ function applyFilters() {
   appliedFilters = { owner: filters.owner?.trim() || undefined, status: filters.status || undefined, source: filters.source || undefined }
   void load(1, pagination.value.rowsPerPage, true)
 }
-async function saveLimit() {
-  if (!capChanged.value || savingLimit.value) return
+function saveLimit() {
+  if (!capChanged.value || savingLimit.value || passwordOpen.value) return
+  reviewedLimit = limitValue.value
+  passwordOpen.value = true
+}
+
+async function applyLimit(confirmation) {
+  if (!confirmation?.confirmationToken || savingLimit.value || !Number.isInteger(reviewedLimit)) return
+  const limitToSave = reviewedLimit
+  reviewedLimit = null
   pendingLoad?.abort()
   clearTimeout(refreshTimer)
   const controller = new AbortController()
   pendingSave = controller
   savingLimit.value = true
   try {
-    const { data } = await api.put(endpoint, { limit: limitValue.value }, { ...financeHeaders(true), signal: controller.signal })
+    const { data } = await api.put(endpoint, { limit: limitToSave }, { ...adminConfirmationHeaders(confirmation), signal: controller.signal })
     if (controller.signal.aborted) return
     const limit = data.data.limit
     queue.value = { ...queue.value, limit, saturated: queue.value.active >= limit }
@@ -214,8 +226,8 @@ onBeforeUnmount(() => {
       </div>
       <q-form class="admin-video-queue__limit" @submit.prevent="saveLimit">
         <q-input v-model="limitDraft" dark outlined dense label="Limite simultâneo" type="number" min="1" max="100" step="1" inputmode="numeric"
-          :disable="!queue || savingLimit" />
-        <q-btn outline no-caps color="teal-3" type="submit" label="Salvar limite" :disable="!capChanged" :loading="savingLimit" />
+          :disable="!queue || savingLimit || passwordOpen" />
+        <q-btn outline no-caps color="teal-3" type="submit" label="Salvar limite" :disable="!capChanged || passwordOpen" :loading="savingLimit" />
         <q-btn flat round dense color="teal-3" icon="mdi-refresh" aria-label="Atualizar fila da Higgsfield" :loading="loading" :disable="savingLimit"
           @click="load(pagination.page, pagination.rowsPerPage, true)" />
       </q-form>
@@ -284,6 +296,7 @@ onBeforeUnmount(() => {
       </q-card>
     </q-dialog>
   </section>
+  <AdminPasswordDialog v-model="passwordOpen" @verified="applyLimit" />
 </template>
 
 <style scoped>

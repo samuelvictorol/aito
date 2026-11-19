@@ -3,12 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
+import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
 import { sealAitoProviderCredential } from 'src/services/aitoProviderCredentials'
-import LoginMfaDialog from './LoginMfaDialog.vue'
+import AdminPasswordDialog from './AdminPasswordDialog.vue'
 import AdminAitoVoicePreviews from './AdminAitoVoicePreviews.vue'
 
 const props = defineProps({ checkoutState: String })
-const emit = defineEmits(['updated', 'reauthenticated'])
+const emit = defineEmits(['updated'])
 const $q = useQuasar()
 const root = '/aito-tokens/admin/provider-credentials'
 const providers = [
@@ -29,8 +30,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const loadError = ref('')
 const saveError = ref('')
-const challenge = shallowRef(null)
-const mfaOpen = ref(false)
+const passwordOpen = ref(false)
 const lengthValid = computed(() => credential.value.trim().length >= 12 && credential.value.trim().length <= 512)
 const checkoutMessage = computed(() => checkoutMessages[props.checkoutState])
 const operations = new AbortController()
@@ -63,14 +63,14 @@ function startEdit(provider) {
 }
 
 function closeEdit() {
-  if (submitting.value || mfaOpen.value) return
+  if (submitting.value || passwordOpen.value) return
   pending = null
   credential.value = ''
   selected.value = null
 }
 
-async function requestMfa() {
-  if (!selected.value || !lengthValid.value || submitting.value || mfaOpen.value) return
+async function requestConfirmation() {
+  if (!selected.value || !lengthValid.value || submitting.value || passwordOpen.value) return
   const { id } = selected.value
   submitting.value = true
   saveError.value = ''
@@ -79,28 +79,24 @@ async function requestMfa() {
     credential.value = ''
     pending = { id, envelope: await sealing }
     operations.signal.throwIfAborted()
-    const { data } = await api.post('/auth/mfa/reauth', {}, { ...financeHeaders(true), signal: operations.signal })
-    challenge.value = data
-    mfaOpen.value = true
+    passwordOpen.value = true
   } catch (error) {
     pending = null
     if (!operations.signal.aborted) {
-      saveError.value = error.response ? 'Não foi possível solicitar o código de acesso. Confira as configurações de autenticação.' :
-        error.message || 'Não foi possível proteger a chave neste navegador.'
+      saveError.value = error.message || 'Não foi possível proteger a chave neste navegador.'
     }
   } finally {
     submitting.value = false
   }
 }
 
-async function applyCredential(session) {
-  if (!session?.token || !pending || submitting.value) return
+async function applyCredential(confirmation) {
+  if (!confirmation?.confirmationToken || !pending || submitting.value) return
   const { id, envelope } = pending
   pending = null
-  emit('reauthenticated', session)
   submitting.value = true
   try {
-    await api.put(`${root}/${id}`, envelope, { headers: { Authorization: `Bearer ${session.token}` }, signal: operations.signal })
+    await api.put(`${root}/${id}`, envelope, { ...adminConfirmationHeaders(confirmation), signal: operations.signal })
     selected.value = null
     $q.notify({ type: 'positive', message: 'Chave protegida e salva.' })
     emit('updated')
@@ -116,10 +112,9 @@ async function applyCredential(session) {
   }
 }
 
-watch(mfaOpen, open => {
+watch(passwordOpen, open => {
   if (!open) {
     pending = null
-    challenge.value = null
   }
 })
 onMounted(load)
@@ -164,26 +159,25 @@ onBeforeUnmount(() => {
       </article>
     </div>
     <p v-if="checkoutMessage" class="provider-keys__warning">{{ checkoutMessage }}</p>
-    <AdminAitoVoicePreviews :enabled="Boolean(statusOf('openai').configured)" @reauthenticated="emit('reauthenticated', $event)" />
+    <AdminAitoVoicePreviews :enabled="Boolean(statusOf('openai').configured)" />
 
-    <q-dialog :model-value="Boolean(selected)" :persistent="submitting || mfaOpen" @update:model-value="value => { if (!value) closeEdit() }">
+    <q-dialog :model-value="Boolean(selected)" :persistent="submitting || passwordOpen" @update:model-value="value => { if (!value) closeEdit() }">
       <q-card dark class="provider-keys__dialog">
-        <q-form @submit.prevent="requestMfa">
+        <q-form @submit.prevent="requestConfirmation">
           <q-card-section class="provider-keys__form">
             <h3>Chave {{ selected?.label }}</h3>
             <q-input v-model="credential" type="password" dark outlined autofocus autocomplete="new-password"
-              spellcheck="false" autocapitalize="off" label="Nova chave" maxlength="512" :disable="submitting || mfaOpen" />
-            <p>Confirme com um código de acesso para gravar a nova chave no cofre.</p>
+              spellcheck="false" autocapitalize="off" label="Nova chave" maxlength="512" :disable="submitting || passwordOpen" />
             <p v-if="saveError" role="alert" class="provider-keys__warning">{{ saveError }}</p>
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat no-caps label="Cancelar" :disable="submitting || mfaOpen" @click="closeEdit" />
-            <q-btn unelevated no-caps color="teal-7" type="submit" label="Solicitar código" :loading="submitting" :disable="!lengthValid || mfaOpen" />
+            <q-btn flat no-caps label="Cancelar" :disable="submitting || passwordOpen" @click="closeEdit" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Continuar" :loading="submitting" :disable="!lengthValid || passwordOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
     </q-dialog>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="applyCredential" />
+    <AdminPasswordDialog v-model="passwordOpen" @verified="applyCredential" />
   </section>
 </template>
 

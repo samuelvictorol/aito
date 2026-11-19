@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseMoney } from 'src/services/purchase-history'
+import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
 import AitoTokenHistory from './AitoTokenHistory.vue'
 import AdminAitoProviderKeys from './AdminAitoProviderKeys.vue'
 import AdminAitoTokenProjects from './AdminAitoTokenProjects.vue'
@@ -10,9 +11,9 @@ import AdminAitoTokenUsage from './AdminAitoTokenUsage.vue'
 import AdminAitoTokenWallets from './AdminAitoTokenWallets.vue'
 import AdminAitoPaymentLogs from './AdminAitoPaymentLogs.vue'
 import AdminHiggsfieldQueue from './AdminHiggsfieldQueue.vue'
-import LoginMfaDialog from './LoginMfaDialog.vue'
+import AdminPasswordDialog from './AdminPasswordDialog.vue'
 
-const emit = defineEmits(['reauthenticated', 'open-projects'])
+const emit = defineEmits(['open-projects'])
 const $q = useQuasar()
 const root = '/aito-tokens/admin'
 const tab = ref('usage')
@@ -46,8 +47,7 @@ const billingError = ref('')
 const historyWallet = ref(null)
 const grantWallet = ref(null)
 const grantAmount = ref(null)
-const grantChallenge = ref(null)
-const mfaOpen = ref(false)
+const passwordOpen = ref(false)
 let pendingGrant = null
 let pendingFinancial = null
 const financialConfirming = ref(false)
@@ -95,42 +95,24 @@ function notify(error, fallback) {
   $q.notify({ type: 'negative', message: error.response?.data?.message || fallback })
 }
 
-async function saveFinancial(path, changes, apply, message, requireConfirmation = false) {
+async function saveFinancial(path, changes, apply, message) {
   if (pendingFinancial || financialConfirming.value || financialSaving.value) throw Error('Conclua a confirmação financeira antes de iniciar outra alteração.')
   financialSaving.value = true
   try {
-    if (!requireConfirmation) {
-      try {
-        const { data } = await api.put(path, changes, financeHeaders(true))
-        apply(data.data)
-        $q.notify({ type: 'positive', message })
-        return
-      } catch (error) {
-        if (error.response?.data?.code !== 'REAUTH_REQUIRED') throw error
-      }
-    }
-    // Keep the values the administrator reviewed, even if the form changes
-    // while the access code is being delivered.
-    const operation = { path, changes: { ...changes }, apply, message }
-    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
-    pendingFinancial = operation
+    pendingFinancial = { path, changes: structuredClone(changes), apply, message }
     pendingGrant = null
-    grantChallenge.value = data
-    mfaOpen.value = true
+    passwordOpen.value = true
   } finally { financialSaving.value = false }
 }
 
-async function applyConfirmation(session) {
-  if (!pendingFinancial) return applyGrant(session)
-  if (!session?.token || financialConfirming.value) return
+async function applyConfirmation(confirmation) {
+  if (!pendingFinancial) return applyGrant(confirmation)
+  if (!confirmation?.confirmationToken || financialConfirming.value) return
   const operation = pendingFinancial
   pendingFinancial = null
   financialConfirming.value = true
-  emit('reauthenticated', session)
   try {
-    const { data } = await api.put(operation.path, operation.changes, {
-      headers: { Authorization: `Bearer ${session.token}` },
-    })
+    const { data } = await api.put(operation.path, operation.changes, adminConfirmationHeaders(confirmation))
     operation.apply(data.data)
     $q.notify({ type: 'positive', message: operation.message })
   } catch (error) {
@@ -138,7 +120,7 @@ async function applyConfirmation(session) {
   } finally { financialConfirming.value = false }
 }
 
-watch(mfaOpen, open => { if (!open) pendingFinancial = null })
+watch(passwordOpen, open => { if (!open) pendingFinancial = null })
 
 async function load({ page = pagination.value.page, refreshSettings = false } = {}) {
   currentLoad?.abort()
@@ -188,9 +170,8 @@ async function saveConfig() {
   if (!selectedModel.value?.usable || editing.config) return
   editing.config = true
   try {
-    const { data } = await api.put(`${root}/config`, { model, effort, speed }, financeHeaders(true))
-    Object.assign(config, data.data?.config || data.data)
-    $q.notify({ type: 'positive', message: 'Configuração central da Aito IA atualizada.' })
+    await saveFinancial(`${root}/config`, { model, effort, speed },
+      data => Object.assign(config, data?.config || data), 'Configuração central da Aito IA atualizada.')
   } catch (error) {
     notify(error, 'Não foi possível salvar a configuração.')
   } finally {
@@ -237,7 +218,7 @@ async function saveMultiplier() {
   billingError.value = ''
   try {
     const changes = Object.fromEntries(Object.entries(multipliers).map(([key, value]) => [key, parseMultiplier(value)]))
-    await saveFinancial(`${root}/billing`, changes, setMultipliers, 'Multiplicadores de cobrança atualizados.', true)
+    await saveFinancial(`${root}/billing`, changes, setMultipliers, 'Multiplicadores de cobrança atualizados.')
   } catch (error) {
     notify(error, 'Não foi possível salvar os multiplicadores.')
   } finally {
@@ -303,7 +284,7 @@ function openGrant(wallet) {
   pendingGrant = null
 }
 
-async function requestGrantMfa() {
+async function requestGrantConfirmation() {
   const licenseId = grantWallet.value?.licenseId
   const usdCents = Math.round(Number(grantAmount.value) * 100)
   if (!licenseId || !Number.isSafeInteger(usdCents) || usdCents < 1 || editing.grant) return
@@ -312,27 +293,27 @@ async function requestGrantMfa() {
   }
   editing.grant = true
   try {
-    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
-    grantChallenge.value = data
-    mfaOpen.value = true
+    passwordOpen.value = true
   } catch (error) {
-    notify(error, 'Não foi possível enviar o código de confirmação.')
+    notify(error, 'Não foi possível preparar a confirmação.')
   } finally {
     editing.grant = false
   }
 }
 
-async function applyGrant(session) {
-  if (!session?.token || !pendingGrant || editing.grant) return
-  emit('reauthenticated', session)
+async function applyGrant(confirmation) {
+  if (!confirmation?.confirmationToken || !pendingGrant || editing.grant) return
+  const operation = pendingGrant
+  pendingGrant = null
   editing.grant = true
   try {
-    await api.post(`${root}/grants`, pendingGrant, { headers: { Authorization: `Bearer ${session.token}` } })
+    await api.post(`${root}/grants`, operation, adminConfirmationHeaders(confirmation))
     $q.notify({ type: 'positive', message: 'Créditos adicionados à licença.' })
     grantWallet.value = null
     pendingGrant = null
     await load()
   } catch (error) {
+    pendingGrant = operation
     notify(error, 'Não foi possível adicionar os créditos.')
   } finally {
     editing.grant = false
@@ -369,8 +350,8 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
       <q-tab name="projects" label="AitoKeys de projetos" />
       <q-tab name="licenses" label="Licenças e configurações" />
     </q-tabs>
-    <AdminAitoTokenUsage v-if="tab === 'usage'" key="overview" @reauthenticated="emit('reauthenticated', $event)" />
-    <AdminAitoTokenProjects v-else-if="tab === 'projects'" @reauthenticated="emit('reauthenticated', $event)" @open-projects="emit('open-projects')" />
+    <AdminAitoTokenUsage v-if="tab === 'usage'" key="overview" />
+    <AdminAitoTokenProjects v-else-if="tab === 'projects'" @open-projects="emit('open-projects')" />
     <AdminAitoTokenWallets v-else-if="tab === 'wallets'" />
     <template v-else-if="tab === 'logs'">
       <q-tabs v-model="logTab" dense align="left" no-caps active-color="teal-3" indicator-color="teal-3"
@@ -379,7 +360,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
         <q-tab name="licenses" label="Consumo por licença" />
         <q-tab name="payments" label="Logs de pagamento" />
       </q-tabs>
-      <AdminAitoTokenUsage v-if="logTab === 'requests'" key="logs" mode="logs" @reauthenticated="emit('reauthenticated', $event)" />
+      <AdminAitoTokenUsage v-if="logTab === 'requests'" key="logs" mode="logs" />
       <AdminAitoPaymentLogs v-else-if="logTab === 'payments'" />
     </template>
     <template v-else-if="tab === 'licenses'">
@@ -460,7 +441,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
         <q-btn unelevated no-caps color="teal-7" type="submit" label="Salvar alertas" :loading="editing.alerts" :disable="!billingLoaded || billingLoading" />
       </q-form>
     </div>
-    <AdminAitoProviderKeys :checkout-state="config.checkoutState" @updated="refreshLicenseSettings" @reauthenticated="emit('reauthenticated', $event)" />
+    <AdminAitoProviderKeys :checkout-state="config.checkoutState" @updated="refreshLicenseSettings" />
     <AdminHiggsfieldQueue />
     </template>
     <template v-if="tab === 'logs' && logTab === 'licenses'">
@@ -493,7 +474,7 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
     </q-dialog>
     <q-dialog :model-value="Boolean(grantWallet)" persistent @update:model-value="grantWallet = null">
       <q-card dark class="token-admin__dialog">
-        <q-form @submit.prevent="requestGrantMfa">
+        <q-form @submit.prevent="requestGrantConfirmation">
           <q-card-section>
             <h3>Adicionar créditos</h3>
             <p>{{ grantWallet?.ownerName }} · {{ grantWallet?.ownerEmail }}</p>
@@ -501,14 +482,14 @@ onBeforeUnmount(() => { currentLoad?.abort(); modelLoad?.abort(); billingLoad?.a
             <q-input v-model="grantAmount" dark outlined label="Créditos em dólares" prefix="US$" type="number" min="0.01" step="0.01" required />
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat no-caps label="Cancelar" :disable="editing.grant || mfaOpen" v-close-popup />
-            <q-btn unelevated no-caps label="Solicitar código" color="teal-7" type="submit" :loading="editing.grant" :disable="mfaOpen" />
+            <q-btn flat no-caps label="Cancelar" :disable="editing.grant || passwordOpen" v-close-popup />
+            <q-btn unelevated no-caps label="Continuar" color="teal-7" type="submit" :loading="editing.grant" :disable="passwordOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
     </q-dialog>
     </template>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="grantChallenge" @verified="applyConfirmation" />
+    <AdminPasswordDialog v-model="passwordOpen" @verified="applyConfirmation" />
   </section>
 </template>
 

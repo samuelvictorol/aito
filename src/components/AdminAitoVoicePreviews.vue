@@ -1,18 +1,17 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
-import LoginMfaDialog from './LoginMfaDialog.vue'
+import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
+import AdminPasswordDialog from './AdminPasswordDialog.vue'
 
 const props = defineProps({ enabled: Boolean })
-const emit = defineEmits(['reauthenticated'])
 const endpoint = '/aitoia/admin/voice-previews'
 const state = shallowRef(null)
 const busy = ref(false)
 const message = ref('')
-const challenge = shallowRef(null)
-const mfaOpen = ref(false)
+const passwordOpen = ref(false)
 const controller = new AbortController()
 const $q = useQuasar()
 const estimated = computed(() => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD',
@@ -27,24 +26,16 @@ async function load() {
   }
 }
 
-async function start() {
+function start() {
   if (busy.value || !props.enabled || !state.value?.remaining) return
   message.value = ''
-  busy.value = true
-  try {
-    const { data } = await api.post('/auth/mfa/reauth', {}, { ...financeHeaders(true), signal: controller.signal })
-    challenge.value = data
-    mfaOpen.value = true
-  } catch (error) {
-    if (!controller.signal.aborted) message.value = error.response?.data?.message || 'Não foi possível solicitar o código.'
-  } finally { busy.value = false }
+  passwordOpen.value = true
 }
 
-async function apply(session) {
-  if (!session?.token || busy.value) return
-  emit('reauthenticated', session)
+async function apply(confirmation) {
+  if (!confirmation?.confirmationToken || busy.value) return
   busy.value = true
-  const config = { headers: { Authorization: 'Bearer ' + session.token }, signal: controller.signal }
+  const config = { ...adminConfirmationHeaders(confirmation), signal: controller.signal }
   try {
     for (let batch = 0; batch < 9; batch++) {
       const { data } = await api.post(endpoint, {}, config)
@@ -61,7 +52,6 @@ async function apply(session) {
   } finally { busy.value = false }
 }
 
-watch(mfaOpen, open => { if (!open) challenge.value = null })
 onMounted(load)
 onBeforeUnmount(() => controller.abort())
 </script>
@@ -77,8 +67,8 @@ onBeforeUnmount(() => controller.abort())
       <p v-if="message" role="status">{{ message }}</p>
     </div>
     <q-btn v-if="state?.remaining" flat dense no-caps color="teal-3" label="Preparar amostras"
-      :disable="!enabled || mfaOpen" :loading="busy" @click="start" />
-    <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="apply" />
+      :disable="!enabled || passwordOpen" :loading="busy" @click="start" />
+    <AdminPasswordDialog v-model="passwordOpen" @verified="apply" />
   </section>
 </template>
 

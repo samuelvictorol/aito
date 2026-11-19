@@ -3,10 +3,11 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders, purchaseDate, purchaseMoney } from 'src/services/purchase-history'
+import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
 import AitoTokenHistory from './AitoTokenHistory.vue'
-import LoginMfaDialog from './LoginMfaDialog.vue'
+import AdminPasswordDialog from './AdminPasswordDialog.vue'
 
-const emit = defineEmits(['reauthenticated', 'open-projects'])
+const emit = defineEmits(['open-projects'])
 const $q = useQuasar()
 const root = '/aito-tokens/admin'
 const projects = ref([])
@@ -18,8 +19,7 @@ const action = ref(null)
 const credit = ref('')
 const reclaimAll = ref(false)
 const busy = ref(false)
-const challenge = ref(null)
-const mfaOpen = ref(false)
+const passwordOpen = ref(false)
 const revealed = ref(null)
 const historyProject = ref(null)
 let request
@@ -94,23 +94,13 @@ async function confirm() {
       action.value = { ...action.value, usdCents, ...(action.value.operation === 'grant' && { requestId: crypto.randomUUID() }) }
     }
   }
-  busy.value = true
-  try {
-    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
-    challenge.value = data
-    mfaOpen.value = true
-  } catch (cause) {
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível enviar o código.' })
-  } finally {
-    busy.value = false
-  }
+  passwordOpen.value = true
 }
 
-async function apply(session) {
-  if (!session?.token || !action.value || busy.value) return
-  emit('reauthenticated', session)
+async function apply(confirmation) {
+  if (!confirmation?.confirmationToken || !action.value || busy.value) return
   const { operation, project, usdCents, requestId, reclaimBody } = action.value
-  const headers = { headers: { Authorization: 'Bearer ' + session.token } }
+  const headers = adminConfirmationHeaders(confirmation)
   busy.value = true
   try {
     if (operation === 'grant') {
@@ -194,17 +184,17 @@ onBeforeUnmount(() => {
             <p><strong>{{ action?.project?.title }}</strong></p>
             <p>{{ explanations[action?.operation] }}</p>
             <template v-if="action?.operation === 'reclaim'">
-              <q-toggle v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="busy || mfaOpen" />
-              <q-input v-if="!reclaimAll" v-model="credit" dark outlined label="Saldo a devolver" prefix="US$" inputmode="decimal" :disable="busy || mfaOpen" />
+              <q-toggle v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="busy || passwordOpen" />
+              <q-input v-if="!reclaimAll" v-model="credit" dark outlined label="Saldo a devolver" prefix="US$" inputmode="decimal" :disable="busy || passwordOpen" />
             </template>
             <q-input v-if="['grant', 'issue'].includes(action?.operation)" v-model="credit" dark outlined
               :label="action.operation === 'issue' ? 'Crédito inicial' : 'Créditos em dólares'" prefix="US$"
-              type="number" :min="action.operation === 'issue' ? '0' : '0.01'" max="1000" step="0.01" required :disable="busy || mfaOpen"
+              type="number" :min="action.operation === 'issue' ? '0' : '0.01'" max="1000" step="0.01" required :disable="busy || passwordOpen"
             />
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat no-caps label="Cancelar" :disable="busy || mfaOpen" v-close-popup />
-            <q-btn unelevated no-caps label="Solicitar código" color="teal-7" type="submit" :loading="busy" :disable="mfaOpen" />
+            <q-btn flat no-caps label="Cancelar" :disable="busy || passwordOpen" v-close-popup />
+            <q-btn unelevated no-caps label="Continuar" color="teal-7" type="submit" :loading="busy" :disable="passwordOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
@@ -218,7 +208,7 @@ onBeforeUnmount(() => {
         <q-card-section><AitoTokenHistory v-if="historyProject" :admin-project-id="historyProject.projectId" /></q-card-section>
       </q-card>
     </q-dialog>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="apply" />
+    <AdminPasswordDialog v-model="passwordOpen" @verified="apply" />
     <q-dialog :model-value="Boolean(revealed)" persistent @update:model-value="revealed = null">
       <q-card dark class="token-projects__dialog">
         <q-card-section>

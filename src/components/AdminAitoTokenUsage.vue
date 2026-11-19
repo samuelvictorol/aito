@@ -3,11 +3,11 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
-import LoginMfaDialog from './LoginMfaDialog.vue'
+import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
+import AdminPasswordDialog from './AdminPasswordDialog.vue'
 
 const props = defineProps({ mode: { type: String, default: 'overview' } })
 const showLogs = computed(() => props.mode === 'logs')
-const emit = defineEmits(['reauthenticated'])
 const $q = useQuasar()
 
 const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -76,8 +76,7 @@ const treasury = ref(null)
 const treasuryError = ref(false)
 const fundingDraft = reactive({ openai: undefined, higgsfield: undefined })
 const savingFunding = ref('')
-const fundingMfaOpen = ref(false)
-const fundingChallenge = ref(null)
+const fundingPasswordOpen = ref(false)
 let pendingFunding = null
 const groups = ref([])
 const logs = ref([])
@@ -93,8 +92,7 @@ const simulationOptions = computed(() => Number.isFinite(funding.value?.codexMul
 const reconciliation = ref(null)
 const reconciliationCost = ref('')
 const reconciliationBusy = ref(false)
-const challenge = ref(null)
-const mfaOpen = ref(false)
+const reconciliationPasswordOpen = ref(false)
 const selectedLog = ref(null)
 const grant = ref(null)
 const balanceAction = ref('grant')
@@ -107,8 +105,7 @@ const grantAmount = ref('')
 const grantBusy = ref(false)
 const grantLoading = ref(false)
 const grantError = ref('')
-const grantChallenge = ref(null)
-const grantMfaOpen = ref(false)
+const grantPasswordOpen = ref(false)
 let controller
 let liveController
 let grantTargetController
@@ -393,29 +390,18 @@ async function loadOptions() {
 async function saveProviderBalance(row) {
   const key = providerBalanceKeys[row.provider]
   const amount = balanceValue(row)
-  if (!key || savingFunding.value || fundingMfaOpen.value || !validBalance(amount)) return
-  savingFunding.value = row.provider
-  const operation = { provider: row.provider, body: { [key]: usdCents(amount) } }
-  try {
-    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
-    pendingFunding = operation
-    fundingChallenge.value = data
-    fundingMfaOpen.value = true
-  } catch (cause) {
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível enviar o código de confirmação do ajuste de saldo.' })
-  } finally {
-    savingFunding.value = ''
-  }
+  if (!key || savingFunding.value || fundingPasswordOpen.value || !validBalance(amount)) return
+  pendingFunding = { provider: row.provider, body: { [key]: usdCents(amount) } }
+  fundingPasswordOpen.value = true
 }
 
-async function applyFunding(session) {
-  if (!session?.token || !pendingFunding || savingFunding.value) return
+async function applyFunding(confirmation) {
+  if (!confirmation?.confirmationToken || !pendingFunding || savingFunding.value) return
   const operation = pendingFunding
   pendingFunding = null
   savingFunding.value = operation.provider
-  emit('reauthenticated', session)
   try {
-    await api.put('/aito-tokens/admin/billing', operation.body, { headers: { Authorization: 'Bearer ' + session.token } })
+    await api.put('/aito-tokens/admin/billing', operation.body, adminConfirmationHeaders(confirmation))
     if (await load(pagination.value.page)) fundingDraft[operation.provider] = undefined
     $q.notify({ type: 'positive', message: `Saldo de referência da ${providerName(operation.provider)} atualizado.` })
   } catch (cause) {
@@ -423,7 +409,7 @@ async function applyFunding(session) {
   } finally { savingFunding.value = '' }
 }
 
-watch(fundingMfaOpen, open => { if (!open) pendingFunding = null })
+watch(fundingPasswordOpen, open => { if (!open) pendingFunding = null })
 
 async function openClientGrant(mode = 'grant') {
   const client = clients.value.find(item => item.value === filters.clientId)
@@ -462,9 +448,9 @@ function closeClientGrant() {
   pendingGrant = null
 }
 
-async function requestClientGrantMfa() {
+async function requestClientGrantConfirmation() {
   const target = grantTarget.value
-  if (!grant.value || !target || !validBalanceAction.value || grantBusy.value || grantMfaOpen.value) return
+  if (!grant.value || !target || !validBalanceAction.value || grantBusy.value || grantPasswordOpen.value) return
   const clientId = grant.value.value
   const destination = target.kind === 'user' ? { userId: target.id } : { clientId, [`${target.kind}Id`]: target.id }
   const amount = reclaiming.value && reclaimAll.value ? { all: true } : { usdCents: reclaiming.value ? reclaimCents.value : usdCents(grantAmount.value) }
@@ -472,25 +458,15 @@ async function requestClientGrantMfa() {
   if (pendingGrant?.signature !== signature) {
     pendingGrant = { signature, reclaim: reclaiming.value, body: { ...destination, ...amount, requestId: crypto.randomUUID() } }
   }
-  grantBusy.value = true
-  try {
-    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
-    grantChallenge.value = data
-    grantMfaOpen.value = true
-  } catch (cause) {
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível solicitar a confirmação.' })
-  } finally {
-    grantBusy.value = false
-  }
+  grantPasswordOpen.value = true
 }
 
-async function applyClientGrant(session) {
-  if (!session?.token || !pendingGrant || grantBusy.value) return
-  emit('reauthenticated', session)
+async function applyClientGrant(confirmation) {
+  if (!confirmation?.confirmationToken || !pendingGrant || grantBusy.value) return
   grantBusy.value = true
   try {
     const reclaim = pendingGrant.reclaim
-    await api.post('/aito-tokens/admin/' + (reclaim ? 'reclaims' : 'grants'), pendingGrant.body, { headers: { Authorization: 'Bearer ' + session.token } })
+    await api.post('/aito-tokens/admin/' + (reclaim ? 'reclaims' : 'grants'), pendingGrant.body, adminConfirmationHeaders(confirmation))
     closeClientGrant()
     $q.notify({ type: 'positive', message: reclaim ? 'Saldo devolvido à plataforma.' : 'Saldo adicionado à carteira.' })
     await load(pagination.value.page)
@@ -506,31 +482,21 @@ function reviewReconciliation(row) {
   reconciliation.value = row
 }
 
-async function requestReconciliationMfa() {
+async function requestReconciliationConfirmation() {
   const value = String(reconciliationCost.value ?? '').trim()
   if (!reconciliation.value || !/^\d+(?:\.\d{1,6})?$/.test(value)) return
   const providerUsdMicros = Math.round(Number(value) * 1000000)
   if (!Number.isSafeInteger(providerUsdMicros) || providerUsdMicros > 1000000000) return
   const decision = { entryId: reconciliation.value._id, providerUsdMicros }
-  reconciliationBusy.value = true
-  try {
-    const { data } = await api.post('/auth/mfa/reauth', { purpose: 'financial' }, financeHeaders(true))
-    verifiedDecision = decision
-    challenge.value = data
-    mfaOpen.value = true
-  } catch (cause) {
-    $q.notify({ type: 'negative', message: cause.response?.data?.message || 'Não foi possível solicitar a confirmação.' })
-  } finally {
-    reconciliationBusy.value = false
-  }
+  verifiedDecision = decision
+  reconciliationPasswordOpen.value = true
 }
 
-async function applyReconciliation(session) {
-  if (!session?.token || !verifiedDecision || reconciliationBusy.value) return
-  emit('reauthenticated', session)
+async function applyReconciliation(confirmation) {
+  if (!confirmation?.confirmationToken || !verifiedDecision || reconciliationBusy.value) return
   reconciliationBusy.value = true
   try {
-    await api.post('/aitoia/admin/reconcile', verifiedDecision, { headers: { Authorization: 'Bearer ' + session.token } })
+    await api.post('/aitoia/admin/reconcile', verifiedDecision, adminConfirmationHeaders(confirmation))
     reconciliation.value = null
     $q.notify({ type: 'positive', message: 'Conciliação registrada.' })
     await load(pagination.value.page)
@@ -747,32 +713,32 @@ onBeforeUnmount(() => {
       </q-table>
     </template>
     <q-linear-progress v-else-if="loading" indeterminate color="teal-4" aria-label="Carregando consumo" />
-    <q-dialog :model-value="Boolean(grant)" :persistent="grantBusy || grantMfaOpen" @update:model-value="!$event && closeClientGrant()">
+    <q-dialog :model-value="Boolean(grant)" :persistent="grantBusy || grantPasswordOpen" @update:model-value="!$event && closeClientGrant()">
       <q-card v-if="grant" dark class="token-usage__grant">
-        <q-form @submit.prevent="requestClientGrantMfa">
+        <q-form @submit.prevent="requestClientGrantConfirmation">
           <q-card-section class="token-usage__grant-fields">
             <h4>{{ reclaiming ? 'Devolver saldo à plataforma' : 'Adicionar saldo AitoTokens' }}</h4>
             <p>{{ grant.label }}</p>
             <q-banner v-if="grantError" rounded class="bg-red-10 text-white" role="alert">{{ grantError }}</q-banner>
             <q-select v-model="grantTarget" dark outlined :options="grantOptions" option-label="displayLabel" :label="reclaiming ? 'Carteira de origem' : 'Carteira de destino'"
-              :loading="grantLoading" :disable="grantLoading || grantBusy || grantMfaOpen" :rules="[value => !!value || 'Selecione a carteira.']">
+              :loading="grantLoading" :disable="grantLoading || grantBusy || grantPasswordOpen" :rules="[value => !!value || 'Selecione a carteira.']">
               <template #no-option><q-item><q-item-section>Nenhuma carteira disponível para este cliente.</q-item-section></q-item></template>
             </q-select>
-            <q-toggle v-if="reclaiming" v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="grantBusy || grantMfaOpen" />
+            <q-toggle v-if="reclaiming" v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="grantBusy || grantPasswordOpen" />
             <q-input v-if="reclaiming && !reclaimAll" v-model="grantAmount" dark outlined label="Saldo a devolver" prefix="US$" inputmode="decimal"
-              :disable="grantBusy || grantMfaOpen" :rules="[() => validBalanceAction || 'Informe um valor dentro do saldo disponível.']" />
+              :disable="grantBusy || grantPasswordOpen" :rules="[() => validBalanceAction || 'Informe um valor dentro do saldo disponível.']" />
             <q-input v-else-if="!reclaiming" v-model="grantAmount" dark outlined label="Saldo a adicionar" prefix="US$" type="number" inputmode="decimal"
-              min="0.01" max="1000" step="0.01" required :disable="grantBusy || grantMfaOpen"
+              min="0.01" max="1000" step="0.01" required :disable="grantBusy || grantPasswordOpen"
               :rules="[value => validGrantAmount(value) || 'Informe um valor entre US$ 0,01 e US$ 1.000.']" />
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat no-caps label="Cancelar" v-close-popup :disable="grantBusy || grantMfaOpen" />
-            <q-btn unelevated no-caps color="teal-7" type="submit" label="Confirmar" :loading="grantBusy" :disable="!validBalanceAction || grantMfaOpen" />
+            <q-btn flat no-caps label="Cancelar" v-close-popup :disable="grantBusy || grantPasswordOpen" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Continuar" :loading="grantBusy" :disable="!validBalanceAction || grantPasswordOpen" />
           </q-card-actions>
         </q-form>
       </q-card>
     </q-dialog>
-    <LoginMfaDialog v-model="grantMfaOpen" :challenge="grantChallenge" @verified="applyClientGrant" />
+    <AdminPasswordDialog v-model="grantPasswordOpen" @verified="applyClientGrant" />
     <q-dialog :model-value="Boolean(selectedLog)" @update:model-value="!$event && (selectedLog = null)">
       <q-card v-if="selectedLog" dark class="token-usage__details">
         <q-card-section class="token-usage__header">
@@ -810,7 +776,7 @@ onBeforeUnmount(() => {
     </q-dialog>
     <q-dialog :model-value="Boolean(reconciliation)" :persistent="reconciliationBusy" @update:model-value="!$event && (reconciliation = null)">
       <q-card dark class="token-usage__reconciliation">
-        <q-form @submit.prevent="requestReconciliationMfa">
+        <q-form @submit.prevent="requestReconciliationConfirmation">
           <q-card-section>
             <h4>Conciliar reserva AitoIA</h4>
             <p>Reserva de {{ money(reconciliation?.reservedUsdCents) }}. Informe o custo confirmado com {{ providerName(reconciliation?.provider) }}. Use zero se o provedor confirmou que a chamada foi gratuita.</p>
@@ -818,13 +784,13 @@ onBeforeUnmount(() => {
           </q-card-section>
           <q-card-actions align="right">
             <q-btn flat no-caps label="Cancelar" v-close-popup :disable="reconciliationBusy" />
-            <q-btn unelevated no-caps color="teal-7" type="submit" label="Solicitar código" :loading="reconciliationBusy" />
+            <q-btn unelevated no-caps color="teal-7" type="submit" label="Continuar" :loading="reconciliationBusy" />
           </q-card-actions>
         </q-form>
       </q-card>
     </q-dialog>
-    <LoginMfaDialog v-model="mfaOpen" :challenge="challenge" @verified="applyReconciliation" />
-    <LoginMfaDialog v-model="fundingMfaOpen" :challenge="fundingChallenge" @verified="applyFunding" />
+    <AdminPasswordDialog v-model="reconciliationPasswordOpen" @verified="applyReconciliation" />
+    <AdminPasswordDialog v-model="fundingPasswordOpen" @verified="applyFunding" />
   </section>
 </template>
 

@@ -54,7 +54,7 @@
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
             <q-tab-panel name="landing-videos"><AdminLandingVideos /></q-tab-panel>
             <q-tab-panel name="codex-install-prompt"><AdminCodexInstallPrompt /></q-tab-panel>
-            <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @reauthenticated="refreshAdminSession" @open-projects="openDetail('projects')" /></q-tab-panel>
+            <q-tab-panel name="aito-tokens"><AdminAitoTokensPanel @open-projects="openDetail('projects')" /></q-tab-panel>
             <q-tab-panel name="botbuilder-licenses"><BotBuilderLicensesManager /></q-tab-panel>
             <q-tab-panel name="access-security">
               <AdminPasswordChangeCard :auth-options="headers" @changed="finishPasswordChange" />
@@ -284,14 +284,6 @@ export default {
       this.token = ''
       localStorage.removeItem('aito_admin_token')
       localStorage.removeItem('aito_admin_user')
-    },
-    refreshAdminSession ({ token, user }) {
-      this.token = token
-      localStorage.setItem('aito_admin_token', token)
-      if (user) {
-        this.admin = user
-        localStorage.setItem('aito_admin_user', JSON.stringify(user))
-      }
     },
     async finishPasswordChange () {
       this.clearAdminSession()
