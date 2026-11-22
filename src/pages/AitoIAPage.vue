@@ -228,7 +228,6 @@ onBeforeUnmount(() => videoSwitch?.abort())
         <AitoIAThemeToggle class="aito-studio__theme-toggle" />
         <router-link v-if="signedIn" :to="adminMode ? '/admin' : '/app'"><q-icon :name="adminMode ? 'mdi-shield-account-outline' : 'mdi-account-circle-outline'" size="19px" /> {{ adminMode ? 'Aito Admin' : 'Minha conta' }} <q-icon class="aito-studio__out" name="mdi-arrow-top-right" size="15px" /></router-link>
         <button v-else type="button" @click="showAuth('login')"><q-icon name="mdi-login" size="19px" /> Entrar</button>
-        <q-icon name="mdi-lock-outline" size="16px" /><span>Histórico neste dispositivo por até 7 dias.</span>
         <AitoAboutLink />
       </div>
     </aside>
@@ -379,9 +378,9 @@ onBeforeUnmount(() => videoSwitch?.abort())
 .aito-studio__chat-name span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .aito-studio__chat-name .q-icon { flex: 0 0 auto; color: var(--aito-ai-accent); }
 .aito-studio__empty-list { padding: .2rem .5rem; color: var(--aito-ai-muted); font-size: .77rem; }
-.aito-studio__sidebar-foot { display: grid; grid-template-columns: 17px 1fr; gap: 12px 7px; align-items: center; padding: 12px 3px 3px; border-top: 1px solid var(--aito-ai-line); color: var(--aito-ai-muted); font-size: .72rem; }
-.aito-studio__theme-toggle { grid-column: 1 / -1; }
-.aito-studio__sidebar-foot > a, .aito-studio__sidebar-foot > button { grid-column: span 2; display: flex; align-items: center; gap: 9px; border: 0; padding: 4px 2px; color: var(--aito-ai-text); background: transparent; text-decoration: none; text-align: left; cursor: pointer; font-size: .81rem; }
+.aito-studio__sidebar-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; align-items: center; padding: 12px 3px 3px; border-top: 1px solid var(--aito-ai-line); color: var(--aito-ai-muted); font-size: .72rem; }
+.aito-studio__sidebar-foot > * { min-width: 0; }
+.aito-studio__sidebar-foot > a, .aito-studio__sidebar-foot > button { display: flex; align-items: center; gap: 9px; border: 0; padding: 4px 8px; color: var(--aito-ai-text); background: transparent; text-decoration: none; text-align: left; cursor: pointer; font-size: .81rem; }
 .aito-studio__sidebar-foot > a:hover, .aito-studio__sidebar-foot > button:hover { color: var(--aito-ai-accent); }
 .aito-studio__out { margin-left: auto; color: var(--aito-ai-muted); }
 .aito-studio__main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--aito-ai-glow), var(--aito-ai-bg); }
@@ -398,7 +397,7 @@ onBeforeUnmount(() => videoSwitch?.abort())
 .aito-studio__signup { padding: 7px 12px; border-color: var(--aito-ai-accent); color: var(--aito-ai-ink); background: var(--aito-ai-gradient); }
 .aito-studio__signup:hover { filter: brightness(1.08); }
 .aito-studio__welcome { display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; padding: 16px 20px; overflow: auto; text-align: center; }
-.aito-studio__orb { display: grid; place-items: center; width: 86px; height: 86px; margin-bottom: 20px; border: 1px solid var(--aito-ai-line); border-radius: 26px; background: radial-gradient(circle at 68% 0%, var(--aito-ai-accent-soft), var(--aito-ai-panel) 75%); box-shadow: 0 0 48px #13bc9d26, inset 0 1px 1px #ffffff24; }
+.aito-studio__orb { display: grid; place-items: center; width: 86px; height: 86px; margin-bottom: 20px; border: 1px solid var(--aito-ai-line); border-radius: 26px; background: radial-gradient(circle at 68% 0%, var(--aito-ai-accent-soft), var(--aito-ai-panel) 75%); box-shadow: 0 0 48px var(--aito-ai-shadow), inset 0 1px 1px #ffffff24; }
 .aito-studio__orb img { width: 80px; height: 80px; filter: drop-shadow(0 4px 9px #111416b0); }
 .aito-studio__welcome h1 { margin: 0; color: var(--aito-ai-text); font-size: clamp(1.85rem, 4vw, 3rem); font-weight: 730; line-height: 1.15; letter-spacing: -.065em; }
 .aito-studio__welcome p { max-width: 28rem; margin: 9px 0 0; color: var(--aito-ai-muted); font-size: clamp(.85rem, 2vw, 1rem); }

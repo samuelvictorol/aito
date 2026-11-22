@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
 .model-carousel__rate { padding: 2px 5px; border-radius: 4px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); font-weight: 650; }
 .model-carousel__card-action { position: absolute; inset: 0; display: flex; justify-content: flex-end; align-items: flex-start; padding: 10px; border: 0; border-radius: inherit; color: var(--aito-ai-text); background: transparent; cursor: pointer; }
 .model-carousel__card-action:focus-visible { outline: 2px solid var(--aito-ai-purple); outline-offset: -2px; }
-.model-carousel__card-action :deep(.q-icon) { width: 27px; height: 27px; border-radius: 7px; background: #092322eb; }
+.model-carousel__card-action :deep(.q-icon) { width: 27px; height: 27px; border-radius: 7px; background: var(--aito-ai-overlay); }
 html[data-aito-ia-theme='light'] .model-carousel__card-action :deep(.q-icon) { background: var(--aito-ai-panel); }
 .model-carousel__card-action[aria-pressed='true'] :deep(.q-icon) { color: var(--aito-ai-accent); }
 .model-carousel__controls { position: relative; align-self: stretch; display: grid; align-items: center; }

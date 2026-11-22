@@ -655,16 +655,14 @@ onBeforeUnmount(() => {
 .marketing__notice--error { background: var(--aito-ai-error-soft); border-color: var(--aito-ai-error-line); }
 .marketing__notice button { color: var(--aito-ai-accent); background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .marketing__actions { display: flex; justify-content: end; gap: 8px; }
-.marketing__main { background: radial-gradient(ellipse at 82% 12%, #7357ac25, transparent 55%), radial-gradient(ellipse at 6% 2%, #77c4ac1c, transparent 54%); border-radius: 0 0 22px 22px; }
-.marketing__intro h1 { color: #dcffef; }
-.marketing__form { border-color: #3e756e; background: linear-gradient(150deg, #102d29, #0a1e24 64%); }
-.marketing__preview { border-color: #64577c; background: linear-gradient(150deg, #252239, #121f28 65%); }
-.marketing__preview h2 { color: #eadcff; }
-.marketing__canvas, .marketing__result { background: #0a131d; }
-.marketing__canvas > div { background: linear-gradient(150deg, #26213d, #151f34); border-color: #766498; color: #ddd2ec; }
-.marketing__formats label:nth-child(2n) { background: #202a3c; }
-.marketing__formats label:has(:checked) { background: #134c42; border-color: #52d0b1; }
-.marketing__formats label:nth-child(2n):has(:checked) { background: #342951; border-color: #b49ce8; color: #eee3ff; }
+.marketing__main { background: var(--aito-ai-glow); border-radius: 0 0 22px 22px; }
+.marketing__intro h1 { color: var(--aito-ai-text); }
+.marketing__form, .marketing__preview { border-color: var(--aito-ai-line); background: linear-gradient(150deg, var(--aito-ai-panel), var(--aito-ai-surface) 64%); }
+.marketing__preview h2 { color: var(--aito-ai-text); }
+.marketing__canvas, .marketing__result { background: var(--aito-ai-media-bg); }
+.marketing__canvas > div { background: linear-gradient(150deg, var(--aito-ai-raised), var(--aito-ai-panel)); border-color: var(--aito-ai-line); color: var(--aito-ai-muted); }
+.marketing__formats label:nth-child(2n) { background: var(--aito-ai-panel); }
+.marketing__formats label:has(:checked), .marketing__formats label:nth-child(2n):has(:checked) { background: var(--aito-ai-raised); border-color: var(--aito-ai-accent-strong); color: var(--aito-ai-text); }
 html[data-aito-ia-theme='light'] .marketing__main { background: none; }
 html[data-aito-ia-theme='light'] .marketing__intro h1 { color: var(--aito-ai-text); }
 html[data-aito-ia-theme='light'] .marketing__form { border-color: var(--aito-ai-line); background: linear-gradient(150deg, var(--aito-ai-accent-soft), var(--aito-ai-surface) 42%); box-shadow: 0 10px 30px var(--aito-ai-shadow); }

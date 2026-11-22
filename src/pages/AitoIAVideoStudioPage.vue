@@ -12,6 +12,7 @@ import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
 import AitoVideoModelCarousel from 'components/AitoVideoModelCarousel.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
 import AitoVideoReferencesGallery from 'components/AitoVideoReferencesGallery.vue'
+import AitoProjectScenesPanel from 'components/AitoProjectScenesPanel.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokenCost, aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -29,7 +30,6 @@ import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { createVideoProjectLinks, isVideoGenerationId } from 'src/services/aitoiaVideoProjectLinks'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { clearVideoDraft, readVideoDraft } from 'src/services/aitoiaVideoDraft'
-import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
 import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 import { scheduleInitialMasterCollapse } from 'src/services/aitoiaStudioPanel'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
@@ -62,7 +62,7 @@ const authMode = ref('register')
 const walletOpen = ref(false)
 const tabs = [
   { id: 'ai', label: 'Vídeos com IA', icon: 'mdi-movie-open-play-outline' },
-  { id: 'scenes', label: 'Cenas', icon: 'mdi-view-dashboard-outline' },
+  { id: 'scenes', label: 'Vídeo Master', icon: 'mdi-filmstrip' },
   { id: 'voice', label: 'Locução', icon: 'mdi-waveform' },
   { id: 'code', label: 'Vídeo por código', icon: 'mdi-code-tags' },
 ]
@@ -92,8 +92,9 @@ const narration = shallowRef(null)
 const voicePreview = shallowRef(null)
 const recording = shallowRef(null)
 const generated = shallowRef(null)
-const generatedPreview = ref(null)
 const clipLibrary = shallowRef([])
+const projectScenesOpen = ref(false)
+const masterPreview = ref(null)
 const codeClips = computed(() => clipLibrary.value.filter(clip => clip.kind === 'code'))
 const codeClip = computed(() => codeClips.value.find(clip => clip.id === generated.value?.id) || codeClips.value[0])
 const codeSuggestion = shallowRef(null)
@@ -148,7 +149,6 @@ const dismissedStudioRequests = new Set()
 const wasRemovedGeneration = item => Boolean(item && (dismissedStudioIds.has(item.id) ||
   removedGeneratedIds.value.includes(item.id) || dismissedStudioRequests.has(item.requestId)))
 watch(accountId, () => { dismissedStudioIds.clear(); dismissedStudioRequests.clear() }, { flush: 'sync' })
-const generatedDuration = ref(0)
 const trackedJobs = shallowRef([])
 const setJob = job => { trackedJobs.value = updateTrackedVideoJob(trackedJobs.value, job) }
 const removeJob = job => { trackedJobs.value = trackedJobs.value.filter(item => !sameVideoGeneration(item, job)) }
@@ -269,17 +269,16 @@ const referenceAnalysis = ref('')
 const videoQuote = shallowRef(null)
 const tokenCost = cents => aitoTokenCost(cents, status.value?.aitoTokensPerUsd ?? options.value?.aitoTokensPerUsd)
 const quoteCost = computed(() => tokenCost(videoQuote.value?.billedUsdCents))
-const reservedCost = computed(() => tokenCost(generated.value?.reservedUsdCents))
 const generationModes = [
   { id: 'gallery', label: 'Referências', icon: 'mdi-play-box-multiple-outline' },
   { id: 'text', label: 'Criar por texto', icon: 'mdi-text-box-outline' },
+  { id: 'remake', label: 'Refazer vídeos', icon: 'mdi-movie-roll' },
   { id: 'edit', label: 'Editar vídeo-base', icon: 'mdi-filmstrip-box-multiple' },
   { id: 'reference', label: 'Remixar com referência', icon: 'mdi-movie-open-edit-outline' },
   { id: 'transition', label: 'Transição entre vídeos', icon: 'mdi-transition' },
   { id: 'continuation', label: 'Continuar cena', icon: 'mdi-movie-open-outline' },
   { id: 'genjutsu', label: 'Genjutsu', icon: 'mdi-motion-play-outline' },
   { id: 'genjutsu-light', label: 'Genjutsu Light', icon: 'mdi-motion-play-outline' },
-  { id: 'remake', label: 'Refazer vídeos', icon: 'mdi-movie-roll' },
 ]
 const clipPrompt = ref(null)
 const transitionMode = computed(() => generationMode.value === 'transition')
@@ -452,6 +451,14 @@ function selectMasterScene(id) {
   selectScene(id)
   chooseEditorTab('scenes')
   closeMobilePanel(masterOpen)
+}
+async function showMasterPreview() {
+  if (!mayEdit.value) return
+  previewMode.value = 'all'
+  chooseEditorTab('scenes')
+  closeMobilePanel(masterOpen)
+  await nextTick()
+  masterPreview.value?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
 function selectVideoModel(id) {
   if (generationMode.value === 'text') videoModel.value = id
@@ -1253,15 +1260,16 @@ function retainedClipExpiry(clip) {
 }
 function storeClip(asset, { reveal = false } = {}) {
   const previous = clipLibrary.value.find(item => item.id === asset.id)
+  const number = previous?.number || ((clipLibrary.value[0]?.number || 0) + 1)
   const clip = localClip({ ...asset, expiresAt: asset.file ? retainedClipExpiry(asset) : asset.expiresAt,
-    number: previous?.number || ((clipLibrary.value[0]?.number || 0) + 1) })
+    title: previous?.title || asset.title || `Cena ${number}`, number })
   if (previous) disposeClip(previous)
   if (removedGeneratedIds.value.includes(clip.id)) removedGeneratedIds.value = removedGeneratedIds.value.filter(id => id !== clip.id)
   clipLibrary.value = [clip, ...clipLibrary.value.filter(item => item.id !== clip.id)]
   selectGenerated(clip)
   if (reveal) {
     closeMobilePanel(masterOpen)
-    void nextTick(() => { if (mounted) revealGeneratedVideo(generatedPreview.value) })
+    projectScenesOpen.value = true
   }
   return clip
 }
@@ -1579,8 +1587,25 @@ async function applyGeneratedScriptScene(target, asset, signal) {
   return true
 }
 function selectGenerated(clip) {
-  generatedDuration.value = 0
   generated.value = clip
+}
+function renameProjectClip({ id, title: value }) {
+  if (!mayEdit.value || busy.value || typeof value !== 'string') return
+  const name = value.trim().slice(0, 140)
+  if (!name || /[\u0000-\u001f]/.test(name)) return
+  const clip = clipLibrary.value.find(item => item.id === id)
+  if (!clip) return
+  const updated = { ...clip, title: name }
+  clipLibrary.value = clipLibrary.value.map(item => item.id === id ? updated : item)
+  if (generated.value?.id === id) generated.value = updated
+  void saveProject()
+}
+function projectClipAction(action, clip) {
+  if (!mayEdit.value || busy.value || !clipLibrary.value.some(item => item.id === clip?.id)) return
+  selectGenerated(clip)
+  const operations = { use: addGenerated, add: () => addGeneratedSequence(clip), save: shareClip,
+    variation: clipVariation, download: downloadGenerated, remove: () => removeGenerated(clip) }
+  operations[action]?.()
 }
 function checkJob(selected) {
   if (!trackedJobs.value.length || !accountId.value) return
@@ -2025,7 +2050,9 @@ function downloadGenerated() {
       clipLibrary.value = clipLibrary.value.map(item => item.id === clip.id ? clip : item)
       selectGenerated(clip)
     }
-    downloadAitoIAFile(file, file.name)
+    const extension = /\.[a-z0-9]{2,5}$/i.exec(file.name)?.[0] || '.mp4'
+    const name = previous.title ? previous.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\.(?:mp4|webm|mov|m4v|mkv|3gp)$/i, '') + extension : file.name
+    downloadAitoIAFile(file, name)
   })
 }
 function addGenerated() {
@@ -2122,6 +2149,7 @@ async function archiveProject() {
   })
 }
 function resetProject() {
+  projectScenesOpen.value = false
   pause()
   codeBackgroundFile.value = null
   artworkOpen.value = false
@@ -2414,13 +2442,30 @@ onBeforeUnmount(() => {
         <button type="button" class="video-studio__primary" :disabled="!draftReady || atLimit" @click="applyDraft(true)">Criar projeto</button>
       </div>
 
-      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code', 'video-studio__grid--voice': tab === 'voice' }">
+      <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code', 'video-studio__grid--voice': tab === 'voice', 'video-studio__grid--master': tab === 'scenes' }">
         <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
           <q-tabs :model-value="tab" :dark="isDark" dense no-caps align="justify" indicator-color="transparent" @update:model-value="chooseEditorTab">
             <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label"
               :class="{ 'video-studio__code-tab': item.id === 'code' }" :disable="!mayEdit" />
           </q-tabs>
         </nav>
+
+        <section v-if="tab === 'scenes'" class="video-studio__master-overview" aria-label="Montagem do Vídeo Master">
+          <header><div><q-icon name="mdi-filmstrip" size="23px" /><h2>Vídeo Master</h2><span>{{ scenes.length }} {{ scenes.length === 1 ? 'cena' : 'cenas' }} · {{ durationLabel(timeline.duration) }}</span></div>
+            <div class="video-studio__actions">
+              <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="importInput?.click()"><q-icon name="mdi-upload-outline" size="18px" /> Importar vídeo</button>
+              <button class="video-studio__secondary" type="button" @click="projectScenesOpen = true"><q-icon name="mdi-movie-open-outline" size="18px" /> Cenas do projeto</button>
+              <button class="video-studio__primary" type="button" :disabled="!mayEdit || scenes.length >= maxStudioScenes" @click="addScene"><q-icon name="mdi-plus" size="18px" /> Adicionar cena</button>
+              <button class="video-studio__icon" type="button" aria-label="Desfazer edição" :disabled="!mayEdit || !history.length" @click="undoEdit"><q-icon name="mdi-undo" size="20px" /></button>
+            </div>
+          </header>
+          <div class="video-studio__master-scene-list" role="group" aria-label="Selecionar cena do Vídeo Master">
+            <button v-for="({ scene, start, end }, index) in timeline.segments" :key="scene.id" type="button" :aria-pressed="sceneId === scene.id" :disabled="!mayEdit" @click="selectScene(scene.id)">
+              <span class="video-studio__scene-thumb"><img v-if="scene.media?.poster || (scene.media && !scene.media.isVideo)" :src="scene.media.poster || scene.media.url" alt="" loading="lazy" /><q-icon v-else :name="scene.media ? 'mdi-filmstrip' : 'mdi-image-outline'" size="20px" /></span>
+              <span><strong>{{ scene.heading || `Cena ${index + 1}` }}</strong><small>{{ durationLabel(start) }} — {{ durationLabel(end) }}<template v-if="unavailableScene(scene)"> · Mídia indisponível</template></small></span>
+            </button>
+          </div>
+        </section>
 
         <nav v-if="tab === 'ai'" class="video-studio__generation-toolbar" aria-label="Ferramentas de vídeo">
           <div class="video-studio__generation-modes" role="group" aria-label="Como criar o clipe">
@@ -2650,42 +2695,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-if="tab === 'ai' && !remakeMode && !galleryMode" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
-            <header><h2>Clipes do projeto</h2><span v-if="clipLibrary.length">{{ clipLibrary.length }} {{ clipLibrary.length === 1 ? 'clipe' : 'clipes' }}</span></header>
-            <article v-for="job in trackedJobs" :key="job.requestId || job.id" class="video-studio__queued-clip">
-              <small>{{ job.scriptTarget?.title || (job.timelineTransition ? 'Transição' : job.modelLabel || 'Clipe') }}</small>
-              <AitoVideoProgress v-if="videoGenerationActive(job.status)" :stage="job.status" :percent="job.progress" />
-              <small v-else-if="videoReleasePending(job)" role="status">Estorno em processamento.</small>
-              <button type="button" class="video-studio__secondary" :disabled="Boolean(busy) || remakeBusy || projectLoading" @click="checkJob(job)">
-                <q-icon name="mdi-refresh" size="16px" /> {{ videoReleasePending(job) ? 'Verificar estorno' : 'Verificar geração' }}
-              </button>
-            </article>
-            <div v-if="generated" class="video-studio__generated">
-              <div class="video-studio__clip-list" role="group" aria-label="Clipes gerados"><button v-for="clip in clipLibrary" :key="clip.id" class="video-studio__secondary" type="button" :aria-pressed="clip.id === generated.id" :disabled="!mayEdit" @click="selectGenerated(clip)">Clipe {{ clip.number }}</button></div>
-              <p v-if="generated.expired" class="video-studio__hint">Este clipe expirou. Baixe os demais clipes ou gere uma nova cena.</p>
-              <video v-else :src="generated.url" controls playsinline preload="metadata" referrerpolicy="no-referrer" aria-label="Clipe gerado com IA" @loadedmetadata="generatedDuration = $event.target.duration" />
-              <small v-if="!generated.expired" class="video-studio__hint">Disponível até {{ displayDate.format(generated.expiresAt) }}</small>
-              <p v-if="!generated.expired && generated.reservedUsdCents !== undefined" class="video-studio__estimate">
-                <template v-if="reservedCost">Reserva inicial de {{ reservedCost }}. </template>{{ adminMode ? 'Consulte os logs do Aito Admin para conferir o custo.' : 'Consulte o histórico da carteira para conferir o custo.' }}
-              </p>
-              <div class="video-studio__actions">
-                <button v-if="!generated.expired" class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="addGenerated"><q-icon name="mdi-swap-horizontal" size="18px" /> Usar na cena atual</button>
-                <button v-if="!generated.expired" class="video-studio__primary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="addGeneratedSequence()"><q-icon name="mdi-playlist-plus" size="18px" /> Adicionar ao vídeo master</button>
-                <button v-if="signedIn && !generated.expired" class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="shareClip"><q-icon name="mdi-folder-plus-outline" size="18px" /> Salvar em projeto</button>
-                <button v-if="!generated.expired && generated.file?.type === 'video/mp4'" class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="clipVariation"><q-icon name="mdi-creation-outline" size="18px" /> Gerar variação</button>
-                <button v-if="!generated.expired" class="video-studio__icon" type="button" aria-label="Baixar clipe original"
-                  :disabled="!mayEdit || Boolean(busy)" @click="downloadGenerated"><q-icon name="mdi-download-outline" size="20px" /><q-tooltip>Baixar clipe original</q-tooltip></button>
-                <button class="video-studio__icon" type="button" aria-label="Excluir clipe do projeto" :disabled="!mayEdit" @click="removeGenerated()"><q-icon name="mdi-delete-outline" size="20px" /></button>
-              </div>
-              <p v-if="generatedDuration > 15" class="video-studio__hint">Ao adicionar à sequência, o clipe é dividido em cenas de até 15 s.</p>
-            </div>
-            <div v-if="!generated && !trackedJobs.length" class="video-studio__clip-empty" role="status">
-              <q-icon name="mdi-filmstrip-box-multiple" size="32px" />
-              <p>Os vídeos gerados aparecem aqui.</p>
-            </div>
-        </section>
-
-        <section v-else-if="tab === 'code'" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
+        <section v-if="tab === 'code'" class="video-studio__panel video-studio__preview video-studio__preview--code" aria-label="Prévia da cena renderizada">
           <header><h2><q-icon name="mdi-filmstrip" size="20px" /> Cenas renderizadas</h2><span v-if="codeClips.length">{{ codeClips.length }} {{ codeClips.length === 1 ? 'cena' : 'cenas' }}</span></header>
           <div v-if="codeClips.length > 1" class="video-studio__clip-list" role="group" aria-label="Selecionar cena renderizada">
             <button v-for="clip in codeClips" :key="clip.id" class="video-studio__secondary video-studio__code-clip" type="button"
@@ -2709,8 +2719,8 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-else-if="tab !== 'ai'" class="video-studio__panel video-studio__preview" aria-labelledby="video-studio-preview">
-          <header><h2 id="video-studio-preview">Prévia</h2><span>{{ format.label }} · {{ durationLabel(timeline.duration) }}</span></header>
+        <section v-else-if="tab !== 'ai'" ref="masterPreview" class="video-studio__panel video-studio__preview" aria-labelledby="video-studio-preview">
+          <header><h2 id="video-studio-preview"><q-icon name="mdi-filmstrip" size="20px" /> {{ tab === 'scenes' ? 'Preview do Vídeo Master' : 'Prévia' }}</h2><span>{{ format.label }} · {{ durationLabel(timeline.duration) }}</span></header>
           <div class="video-studio__screen"><canvas ref="canvas" :width="format.width" :height="format.height" aria-label="Prévia da composição do vídeo" /></div>
           <div class="video-studio__actions" role="group" aria-label="Reproduzir">
             <button type="button" class="video-studio__secondary" :aria-pressed="previewMode === 'all'" @click="previewMode = 'all'">Vídeo master</button>
@@ -2730,7 +2740,7 @@ onBeforeUnmount(() => {
             <a v-if="recording" class="video-studio__secondary" :href="recording.url" :download="recording.filename"><q-icon name="mdi-download-outline" size="19px" /> Baixar vídeo</a>
             <button v-if="subtitles" class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="downloadSubtitles"><q-icon name="mdi-subtitles-outline" size="19px" /> Legendas SRT</button>
           </div>
-          <q-linear-progress v-if="busy === 'render'" rounded :value="progress" :color="isDark ? 'teal-4' : 'teal-8'" aria-label="Progresso de exportação" />
+          <q-linear-progress v-if="busy === 'render'" rounded :value="progress" :color="isDark ? 'grey-4' : 'teal-8'" aria-label="Progresso de exportação" />
           <p v-else-if="!canRecord" class="video-studio__hint">A exportação de vídeo depende do suporte do navegador.</p>
           <video v-if="recording" class="video-studio__rendered" :src="recording.url" controls playsinline preload="metadata" aria-label="Vídeo exportado" />
           <p v-if="!signedIn" class="video-studio__hint"><q-icon name="mdi-shield-lock-outline" size="17px" /> Entre para salvar projetos por até 7 dias.</p>
@@ -2740,6 +2750,7 @@ onBeforeUnmount(() => {
     </q-page-container>
     <q-footer class="video-studio__timeline" aria-label="Vídeo master" @paste="pasteStudioMedia">
       <div class="video-studio__master-inner" @pointerdown="cancelInitialMasterCollapse?.()" @focusin="cancelInitialMasterCollapse?.()">
+        <div class="video-studio__master-bar">
         <q-btn class="video-studio__master-toggle" flat no-caps align="left" :aria-expanded="masterOpen" aria-controls="video-studio-master-controls"
           :aria-label="masterOpen ? 'Minimizar vídeo master' : 'Expandir vídeo master'" @click="toggleMaster">
           <q-icon name="mdi-filmstrip" size="20px" aria-hidden="true" />
@@ -2747,6 +2758,8 @@ onBeforeUnmount(() => {
           <span class="video-studio__master-count">{{ scenes.length }} {{ scenes.length === 1 ? 'cena' : 'cenas' }} · {{ durationLabel(timeline.duration) }}</span>
           <q-icon :name="masterOpen ? 'mdi-chevron-down' : 'mdi-chevron-up'" size="23px" aria-hidden="true" />
         </q-btn>
+        <q-btn class="video-studio__master-preview" flat no-caps icon="mdi-play-box-outline" label="Preview" :disable="!mayEdit" @click="showMasterPreview" />
+        </div>
         <div v-show="masterOpen" id="video-studio-master-controls" class="video-studio__master-controls">
           <div class="video-studio__actions">
             <button class="video-studio__primary" type="button" :disabled="!mayEdit" @click="createForScene"><q-icon name="mdi-creation-outline" size="18px" /> Gerar cena</button>
@@ -2777,6 +2790,24 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </q-footer>
+    <AitoProjectScenesPanel v-model="projectScenesOpen" :clips="clipLibrary" :disabled="!mayEdit || Boolean(busy)" :signed-in="signedIn"
+      @select="selectGenerated" @rename="renameProjectClip"
+      @use="projectClipAction('use', $event)" @add="projectClipAction('add', $event)" @save="projectClipAction('save', $event)"
+      @variation="projectClipAction('variation', $event)" @download="projectClipAction('download', $event)" @remove="projectClipAction('remove', $event)">
+      <template #pending>
+        <article v-for="job in trackedJobs" :key="job.requestId || job.id" class="video-studio__queued-clip">
+          <small>{{ job.scriptTarget?.title || (job.timelineTransition ? 'Transição' : job.modelLabel || 'Cena') }}</small>
+          <AitoVideoProgress v-if="videoGenerationActive(job.status)" :stage="job.status" :percent="job.progress" />
+          <small v-else-if="videoReleasePending(job)" role="status">Estorno em processamento.</small>
+          <button type="button" class="video-studio__secondary" :disabled="Boolean(busy) || remakeBusy || projectLoading" @click="checkJob(job)">
+            <q-icon name="mdi-refresh" size="16px" /> {{ videoReleasePending(job) ? 'Verificar estorno' : 'Verificar geração' }}
+          </button>
+        </article>
+      </template>
+      <template #details="{ clip }">
+        <p v-if="!clip.expired && clip.reservedUsdCents !== undefined" class="video-studio__estimate">Reserva inicial de {{ tokenCost(clip.reservedUsdCents) }}. {{ adminMode ? 'Consulte os logs do Aito Admin para conferir o custo.' : 'Consulte o histórico da carteira para conferir o custo.' }}</p>
+      </template>
+    </AitoProjectScenesPanel>
     <q-dialog v-model="transitionDialogOpen" :persistent="Boolean(busy)" aria-labelledby="video-transition-title" @hide="timelineTransition = null">
       <q-card v-if="timelineTransition" class="aito-ai-theme video-studio__dialog" @paste="pasteTimelineTransitionFiles">
         <q-card-section class="video-studio__scene-heading">
@@ -2817,7 +2848,7 @@ onBeforeUnmount(() => {
         </q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps label="Fechar" :disable="Boolean(busy)" />
-          <q-btn v-if="timelineTransition" no-caps unelevated color="teal-8" icon="mdi-transition"
+          <q-btn v-if="timelineTransition" no-caps unelevated :color="isDark ? 'grey-3' : 'teal-8'" :text-color="isDark ? 'grey-10' : 'white'" icon="mdi-transition"
             :label="timelineTransition.quote ? 'Confirmar e gerar' : 'Cotar transição'" :loading="busy === 'transition-quote'"
             :disable="Boolean(busy) || transitionInQueue(timelineTransition.before.id, timelineTransition.after.id) || !transitionDialogOffer || timelineTransition.files.length > maxTimelineTransitionFiles || !timelineTransition.prompt.trim()" @click="createTimelineTransition" />
         </q-card-actions>
@@ -3004,7 +3035,7 @@ onBeforeUnmount(() => {
         </label></q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps label="Cancelar" :disable="savingClip" />
-          <q-btn unelevated no-caps color="teal-8" label="Salvar" :loading="savingClip" @click="saveClipInProject" />
+          <q-btn unelevated no-caps :color="isDark ? 'grey-3' : 'teal-8'" :text-color="isDark ? 'grey-10' : 'white'" label="Salvar" :loading="savingClip" @click="saveClipInProject" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -3014,7 +3045,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.video-studio { min-height: 100dvh; color: var(--aito-ai-text); background: radial-gradient(ellipse at 15% 28%, #663d7641, transparent 48%), radial-gradient(ellipse at 100% 45%, #154d6757, transparent 52%), var(--aito-ai-glow), var(--aito-ai-bg); font-family: var(--aito-ai-font); }
+.video-studio { min-height: 100dvh; color: var(--aito-ai-text); background: var(--aito-ai-glow), var(--aito-ai-bg); font-family: var(--aito-ai-font); }
 .video-studio button, .video-studio input, .video-studio textarea, .video-studio select { font: inherit; }
 .video-studio button, .video-studio a { -webkit-tap-highlight-color: transparent; }
 .video-studio button:focus-visible, .video-studio a:focus-visible, .video-studio input:focus-visible, .video-studio select:focus-visible, .video-studio textarea:focus-visible, .video-studio summary:focus-visible { outline: 2px solid var(--aito-ai-purple); outline-offset: 3px; }
@@ -3044,7 +3075,7 @@ onBeforeUnmount(() => {
 .video-studio__intro p { margin-top: 10px; color: var(--aito-ai-muted); }
 .video-studio__zip { display: grid; gap: 5px; justify-items: end; }
 .video-studio__grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, .82fr); align-items: start; gap: 14px; scroll-margin-top: calc(var(--video-header-height) + 6px); }
-.video-studio__panel { min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: linear-gradient(145deg, #1835356b, transparent 58%), var(--aito-ai-surface); }
+.video-studio__panel { min-width: 0; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: var(--aito-ai-surface); }
 .video-studio :deep(.video-studio__drawer) { color: var(--aito-ai-text); background: var(--aito-ai-surface); border-color: var(--aito-ai-line); }
 .video-studio__drawer-content { display: flex; min-height: 100%; flex-direction: column; gap: 20px; padding: 20px 18px max(16px, env(safe-area-inset-bottom, 0px)); }
 .video-studio__drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -3064,9 +3095,9 @@ onBeforeUnmount(() => {
 .video-studio__tabs :deep(.q-tab--active) { color: var(--aito-ai-accent); background: var(--aito-ai-accent-soft); }
 .video-studio__tabs--voice :deep(.q-tab--active) { color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .video-studio__tabs--ai :deep(.q-tab--active) { color: var(--aito-ai-purple); background: var(--aito-ai-purple-soft); }
-.video-studio__tabs :deep(.video-studio__code-tab:not(.q-tab--active)) { color: #9fe9db; }
+.video-studio__tabs :deep(.video-studio__code-tab:not(.q-tab--active)) { color: var(--aito-ai-muted); }
 .video-studio__grid--code > .video-studio__editor { grid-area: 2 / 1; }
-.video-studio__grid--code > .video-studio__preview--code { grid-area: 2 / 2; border-color: #3a6367; background: radial-gradient(ellipse at top left, #244a56, transparent 72%), var(--aito-ai-surface); }
+.video-studio__grid--code > .video-studio__preview--code { grid-area: 2 / 2; border-color: var(--aito-ai-line); background: var(--aito-ai-surface); }
 .video-studio__preview--code header .q-icon { color: var(--aito-ai-accent); vertical-align: .05em; }
 .video-studio__preview--code .video-studio__clip-empty { min-height: 220px; }
 .video-studio__code-clip[aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); }
@@ -3074,16 +3105,15 @@ onBeforeUnmount(() => {
 .video-studio__code-screen video { display: block; width: 100%; max-height: min(49dvh, 460px); min-height: 96px; object-fit: contain; }
 .video-studio__rendered-clip { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .video-studio__rendered-title { overflow-wrap: anywhere; }
-.video-studio__delete-clip { flex: none; color: #ffb7bc; }
-.video-studio__delete-clip:hover:not(:disabled) { color: #fff0f2; border-color: #a75865; background: #763644; }
+.video-studio__delete-clip { flex: none; color: var(--aito-ai-error); }
+.video-studio__delete-clip:hover:not(:disabled) { color: var(--aito-ai-error); border-color: var(--aito-ai-error-line); background: var(--aito-ai-error-soft); }
 .video-studio__script-btn { color: var(--aito-ai-purple); border-radius: 8px; background: var(--aito-ai-purple-soft); }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
 .video-studio__preview { grid-column: 1; grid-row: 2; }
-.video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 4; }
+.video-studio__grid--generate .video-studio__editor { grid-column: 1 / -1; grid-row: 4; }
 .video-studio__grid--generate > .aito-remake { grid-column: 1 / -1; grid-row: 3; order: 3; }
 .video-studio__grid--generate > .aito-references { grid-column: 1 / -1; grid-row: 3; order: 3; }
-.video-studio__grid--generate .video-studio__editor { border-color: #397c65; background: radial-gradient(ellipse at top left, #275e4c, transparent 72%), linear-gradient(145deg, #154036, #0b2322 80%); }
-.video-studio__preview--clips { grid-column: 2; grid-row: 4; border-color: #355a7b; background: radial-gradient(ellipse at top left, #214b75, transparent 72%), linear-gradient(145deg, #142f4c, #0c222c 80%); }
+.video-studio__grid--generate .video-studio__editor { border-color: var(--aito-ai-line); background: var(--aito-ai-surface); }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .video-studio h2 { font-size: 1.13rem; font-weight: 730; line-height: 1.2; }
 .video-studio h3 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
@@ -3095,7 +3125,7 @@ onBeforeUnmount(() => {
 .video-studio__aspect-select :deep(.q-field__control::before) { border-color: var(--aito-ai-line); }
 .video-studio__aspect-select :deep(.q-field__native) { gap: 7px; font-weight: 650; }
 .video-studio__aspect-select :deep(.q-field__append) { padding-left: 2px; }
-.video-studio__aspect-icon { display: inline-grid; place-items: center; width: 22px; min-height: 20px; flex: none; color: #6fe2d4; }
+.video-studio__aspect-icon { display: inline-grid; place-items: center; width: 22px; min-height: 20px; flex: none; color: var(--aito-ai-accent); }
 .video-studio__aspect-icon > i { display: block; border: 1.5px solid currentColor; border-radius: 3px; }
 .video-studio__catalog { grid-column: 1 / -1; grid-row: 3; min-width: 0; display: grid; gap: 12px; }
 .video-studio__catalog-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -3110,12 +3140,25 @@ onBeforeUnmount(() => {
 .video-studio input:not([type=range], .q-field__native), .video-studio textarea, .video-studio select { width: 100%; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-text); background: var(--aito-ai-bg); }
 .video-studio textarea { min-height: 60px; resize: vertical; }
 .video-studio input::placeholder, .video-studio textarea::placeholder { color: var(--aito-ai-muted); opacity: .75; }
-.video-studio__timeline { --aito-ai-bg: #14141e; --aito-ai-panel: #202131; --aito-ai-line: #383a4d; --aito-ai-muted: #c6c9d6; --aito-ai-text: #f5f6f8; padding-bottom: env(safe-area-inset-bottom, 0px); border-top: 1px solid var(--aito-ai-line); background: linear-gradient(145deg, #151921 0%, #1b1927 56%, #14151f 100%); color: var(--aito-ai-text); box-shadow: 0 -6px 24px #0009; }
+.video-studio__timeline { padding-bottom: env(safe-area-inset-bottom, 0px); border-top: 1px solid var(--aito-ai-line); background: var(--aito-ai-surface); color: var(--aito-ai-text); box-shadow: 0 -6px 24px var(--aito-ai-shadow); }
 .video-studio__master-inner { width: min(1660px, 100%); min-width: 0; margin: 0 auto; padding-inline: max(10px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-right, 0px)); }
-.video-studio__master-toggle { display: flex; width: 100%; min-height: 48px; color: var(--aito-ai-accent); }
+.video-studio__master-bar { display: flex; align-items: center; gap: 8px; }
+.video-studio__master-toggle { display: flex; flex: 1; min-width: 0; min-height: 48px; color: var(--aito-ai-accent); }
+.video-studio__master-preview { flex: none; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-text); background: var(--aito-ai-raised); }
 .video-studio__master-toggle :deep(.q-btn__content) { width: 100%; flex-wrap: nowrap; gap: 7px; }
 .video-studio__master-count { margin-inline-start: auto; color: var(--aito-ai-muted); white-space: nowrap; font-size: .76rem; }
 .video-studio__master-controls { display: grid; gap: 10px; min-width: 0; max-height: min(36dvh, 260px); padding: 7px 6px 10px; border-top: 1px solid var(--aito-ai-line); overflow: auto; overscroll-behavior: contain; }
+.video-studio__master-overview { grid-column: 1 / -1; grid-row: 2; display: grid; gap: 16px; padding: 20px; border: 1px solid var(--aito-ai-line); border-radius: 16px; background: var(--aito-ai-panel); }
+.video-studio__master-overview header,.video-studio__master-overview header > div:first-child { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.video-studio__master-overview header { justify-content: space-between; }
+.video-studio__master-overview header > div:first-child > span { color: var(--aito-ai-muted); font-size: .82rem; }
+.video-studio__master-scene-list { display: flex; overflow-x: auto; gap: 9px; padding: 2px; scroll-snap-type: x proximity; }
+.video-studio__master-scene-list > button { display: flex; align-items: center; gap: 10px; flex: 0 0 200px; min-width: 0; padding: 10px; color: var(--aito-ai-text); background: var(--aito-ai-surface); border: 1px solid var(--aito-ai-line); border-radius: 11px; text-align: left; cursor: pointer; scroll-snap-align: start; }
+.video-studio__master-scene-list > button[aria-pressed=true] { color: var(--aito-ai-accent); border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-accent-soft); }
+.video-studio__master-scene-list > button > span:last-child { display: grid; gap: 5px; min-width: 0; }
+.video-studio__master-scene-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; }
+.video-studio__master-scene-list small { color: var(--aito-ai-muted); font-size: .7rem; }
+.video-studio__grid--master > .video-studio__editor,.video-studio__grid--master > .video-studio__preview { grid-row: 3; }
 .video-studio__scenes { display: flex; overflow-x: auto; gap: 8px; padding: 3px 2px 5px; scroll-snap-type: x proximity; overscroll-behavior-inline: contain; }
 .video-studio__scenes button { display: flex; flex: 0 0 clamp(126px, 18vw, 178px); align-items: center; gap: 7px; min-width: 0; padding: 6px; border: 1px solid var(--aito-ai-line); border-radius: 8px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); cursor: pointer; text-align: left; }
 .video-studio__scene-thumb { display: grid; flex: 0 0 43px; height: 34px; place-items: center; overflow: hidden; border-radius: 5px; background: var(--aito-ai-bg); }
@@ -3215,10 +3258,6 @@ html[data-aito-ia-theme='light'] .video-studio__grid--generate .video-studio__ed
   border-color: var(--aito-ai-line);
   background: linear-gradient(145deg, var(--aito-ai-accent-soft), var(--aito-ai-surface) 52%);
 }
-html[data-aito-ia-theme='light'] .video-studio__preview--clips {
-  border-color: var(--aito-ai-purple-line);
-  background: linear-gradient(145deg, var(--aito-ai-purple-soft), var(--aito-ai-surface) 67%);
-}
 html[data-aito-ia-theme='light'] .video-studio__timeline {
   --aito-ai-bg: #f1edf8;
   --aito-ai-panel: #f9f6fd;
@@ -3241,12 +3280,12 @@ html[data-aito-ia-theme='light'] .video-studio__delete-clip:hover:not(:disabled)
   .video-studio__generation-toolbar { order: 2; }
   .video-studio__catalog { order: 3; }
   .video-studio__preview { order: 3; }
+  .video-studio__master-overview { order: 2; padding: 14px; }
   .video-studio__master-controls .video-studio__actions :is(button, a) { min-height: 41px; }
   .video-studio__scenes > button { min-height: 52px; scroll-snap-align: start; }
   .video-studio__editor { order: 5; }
   .video-studio__grid--generate .video-studio__editor { order: 3; }
   .video-studio__grid--voice .video-studio__editor { order: 2; }
-  .video-studio__preview--clips { order: 4; }
   .video-studio__grid--code .video-studio__editor { order: 3; }
   .video-studio__preview--code { order: 4; }
   .video-studio__screen canvas { max-height: min(42dvh, 390px); }

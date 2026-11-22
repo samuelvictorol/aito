@@ -19,8 +19,8 @@
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px;
   padding: 4px 8px; border-radius: 8px; color: var(--aito-ai-text); text-decoration: none;
 }
-.aito-about-link img { object-fit: contain; }
-.aito-about-link span { flex: 1; }
-.aito-about-link .q-icon { color: var(--aito-ai-muted); }
+.aito-about-link img { flex: none; object-fit: contain; }
+.aito-about-link span { flex: 1; min-width: 0; white-space: nowrap; }
+.aito-about-link .q-icon { flex: none; color: var(--aito-ai-muted); }
 .aito-about-link:hover, .aito-about-link:focus-visible { background: var(--aito-ai-raised); }
 </style>

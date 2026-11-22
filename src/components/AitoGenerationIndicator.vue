@@ -281,7 +281,7 @@ async function openClip(job) {
 .aito-generation-dialog__refund { display: inline-flex; align-items: center; gap: 5px; color: var(--aito-ai-accent); font-size: .82rem; }
 .aito-generation-dialog__list { display: grid; gap: 9px; max-height: min(70dvh, 540px); overflow-y: auto; }
 .aito-generation-dialog__list article { display: grid; gap: 6px; justify-items: start; padding: 11px; border: 1px solid var(--aito-ai-line); border-radius: 9px; background: var(--aito-ai-panel); }
-.aito-generation-dialog__demand { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 8px; color: #ffdbaf; background: #54321b; font-size: .82rem; }
+.aito-generation-dialog__demand { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 8px; color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); font-size: .82rem; }
 html[data-aito-ia-theme='light'] .aito-generation-dialog__demand { color: var(--aito-ai-gold); background: var(--aito-ai-gold-soft); }
 .aito-generation-dialog__demand .q-icon { flex: 0 0 auto; }
 .aito-generation-dialog__list :is(small, p) { margin: 0; color: var(--aito-ai-muted); }

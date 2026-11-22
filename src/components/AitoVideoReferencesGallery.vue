@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { api } from 'boot/axios'
 import { videoCatalog, videoModelPreview, videoModelSpecialty } from 'src/data/aitoiaVideoCatalog'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
@@ -13,7 +13,14 @@ const error = ref('')
 const preview = shallowRef(null)
 const modelsOpen = ref(false)
 const modelQuery = ref('')
+const pageSize = 10
+const visibleCount = ref(pageSize)
+const visibleItems = computed(() => items.value.slice(0, visibleCount.value))
+const hasMore = computed(() => visibleCount.value < items.value.length)
+const loadSentinel = ref(null)
 let request
+let observer
+let disposed = false
 
 function safeUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return ''
@@ -55,6 +62,8 @@ const filteredModels = computed(() => {
 })
 async function load() {
   request?.abort()
+  observer?.disconnect()
+  visibleCount.value = pageSize
   const current = new AbortController()
   request = current
   loading.value = true
@@ -66,29 +75,42 @@ async function load() {
     if (!current.signal.aborted) error.value = cause.response?.data?.message || 'Não foi possível abrir as referências. Tente novamente.'
   } finally { if (request === current) loading.value = false }
 }
+function observeNextPage() {
+  observer?.disconnect()
+  observer = null
+  if (disposed || !hasMore.value || !loadSentinel.value || typeof IntersectionObserver === 'undefined') return
+  observer = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) revealNextPage()
+  }, { rootMargin: '0px 0px 180px 0px', threshold: 0 })
+  observer.observe(loadSentinel.value)
+}
+async function revealNextPage() {
+  if (!hasMore.value || loading.value || disposed) return
+  observer?.disconnect()
+  visibleCount.value = Math.min(visibleCount.value + pageSize, items.value.length)
+  await nextTick()
+  observeNextPage()
+}
+watch([loadSentinel, hasMore], observeNextPage, { flush: 'post' })
 function recreate(item) {
   if (props.disabled || props.importing) return
   preview.value = null
   emit('recreate', item)
 }
 onMounted(load)
-onBeforeUnmount(() => request?.abort())
+onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect() })
 </script>
 
 <template>
-  <section class="aito-references" aria-labelledby="video-references-heading">
+  <section class="aito-references" aria-label="Referências de vídeo">
     <header class="aito-references__header">
-      <div><span class="aito-references__eyebrow"><q-icon name="mdi-sparkles" /> Uma ideia para o seu próximo vídeo</span>
-        <h2 id="video-references-heading">Veja. Inspire-se. Recrie.</h2>
-        <p>Abra uma referência e leve o vídeo para Refazer vídeos. Você escolhe os cortes, personagens e a nova direção.</p>
-      </div>
       <q-btn outline no-caps icon="mdi-movie-open-star-outline" label="Conheça os modelos" @click="modelsOpen = true" />
     </header>
     <div v-if="loading" class="aito-references__state" role="status"><q-spinner size="30px" /><span>Abrindo referências…</span></div>
     <div v-else-if="error" class="aito-references__state" role="alert"><span>{{ error }}</span><q-btn no-caps outline label="Tentar novamente" @click="load" /></div>
     <div v-else-if="!items.length" class="aito-references__state"><q-icon name="mdi-movie-open-outline" size="36px" /><p>Novas inspirações chegam por aqui em breve.</p><q-btn no-caps flat label="Explorar modelos de vídeo" @click="modelsOpen = true" /></div>
     <div v-else class="aito-references__grid">
-      <article v-for="(item, index) in items" :key="item.id" class="aito-references__tile" :class="`aito-references__tile--${index % 3}`">
+      <article v-for="(item, index) in visibleItems" :key="item.id" class="aito-references__tile" :class="`aito-references__tile--${index % 3}`">
         <button type="button" class="aito-references__open" :aria-label="`Assistir ${item.title}`" @click="preview = item">
           <img v-if="safeUrl(item.thumbnail)" :src="safeUrl(item.thumbnail)" :alt="item.title" loading="lazy" @error="$event.target.style.opacity = '0'" />
           <span class="aito-references__film" aria-hidden="true"><q-icon name="mdi-movie-open-outline" size="44px" /></span>
@@ -99,6 +121,10 @@ onBeforeUnmount(() => request?.abort())
           :loading="importing === String(item.id)" :disable="disabled || Boolean(importing)" @click="recreate(item)" />
       </article>
     </div>
+    <div v-if="hasMore && !loading && !error" ref="loadSentinel" class="aito-references__load-more">
+      <q-btn flat no-caps icon="mdi-chevron-down" label="Carregar mais referências" @click="revealNextPage" />
+    </div>
+    <span v-if="items.length && !loading" class="aito-references__count" role="status" aria-live="polite">{{ visibleItems.length }} de {{ items.length }} referências</span>
     <q-dialog :model-value="Boolean(preview)" maximized transition-show="fade" transition-hide="fade" @update:model-value="open => { if (!open) preview = null }">
       <q-card v-if="preview" class="aito-references__fullscreen aito-ai-theme">
         <header><h2>{{ preview.title }}</h2><q-btn v-close-popup flat round icon="mdi-close" aria-label="Fechar referência" /></header>
@@ -128,34 +154,36 @@ onBeforeUnmount(() => request?.abort())
 
 <style scoped>
 .aito-references { grid-column: 1 / -1; min-width: 0; }
-.aito-references__header { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 10px 0 24px; }
+.aito-references__header { display: flex; align-items: center; justify-content: flex-end; gap: 22px; padding: 0 0 16px; }
 .aito-references__header > div { max-width: 670px; }
 .aito-references__eyebrow { display: inline-flex; align-items: center; gap: 6px; color: var(--aito-ai-accent); font-size: .8rem; font-weight: 650; }
 .aito-references h2 { margin: 6px 0 9px; font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.15; font-weight: 760; }
 .aito-references p { margin: 0; color: var(--aito-ai-muted); line-height: 1.55; }
 .aito-references__header > .q-btn { flex-shrink: 0; color: var(--aito-ai-accent); border-radius: 12px; }
 .aito-references__grid { columns: 4; column-gap: 14px; }
-.aito-references__tile { position: relative; overflow: hidden; break-inside: avoid; margin-bottom: 14px; border: 1px solid var(--aito-ai-line); border-radius: 18px; background: linear-gradient(145deg, #1d645f, #1b2239); transform: translateZ(0); }
+.aito-references__tile { position: relative; overflow: hidden; break-inside: avoid; margin-bottom: 14px; border: 1px solid var(--aito-ai-line); border-radius: 18px; background: linear-gradient(145deg, var(--aito-ai-raised), var(--aito-ai-surface)); transform: translateZ(0); animation: reference-reveal .35s ease-out both; }
 .aito-references__open { position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; border: 0; background: none; color: white; text-align: left; cursor: pointer; }
 .aito-references__tile--1 .aito-references__open { aspect-ratio: 9 / 16; }
 .aito-references__tile--2 .aito-references__open { aspect-ratio: 1; }
-.aito-references__open::after { content: ''; position: absolute; inset: 25% 0 0; background: linear-gradient(transparent, #001312f5); }
+.aito-references__open::after { content: ''; position: absolute; inset: 25% 0 0; background: linear-gradient(transparent, #080808f5); }
 .aito-references__open img { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .35s; }
 .aito-references__open:hover img { transform: scale(1.045); }
 .aito-references__open::after { z-index: 2; }
-.aito-references__film { position: absolute; inset: 0; display: grid; place-items: center; color: #9edcd45c; }
-.aito-references__play { z-index: 3; position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #ffffff45; border-radius: 50%; background: #0924258c; backdrop-filter: blur(8px); }
+.aito-references__film { position: absolute; inset: 0; display: grid; place-items: center; color: var(--aito-ai-muted); opacity: .4; }
+.aito-references__play { z-index: 3; position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #ffffff45; border-radius: 50%; background: #1515158c; backdrop-filter: blur(8px); }
 .aito-references__title { z-index: 3; position: absolute; bottom: 66px; left: 16px; right: 16px; font-weight: 700; line-height: 1.35; }
 .aito-references__tile > .aito-references__recreate { position: absolute; z-index: 4; bottom: 12px; left: 12px; right: 12px; }
-.aito-references__recreate { color: #04382f; background: linear-gradient(115deg, #ceffe7, #6fe2c5); border-radius: 10px; font-weight: 700; min-height: 40px; }
+.aito-references__recreate { color: var(--aito-ai-on-accent); background: var(--aito-ai-gradient); border-radius: 10px; font-weight: 700; min-height: 40px; }
+.aito-references__load-more { display: flex; justify-content: center; padding: 8px 0; color: var(--aito-ai-accent); }
+.aito-references__count { display: block; padding-top: 8px; color: var(--aito-ai-muted); text-align: center; font-size: .75rem; }
 .aito-references__state { display: flex; min-height: 220px; padding: 30px; align-items: center; justify-content: center; flex-direction: column; gap: 14px; border: 1px dashed var(--aito-ai-line); border-radius: 18px; color: var(--aito-ai-muted); text-align: center; }
-.aito-references__fullscreen { display: flex; flex-direction: column; background: #040e12; color: #f0fffb; }
+.aito-references__fullscreen { display: flex; flex-direction: column; background: var(--aito-ai-bg); color: var(--aito-ai-text); }
 .aito-references__fullscreen header, .aito-references__fullscreen footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px clamp(14px, 3vw, 32px); }
 .aito-references__fullscreen h2 { margin: 0; font-size: 1rem; }
 .aito-references__player { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
 .aito-references__player video, .aito-references__player iframe { width: 100%; height: 100%; max-height: calc(100dvh - 155px); border: none; object-fit: contain; }
 .aito-references__player iframe { min-height: 65dvh; }
-.aito-references__fullscreen footer span { color: #aec9c4; }
+.aito-references__fullscreen footer span { color: var(--aito-ai-muted); }
 .aito-references__models { width: min(1100px, 94vw); max-width: 1100px; max-height: 90dvh; display: flex; flex-direction: column; gap: 16px; padding: 22px; background: var(--aito-ai-surface); color: var(--aito-ai-text); border: 1px solid var(--aito-ai-line); border-radius: 18px; }
 .aito-references__models > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .aito-references__models h2 { font-size: 1.4rem; margin: 5px 0 8px; }
@@ -172,5 +200,6 @@ onBeforeUnmount(() => request?.abort())
 @media (max-width: 1200px) { .aito-references__grid { columns: 3; } }
 @media (max-width: 700px) { .aito-references__grid { columns: 2; column-gap: 10px; } .aito-references__tile { margin-bottom: 10px; border-radius: 13px; } .aito-references__header { flex-direction: column; align-items: start; gap: 15px; } .aito-references__model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .aito-references__title { font-size: .87rem; left: 12px; right: 12px; } .aito-references__fullscreen footer { flex-direction: column; } .aito-references__fullscreen footer > .q-btn { width: 100%; } }
 @media (max-width: 450px) { .aito-references__models { padding: 15px; } .aito-references__model-grid { grid-template-columns: 1fr; } .aito-references__models h2 { font-size: 1.15rem; } .aito-references__play { width: 34px; height: 34px; top: 10px; right: 10px; } .aito-references__recreate { font-size: .8rem; } }
-@media (prefers-reduced-motion: reduce) { .aito-references__open img { transition: none; } }
+@keyframes reference-reveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .aito-references__open img { transition: none; } .aito-references__tile { animation: none; } }
 </style>

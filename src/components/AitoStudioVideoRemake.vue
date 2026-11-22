@@ -118,7 +118,7 @@ function draftSnapshot() {
     scenes: scenes.value.map(scene => ({ index: scene.index, clientSceneId: scene.clientSceneId, start: scene.start, duration: scene.duration,
       providerDuration: scene.providerDuration, file: scene.file, edit: scene.edit, dialogue: scene.dialogue,
       subtitleRegion: scene.subtitleRegion, referenceIds: scene.referenceIds,
-      captions: scene.captions, caption: scene.caption, plan: scene.plan, transcript: scene.transcript, planSpend: scene.planSpend,
+      captions: scene.captions, caption: scene.caption, plan: scene.plan, planGenerated: Boolean(scene.planGenerated), transcript: scene.transcript, planSpend: scene.planSpend,
       modelId: scene.modelId, resolution: scene.resolution,
       ...(scene.result && { result: { ...scene.result, previewUrl: undefined, expiresAt: undefined } }),
       ...(pendingScene(scene) && { pending: pendingScene(scene) }),
@@ -145,7 +145,7 @@ function loadDraft(draft) {
     return reactive({ ...item, clientSceneId: item.clientSceneId || job?.sceneId || crypto.randomUUID(),
       requestId: job?.requestId, submittedAt: job?.submittedAt, edit: item.edit || '', dialogue: item.dialogue || '',
       referenceIds: item.referenceIds ?? null, captions: Boolean(item.captions || job?.caption),
-      caption: item.caption || job?.caption || '', plan: item.plan || '', planSpend: item.planSpend || 0, result, error: '',
+      caption: item.caption || job?.caption || '', plan: item.plan || '', planGenerated: Boolean(item.planGenerated || item.plan?.trim()), planSpend: item.planSpend || 0, result, error: '',
       url: item.file ? URL.createObjectURL(item.file) : '', recovered: !item.file, job: job?.id ? { id: job.id, status: job.status || 'queued' } : null,
       submitted: Boolean(job), quote: job ? { caption: job.caption, billedUsdCents: job.billedUsdCents,
         estimatedAitoTokens: job.tokens, estimated: job.estimated, modelLabel: job.modelLabel } : null })
@@ -313,14 +313,14 @@ async function splitSource(file, duration) {
     releaseScenes(scenes.value)
     discardedJobs.value = [...discardedJobs.value, ...results.value.map(result => result.id)].slice(-300)
     scenes.value = clips.map(clip => reactive({ ...clip, clientSceneId: crypto.randomUUID(), url: URL.createObjectURL(clip.file), edit: '', dialogue: '',
-      referenceIds: null, captions: false, caption: '', plan: '', planQuote: null, planSpend: 0,
+      referenceIds: null, captions: false, caption: '', plan: '', planGenerated: false, planQuote: null, planSpend: 0,
       quote: null, submitted: false, job: null, result: null, error: '' }))
     await nextTick()
     if (!disposed) revealSection(sourcePanel.value)
   })
 }
 async function planScene(scene) {
-  if (lockedScene(scene) || !props.allowCredits()) return
+  if (lockedScene(scene) || !scene.file || !scene.edit.trim() || !props.allowCredits()) return
   const offer = scene.planQuote
   if (!offer) return execute('plan-price', scene, async (signal, { get }) => {
     scene.planQuote = await quoteRemakePlan({ apiGet: get, signal })
@@ -333,6 +333,7 @@ async function planScene(scene) {
     scene.planQuote = null
     scene.quote = null
     scene.plan = prepared.prompt || ''
+    if (scene.plan.trim()) scene.planGenerated = true
     scene.transcript = prepared.transcript || ''
     if (scene.captions && prepared.caption && !scene.caption.trim()) scene.caption = prepared.caption.slice(0, 180)
     scene.planSpend += Number(prepared.approxAitoTokens) || 0
@@ -629,21 +630,21 @@ onBeforeUnmount(() => {
             <option v-for="duration in remakeSplitDurations" :key="duration" :value="duration">De {{ duration }} em {{ duration }} s</option>
           </select>
         </label>
-        <q-btn no-caps unelevated color="teal-8" icon="mdi-content-cut" label="Confirmar e dividir"
+        <q-btn no-caps unelevated :color="isDark ? 'grey-3' : 'teal-8'" :text-color="isDark ? 'black' : 'white'" icon="mdi-content-cut" label="Confirmar e dividir"
           :disable="locked || !selectedFile || scenes.some(scene => scene.job || scene.submitted)" @click="confirmSource" />
       </div>
       <div v-if="!projectScope && !blocked" class="aito-remake__actions">
         <q-btn flat no-caps label="Entrar para abrir um projeto" icon="mdi-login" @click="emit('login')" />
       </div>
       <div v-if="action?.kind === 'split'" class="aito-remake__progress" role="status">
-        <q-linear-progress rounded :value="progress" :color="isDark ? 'teal-3' : 'teal-8'" aria-label="Divisão do vídeo" />
+        <q-linear-progress rounded :value="progress" :color="isDark ? 'grey-4' : 'teal-8'" aria-label="Divisão do vídeo" />
         <span>Dividindo no navegador · {{ Math.round(progress * 100) }}%</span>
         <q-btn flat no-caps label="Cancelar" @click="controller?.abort()" />
       </div>
       <p v-if="inputError" class="aito-remake__error" role="alert">{{ inputError }}</p>
       <div v-if="previousJobs.length" class="aito-remake__actions">
         <p class="aito-remake__help">Gerações anteriores sem projeto associado</p>
-        <q-btn v-for="job in previousJobs" :key="job.id" no-caps outline :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-backup-restore"
+        <q-btn v-for="job in previousJobs" :key="job.id" no-caps outline :color="isDark ? 'grey-4' : 'teal-8'" icon="mdi-backup-restore"
           :label="job.createdAt ? `Recuperar · ${new Date(job.createdAt).toLocaleString('pt-BR')}` : 'Recuperar geração'"
           :disable="locked" @click="recoverPrevious(job)" />
       </div>
@@ -694,7 +695,13 @@ onBeforeUnmount(() => {
         </div>
         <template v-if="!scene.recovered">
         <video :src="scene.url" controls playsinline preload="none" :aria-label="`Trecho original da cena ${scene.index + 1}`" />
-        <label :for="`remake-scene-${scene.index}`">Prompt da cena <small>opcional</small></label>
+        <div class="aito-remake__prompt-heading">
+          <label :for="`remake-scene-${scene.index}`">Prompt da cena <small>opcional</small></label>
+          <q-btn v-if="!scene.job && !scene.submitted" no-caps flat dense class="aito-remake__improve" icon="mdi-creation-outline"
+            :label="scene.planQuote ? 'Confirmar preparação' : scene.planGenerated ? 'Gerar novamente' : 'Melhorar Prompt de Cena'"
+            :disable="lockedScene(scene) || !scene.file || !scene.edit.trim()"
+            :loading="isWorking(scene, 'prepare') || isWorking(scene, 'plan-price')" @click="planScene(scene)" />
+        </div>
         <textarea :id="`remake-scene-${scene.index}`" :value="scene.edit" rows="2" maxlength="20000" :disabled="lockedScene(scene)"
           placeholder="Ex.: Troque o cenário e traduza a conversa para português." @input="patchScene(scene, { edit: $event.target.value })" />
         <label :for="`remake-dialogue-${scene.index}`">Falas exatas <small>opcional</small></label>
@@ -733,11 +740,11 @@ onBeforeUnmount(() => {
             :disable="lockedScene(scene)" @click="patchScene(scene, { referenceIds: null })" />
         </q-expansion-item>
         <div class="aito-remake__subtitle-tools">
-          <q-btn flat no-caps :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-subtitles-outline" :disable="lockedScene(scene)"
+          <q-btn flat no-caps :color="isDark ? 'grey-4' : 'teal-8'" icon="mdi-subtitles-outline" :disable="lockedScene(scene)"
             :label="scene.subtitleRegion ? 'Editar área da legenda original' : 'Remover legenda gravada'" @click="subtitleScene = scene" />
           <p class="aito-remake__help">Marque a área se o texto já fizer parte da imagem do vídeo original.</p>
         </div>
-        <q-toggle :dark="isDark" :color="isDark ? 'teal-4' : 'teal-8'" label="Adicionar nova legenda" :model-value="scene.captions" :disable="lockedScene(scene)"
+        <q-toggle :dark="isDark" :color="isDark ? 'grey-4' : 'teal-8'" label="Adicionar nova legenda" :model-value="scene.captions" :disable="lockedScene(scene)"
           @update:model-value="value => patchScene(scene, { captions: value })" />
         <template v-if="scene.captions">
           <label :for="`remake-caption-${scene.index}`">Legenda da cena</label>
@@ -764,17 +771,14 @@ onBeforeUnmount(() => {
         <AitoVideoProgress v-if="videoGenerationActive(scene.job?.status) || (!scene.job && scene.submitted) || isWorking(scene, 'generate')"
           :stage="scene.job?.status || 'submitting'" :percent="scene.job?.progress" />
         <div v-if="isWorking(scene, 'finish')" class="aito-remake__progress" role="status">
-          <q-linear-progress rounded :value="progress" :color="isDark ? 'teal-3' : 'teal-8'" aria-label="Finalização da cena" />
+          <q-linear-progress rounded :value="progress" :color="isDark ? 'grey-4' : 'teal-8'" aria-label="Finalização da cena" />
           <span>Finalizando a cena · {{ Math.round(progress * 100) }}%</span>
         </div>
         <div class="aito-remake__actions">
-          <q-btn v-if="!scene.recovered && !scene.job && !scene.submitted" no-caps flat icon="mdi-creation-outline"
-            :label="scene.planQuote ? 'Confirmar preparação' : 'Melhorar Prompt de Cena'" :disable="lockedScene(scene)"
-            :loading="isWorking(scene, 'prepare') || isWorking(scene, 'plan-price')" @click="planScene(scene)" />
-          <q-btn v-if="scene.quote || scene.job || scene.submitted" no-caps unelevated color="teal-8" icon="mdi-movie-open-play-outline"
+          <q-btn v-if="scene.quote || scene.job || scene.submitted" no-caps unelevated :color="isDark ? 'grey-3' : 'teal-8'" :text-color="isDark ? 'black' : 'white'" icon="mdi-movie-open-play-outline"
             :label="videoReleasePending(scene.job) ? 'Verificar estorno' : scene.job || scene.submitted ? 'Verificar cena' : scene.quote?.estimated ? 'Confirmar reserva e refazer' : 'Confirmar e refazer'"
             :disable="locked" @click="renderScene(scene)" />
-          <q-btn v-else-if="!scene.recovered" no-caps outline :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-calculator-variant-outline" label="Cotar cena"
+          <q-btn v-else-if="!scene.recovered" no-caps outline :color="isDark ? 'grey-4' : 'teal-8'" icon="mdi-calculator-variant-outline" label="Cotar cena"
             :disable="locked || !canQuote(scene) || (scene.captions && !scene.caption.trim())" :loading="isWorking(scene, 'quote')" @click="quoteScene(scene)" />
         </div>
       </article>
@@ -784,13 +788,13 @@ onBeforeUnmount(() => {
       <header><q-icon name="mdi-movie-check-outline" size="23px" /><div><h2 id="remake-result">Cenas refeitas</h2><p>{{ results.length }} de {{ scenes.length }} prontas</p></div></header>
       <p v-if="!results.length" class="aito-remake__help">Depois da geração, compare os resultados e adicione as tomadas ao vídeo master.</p>
       <div v-if="results.length > 1" class="aito-remake__actions">
-        <q-btn no-caps outline :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-playlist-plus" label="Adicionar cenas prontas em ordem"
+        <q-btn no-caps outline :color="isDark ? 'grey-4' : 'teal-8'" icon="mdi-playlist-plus" label="Adicionar cenas prontas em ordem"
           :disable="locked" @click="emit('append', results)" />
-        <q-btn no-caps unelevated color="teal-8" icon="mdi-download-outline" label="Baixar cenas juntas"
+        <q-btn no-caps unelevated :color="isDark ? 'grey-3' : 'teal-8'" :text-color="isDark ? 'black' : 'white'" icon="mdi-download-outline" label="Baixar cenas juntas"
           :disable="locked" @click="downloadCombined" />
       </div>
       <div v-if="action?.kind === 'export'" class="aito-remake__progress" role="status">
-        <q-linear-progress rounded :value="exportProgress" :color="isDark ? 'teal-3' : 'teal-8'" aria-label="Exportação do vídeo refeito" />
+        <q-linear-progress rounded :value="exportProgress" :color="isDark ? 'grey-4' : 'teal-8'" aria-label="Exportação do vídeo refeito" />
         <span>Exportando no navegador · {{ Math.round(exportProgress * 100) }}%</span>
         <q-btn flat no-caps label="Cancelar" @click="controller?.abort()" />
       </div>
@@ -799,8 +803,8 @@ onBeforeUnmount(() => {
         <video :src="asset.previewUrl" controls playsinline preload="none" :aria-label="asset.title" />
         <p class="aito-remake__help">{{ asset.captions ? 'Com legendas' : 'Sem legendas adicionadas' }} · {{ asset.billingPending ? 'Reserva de' : 'Uso de' }} ≈ {{ aitoTokens(asset.approximateAitoTokens) }} AitoTokens<span v-if="asset.billingPending"> · Aguardando confirmação do custo</span></p>
         <div class="aito-remake__actions">
-          <q-btn outline no-caps :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-folder-plus-outline" label="Salvar em Componentes" :disable="locked" @click="emit('component', asset)" />
-          <q-btn outline no-caps :color="isDark ? 'teal-3' : 'teal-8'" icon="mdi-playlist-plus" label="Usar no vídeo master" :disable="locked" @click="emit('append', [asset])" />
+          <q-btn outline no-caps :color="isDark ? 'grey-4' : 'teal-8'" icon="mdi-folder-plus-outline" label="Salvar em Componentes" :disable="locked" @click="emit('component', asset)" />
+          <q-btn outline no-caps :color="isDark ? 'grey-4' : 'teal-8'" icon="mdi-playlist-plus" label="Usar no vídeo master" :disable="locked" @click="emit('append', [asset])" />
           <q-btn flat round dense icon="mdi-download-outline" :aria-label="`Baixar ${asset.title}`" :href="asset.previewUrl"
             :download="asset.file.name"><q-tooltip>Baixar cena refeita</q-tooltip></q-btn>
           <q-btn flat round dense icon="mdi-delete-outline" :aria-label="`Remover ${asset.title}`" :disable="locked"
@@ -828,7 +832,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .aito-remake { grid-column: 1 / -1; min-width: 0; display: grid; align-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .aito-remake__panel { min-width: 0; display: grid; gap: 16px; padding: clamp(14px, 2vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 16px; color: var(--aito-ai-text); background: var(--aito-ai-surface); scroll-margin-top: calc(var(--video-header-height, 100px) + 80px); }
-.aito-remake__setup { grid-column: 1 / -1; background: radial-gradient(ellipse at 0 0, #27465a83, transparent 58%), var(--aito-ai-surface); }
+.aito-remake__setup { grid-column: 1 / -1; background: linear-gradient(145deg, var(--aito-ai-raised), var(--aito-ai-surface) 58%); }
 .aito-remake__panel header { display: flex; align-items: flex-start; gap: 10px; }
 .aito-remake__panel header > .q-icon { flex: none; color: var(--aito-ai-accent); margin-top: 2px; }
 .aito-remake__panel h2, .aito-remake__panel h3, .aito-remake__panel p { margin: 0; }
@@ -838,7 +842,7 @@ onBeforeUnmount(() => {
 .aito-remake__panel header p { margin-top: 4px; }
 .aito-remake__upload, .aito-remake__defaults { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
 .aito-remake__upload { grid-template-columns: minmax(0, 1fr) auto auto; }
-.aito-remake__drop { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed #76aaa9; border-radius: 10px; background: #0b252a; color: var(--aito-ai-text); text-align: left; cursor: pointer; }
+.aito-remake__drop { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed var(--aito-ai-line); border-radius: 10px; background: var(--aito-ai-raised); color: var(--aito-ai-text); text-align: left; cursor: pointer; }
 .aito-remake__drop span { min-width: 0; }
 .aito-remake__drop strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aito-remake__drop small { display: block; color: var(--aito-ai-muted); }
@@ -848,6 +852,8 @@ onBeforeUnmount(() => {
 .aito-remake__direction, .aito-remake__prepared { display: grid; gap: 8px; }
 .aito-remake label { font-weight: 660; }
 .aito-remake label small { font-size: .76rem; font-weight: 400; color: var(--aito-ai-muted); }
+.aito-remake__prompt-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding-top: 3px; }
+.aito-remake__improve { color: var(--aito-ai-accent); font-size: .76rem; }
 .aito-remake :is(textarea, select) { display: block; box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-text); background: var(--aito-ai-bg); font: inherit; }
 .aito-remake textarea { resize: vertical; }
 .aito-remake :is(button, textarea, select):focus-visible { outline: 2px solid var(--aito-ai-accent); outline-offset: 2px; }
@@ -860,11 +866,11 @@ button.aito-remake__reference:hover { border-color: var(--aito-ai-accent); }
 .aito-remake__reference img { flex: 0 0 30px; width: 30px; height: 30px; border-radius: 4px; object-fit: cover; }
 .aito-remake__reference-preview { width: min(620px, 100%); color: var(--aito-ai-text); background: var(--aito-ai-surface); }
 .aito-remake__reference-preview img { display: block; width: 100%; max-height: 70dvh; border-radius: 8px; background: var(--aito-ai-bg); object-fit: contain; }
-.aito-remake__column--results { background: linear-gradient(145deg, #16433870, transparent 400px), var(--aito-ai-surface); }
+.aito-remake__column--results { background: linear-gradient(145deg, var(--aito-ai-raised), var(--aito-ai-surface) 400px); }
 .aito-remake__scene { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
 .aito-remake__scene-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
 .aito-remake__scene-title > span { color: var(--aito-ai-muted); font-size: .85rem; }
-.aito-remake__scene video { width: 100%; height: clamp(145px, 21vw, 260px); border-radius: 8px; background: #050d13; object-fit: contain; }
+.aito-remake__scene video { width: 100%; height: clamp(145px, 21vw, 260px); border-radius: 8px; background: var(--aito-ai-media-bg); object-fit: contain; }
 .aito-remake__scene-references { border: 1px solid var(--aito-ai-line); border-radius: 8px; }
 .aito-remake__scene-references :deep(.q-expansion-item__content) { display: grid; gap: 6px; padding: 0 8px 8px; }
 .aito-remake__prepared { padding: 8px; border-radius: 8px; background: var(--aito-ai-purple-soft); }

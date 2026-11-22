@@ -109,11 +109,12 @@ watch([() => props.initialPackage, () => props.modelValue], () => {
 .aito-wallet__plans .aito-wallet__plan--azure { --package-tone: #5497c8; }
 .aito-wallet__plans .aito-wallet__plan--rose { --package-tone: #cc748d; }
 .aito-wallet__plans .aito-wallet__plan--amber { --package-tone: #cf912c; }
+html[data-aito-ia-theme='dark'] .aito-wallet__plans button { --package-tone: var(--aito-ai-line); }
 .aito-wallet__usage { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
 .aito-wallet__usage span { padding: 2px 5px; background: color-mix(in srgb, var(--package-tone) 22%, var(--aito-ai-panel)); border-radius: 5px; font-weight: 700; }
 .aito-wallet__usage .q-icon { color: var(--aito-ai-gold); }
 .aito-wallet__plan-price { font-weight: 750; }
-.aito-wallet__plans .aito-wallet__bonus { width: fit-content; padding: 2px 5px; border-radius: 5px; color: #302007; background: var(--aito-ai-gold-gradient); font-size: .66rem; font-weight: 750; }
+.aito-wallet__plans .aito-wallet__bonus { width: fit-content; padding: 2px 5px; border-radius: 5px; color: var(--aito-ai-on-accent); background: var(--aito-ai-gold-gradient); font-size: .66rem; font-weight: 750; }
 .aito-wallet__plans span { font-size: .8rem; }
 .aito-wallet__plans small { color: var(--aito-ai-muted); font-size: .64rem; overflow-wrap: anywhere; }
 .aito-wallet__checkout { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0; color: var(--aito-ai-muted); font-size: .77rem; }
