@@ -1,8 +1,8 @@
 export const maxRemakeInputBytes = 70 * 1024 * 1024
 export const remakeInputAccept = '.mp4,.mov,.m4v,.webm,.mkv,.3gp,video/mp4,video/quicktime,video/webm,video/x-matroska,video/3gpp'
 
-export const remakeSplitDurations = [5, 10]
-export const maxRemakeSceneSeconds = 10
+export const remakeSplitDurations = [3, 5, 10, 15, 20, 30]
+export const maxRemakeSceneSeconds = 30
 const minProviderSeconds = 4
 const maxSceneBytes = 10 * 1024 * 1024
 const fps = 24
@@ -10,9 +10,9 @@ const aacOptions = { numberOfChannels: 2, sampleRate: 48000, bitrate: 96000 }
 const aacFramesPerPacket = 1024
 let aacFallback
 
-export function remakeSceneRanges(seconds, splitDuration = remakeSplitDurations[0]) {
+export function remakeSceneRanges(seconds, splitDuration = 5) {
   if (!Number.isFinite(seconds) || seconds <= 0) throw new Error('O vídeo precisa ter duração válida.')
-  if (!remakeSplitDurations.includes(splitDuration)) throw new Error('Escolha cortes de 5 ou 10 segundos.')
+  if (!remakeSplitDurations.includes(splitDuration)) throw new Error('Escolha cortes de 3, 5, 10, 15, 20 ou 30 segundos.')
   const total = Math.max(1, Math.round(seconds * 1000))
   const block = splitDuration * 1000
   return Array.from({ length: Math.ceil(total / block) }, (_, index) => {

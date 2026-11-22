@@ -7,7 +7,7 @@ const siteName = 'AitoSoftwares'
 const socialImage = `${siteOrigin}/icons/aitoia-512.png`
 const socialImageAlt = 'Robô da Aito IA em fundo verde escuro'
 
-export const homeIntro = 'Use modelos OpenAI para conversar, analisar arquivos e criar imagens. Produza vídeos e peças de marketing no navegador com a mesma carteira AitoTokens.'
+export const homeIntro = 'Use modelos OpenAI para conversar, analisar arquivos e criar imagens.'
 export const homeLinks = [
   { path: '/aitoia-video-studio', label: 'Estúdio de Vídeo com IA' },
   { path: '/aitoia-marketing-studio', label: 'Estúdio de Marketing' },
@@ -22,6 +22,17 @@ const organization = {
 const desktopSeo = desktopSolutionsSeo()
 
 export const publicPages = {
+  '/ajuda': {
+    title: 'Ajuda Aito IA | Guias de Chat, Vídeo e Marketing',
+    heading: 'Como usar o Chat e os Estúdios Aito IA',
+    description: 'Aprenda a escolher modelos, criar cenas, refazer vídeos, montar o vídeo master, produzir locuções e organizar a identidade visual no Aito IA.',
+    features: [
+      { title: 'Chat Aito IA', text: 'Converse com modelos OpenAI, anexe arquivos e organize os seus projetos.' },
+      { title: 'Estúdio de vídeo', text: 'Conheça referências, cenas, roteiro master, transições, locução e exportação.' },
+      { title: 'Estúdio de marketing', text: 'Crie imagens por formato, use referências e reutilize componentes da marca.' },
+    ],
+    links: [{ path: '/', label: 'Abrir Chat' }, { path: '/aitoia-video-studio', label: 'Abrir Estúdio de vídeo' }, { path: '/aitoia-marketing-studio', label: 'Abrir Estúdio de marketing' }],
+  },
   '/': {
     title: 'Aito IA | Chat, Vídeo e Marketing com IA | AitoSoftwares',
     heading: 'Aito IA para trabalhar e criar',

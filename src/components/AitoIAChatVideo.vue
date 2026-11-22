@@ -27,7 +27,7 @@ const imageBases = shallowRef((props.initialImages || []).filter(file => {
   try { return Boolean(checkImageReference(file)) } catch { return false }
 }))
 const router = useRouter()
-const prompt = ref((props.initialPrompt || '').slice(0, 2000))
+const prompt = ref((props.initialPrompt || '').slice(0, 20000))
 const modelId = ref('')
 const presetId = ref('')
 const quote = shallowRef(null)
@@ -351,7 +351,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
 <template>
   <section class="chat-video" aria-label="Vídeo no chat">
     <header><q-icon name="mdi-movie-open-play-outline" size="22px" /><h2>Vídeo no chat</h2><button type="button" aria-label="Fechar vídeo no chat" :disabled="busy" @click="emit('close')"><q-icon name="mdi-close" size="20px" /></button></header>
-    <label>Descrição ou mudanças no clipe<textarea v-model="prompt" rows="2" maxlength="2000" :disabled="busy" /></label>
+    <label>Descrição ou mudanças no clipe<textarea v-model="prompt" rows="2" maxlength="20000" :disabled="busy" /></label>
     <div class="chat-video__actions">
       <label v-if="!base" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-paperclip" /> Vídeo-base MP4<input type="file" accept="video/mp4,.mp4" :disabled="busy" @change="pick($event.target.files[0]); $event.target.value = ''" /></label>
       <template v-else><span>{{ base.name }}</span><button type="button" :disabled="busy" @click="clearBase">Remover</button><button type="button" :disabled="busy || !currentModel" @click="analyze">Analisar quadros com OpenAI</button></template>
@@ -379,7 +379,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
       <button type="button" :disabled="busy" @click="check(job)">{{ videoReleasePending(job) ? 'Verificar estorno' : 'Verificar geração' }}</button>
     </div>
     <p v-if="error" role="alert" class="chat-video__error">{{ error }}</p>
-    <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 2000)">Usar análise na descrição</button></div>
+    <div v-if="analysis"><AitoIAResponse :text="analysis" /><button type="button" :disabled="busy" @click="prompt = analysis.slice(0, 20000)">Usar análise na descrição</button></div>
     <div v-if="clip" class="chat-video__result"><video :src="clip.url" controls playsinline preload="metadata" aria-label="Clipe gerado no chat" />
       <p v-if="clip.billingPending" class="chat-video__pricing"><template v-if="reservedCost">Reserva de {{ reservedCost }}. </template>Aguardando confirmação do custo.</p>
       <div class="chat-video__actions"><button type="button" :disabled="busy" @click="download">Baixar clipe</button><button type="button" :disabled="busy" @click="saveToProject">Salvar em projeto</button><a :href="clip.url" target="_blank" rel="noopener noreferrer">Abrir original</a></div>

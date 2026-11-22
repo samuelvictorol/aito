@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <q-input v-model="prompt" :dark="isDark" outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="catalog?.maxPromptCharacters || 3000" :disable="locked" />
+            <q-input v-model="prompt" :dark="isDark" outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="20000" :disable="locked" />
 
             <section aria-labelledby="marketing-references">
               <div class="marketing__section-title"><h2 id="marketing-references">Referências</h2><span>{{ referenceCount }}/{{ maxReferences }}</span></div>

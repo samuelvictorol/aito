@@ -7,7 +7,6 @@ import { aitoTokens } from 'src/composables/useAitoIA'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
-import { revealGeneratedVideo } from 'src/services/aitoiaGeneratedFocus'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
@@ -40,7 +39,7 @@ const maxReferences = 6
 const selectedFile = shallowRef(null)
 const subtitleScene = shallowRef(null)
 const referencePreview = shallowRef(null)
-const splitDuration = ref(remakeSplitDurations[0])
+const splitDuration = ref(5)
 const input = ref(null)
 const inputError = ref('')
 const action = shallowRef(null)
@@ -58,7 +57,6 @@ let discoverJobs = true
 let disposed = false
 const discardedJobs = ref([])
 const previousJobs = shallowRef([])
-const resultElements = new Map()
 const releaseMonitor = createVideoReleaseMonitor()
 const projectId = computed(() => props.projectScope?.split(':').at(-1))
 
@@ -96,7 +94,15 @@ function addProjectReference(id) {
   inputError.value = ''
   return true
 }
-defineExpose({ addProjectReference })
+const setupPanel = ref(null)
+const sourcePanel = ref(null)
+const resultsPanel = ref(null)
+function revealSection(element) {
+  if (!element?.isConnected || !element.getClientRects().length || document.visibilityState === 'hidden') return
+  element.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+}
+function revealSetup() { revealSection(setupPanel.value) }
+defineExpose({ addProjectReference, chooseFile, revealSetup })
 
 function pendingScene(scene) {
   if (!scene.job?.id && !scene.submittedAt) return null
@@ -130,7 +136,7 @@ function loadDraft(draft) {
   master.value = draft?.master || ''
   referenceIds.value = draft?.referenceIds || []
   resolution.value = draft?.resolution || '480p'
-  splitDuration.value = remakeSplitDurations.includes(draft?.splitDuration) ? draft.splitDuration : remakeSplitDurations[0]
+  splitDuration.value = remakeSplitDurations.includes(draft?.splitDuration) ? draft.splitDuration : 5
   discardedJobs.value = (draft?.discardedJobs || []).slice(-300)
   scenes.value = [...saved, ...pending.filter(item => !known.has(item.index))].map(item => {
     const job = !item.result && (item.pending || pending.find(row => row.index === item.index && (!row.sceneId || !item.clientSceneId || row.sceneId === item.clientSceneId)))
@@ -245,9 +251,10 @@ function rejectUpload(file) {
   return ''
 }
 function chooseFile(file) {
-  if (!file || locked.value || !props.projectScope) return
+  if (!file || locked.value || !props.projectScope) return false
   inputError.value = rejectUpload(file)
   selectedFile.value = inputError.value ? null : file
+  return !inputError.value
 }
 function releaseScenes(rows) {
   rows.forEach(scene => {
@@ -308,6 +315,8 @@ async function splitSource(file, duration) {
     scenes.value = clips.map(clip => reactive({ ...clip, clientSceneId: crypto.randomUUID(), url: URL.createObjectURL(clip.file), edit: '', dialogue: '',
       referenceIds: null, captions: false, caption: '', plan: '', planQuote: null, planSpend: 0,
       quote: null, submitted: false, job: null, result: null, error: '' }))
+    await nextTick()
+    if (!disposed) revealSection(sourcePanel.value)
   })
 }
 async function planScene(scene) {
@@ -331,19 +340,12 @@ async function planScene(scene) {
   })
 }
 function promptFor(scene, references, files) {
-  const plan = scene.plan.trim()
   const context = references.map(item => {
     const image = files.indexOf(item.file)
     const label = item.type === 'Cenários' ? 'Cenário' : 'Personagem'
     return `${image >= 0 ? `@Image${image + 1} — ` : ''}${label} ${item.title.slice(0, 60)}: ${(item.prompt || '').slice(0, 78)}`
   }).join('\n')
-  return [
-    'Preserve o ritmo, as ações e o enquadramento do trecho original, exceto pelas mudanças solicitadas.',
-    scene.edit.trim() && `Direção específica desta cena: ${scene.edit.trim().slice(0, 600)}`,
-    context,
-    plan && `Plano de direção: ${plan.slice(0, 850)}`,
-    master.value.trim() && `Direção geral: ${master.value.trim().slice(0, plan ? 550 : 1500)}`,
-  ].filter(Boolean).join('\n\n').slice(0, 3500)
+  return ['Preserve o ritmo, as ações e o enquadramento do trecho original, exceto pelas mudanças solicitadas.', context].filter(Boolean).join('\n\n')
 }
 async function upload(post, file, type, put, signal, walletId) {
   const { data } = await post('/aitoia/video/references', { contentType: type, sizeBytes: file.size, walletId }, { signal })
@@ -364,6 +366,7 @@ async function quoteScene(scene) {
     const imageReferenceTokens = []
     for (const file of files) imageReferenceTokens.push(await upload(post, file, checkImageReference(file), putImageReference, signal, walletId))
     const body = { walletId, referenceToken, imageReferenceTokens, prompt: promptFor(scene, references, files),
+      master: master.value.trim(), scenePrompt: scene.edit.trim(), scenePlan: scene.plan.trim(),
       dialogue: scene.dialogue.trim(), sourceDuration: scene.duration,
       subtitles: intent.captions, removeOriginalSubtitles: intent.removeOriginalSubtitles, model, resolution: outputResolution }
     const { data } = await post(root + '/quote', body, { signal })
@@ -408,7 +411,7 @@ async function saveFinishedScene(scene, job, signal, get, current) {
   scene.error = warning
   emit('ready')
   await nextTick()
-  if (!disposed && current()) revealGeneratedVideo(resultElements.get(job.id))
+  if (!disposed && current()) revealSection(resultsPanel.value)
   emit('balance')
 }
 
@@ -608,7 +611,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="aito-remake" aria-label="Refazer vídeos">
-    <section class="aito-remake__panel aito-remake__setup">
+    <section ref="setupPanel" class="aito-remake__panel aito-remake__setup">
       <header>
         <q-icon name="mdi-movie-roll" size="24px" />
         <div><h2>Refazer vídeos</h2><p>Divida um vídeo em cenas e refaça cada uma com novos personagens, cenários ou falas.</p></div>
@@ -647,7 +650,7 @@ onBeforeUnmount(() => {
 
       <div class="aito-remake__direction">
         <label for="remake-master">Prompt master</label>
-        <textarea id="remake-master" v-model="master" rows="3" maxlength="1500" :disabled="locked"
+        <textarea id="remake-master" v-model="master" rows="3" maxlength="20000" :disabled="locked"
           placeholder="Ex.: Traduza as falas para português do Brasil, use a personagem Ana e mantenha os cortes." />
         <div class="aito-remake__defaults">
           <q-select :model-value="referenceIds" :options="references" option-value="id" option-label="title" outlined :dark="isDark" dense
@@ -679,7 +682,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section v-if="scenes.length" class="aito-remake__panel aito-remake__column" aria-labelledby="remake-source">
+    <section v-if="scenes.length" ref="sourcePanel" class="aito-remake__panel aito-remake__column" aria-labelledby="remake-source">
       <header><q-icon name="mdi-filmstrip" size="23px" /><div><h2 id="remake-source">Cenas de origem</h2><p>{{ scenes.length }} {{ scenes.length === 1 ? 'trecho' : 'trechos' }}</p></div></header>
       <article v-for="scene in scenes" :key="scene.clientSceneId" class="aito-remake__scene">
         <div class="aito-remake__scene-title"><h3>Cena {{ scene.index + 1 }}</h3><span>{{ seconds(scene.start) }}–{{ seconds(scene.start + scene.duration) }} s</span>
@@ -692,10 +695,10 @@ onBeforeUnmount(() => {
         <template v-if="!scene.recovered">
         <video :src="scene.url" controls playsinline preload="none" :aria-label="`Trecho original da cena ${scene.index + 1}`" />
         <label :for="`remake-scene-${scene.index}`">Prompt da cena <small>opcional</small></label>
-        <textarea :id="`remake-scene-${scene.index}`" :value="scene.edit" rows="2" maxlength="600" :disabled="lockedScene(scene)"
+        <textarea :id="`remake-scene-${scene.index}`" :value="scene.edit" rows="2" maxlength="20000" :disabled="lockedScene(scene)"
           placeholder="Ex.: Troque o cenário e traduza a conversa para português." @input="patchScene(scene, { edit: $event.target.value })" />
         <label :for="`remake-dialogue-${scene.index}`">Falas exatas <small>opcional</small></label>
-        <textarea :id="`remake-dialogue-${scene.index}`" :value="scene.dialogue" rows="2" maxlength="600" :disabled="lockedScene(scene)"
+        <textarea :id="`remake-dialogue-${scene.index}`" :value="scene.dialogue" rows="2" maxlength="20000" :disabled="lockedScene(scene)"
           placeholder="Ex.: Ana (sorrindo): ‘Hoje é a nossa vez.’" @input="patchScene(scene, { dialogue: $event.target.value })" />
         <div v-if="modelsFor(scene).length" class="aito-remake__defaults">
           <AitoVideoModelSelect :model-value="modelFor(scene)?.id" :models="modelsFor(scene)" :disable="lockedScene(scene)"
@@ -743,7 +746,7 @@ onBeforeUnmount(() => {
         </template>
         <div v-if="scene.plan" class="aito-remake__prepared">
           <label :for="`remake-plan-${scene.index}`">Direção preparada pela IA</label>
-          <textarea :id="`remake-plan-${scene.index}`" :value="scene.plan" rows="3" maxlength="850" :disabled="lockedScene(scene)"
+          <textarea :id="`remake-plan-${scene.index}`" :value="scene.plan" rows="3" maxlength="20000" :disabled="lockedScene(scene)"
             @input="patchScene(scene, { plan: $event.target.value })" />
         </div>
         <details v-if="scene.transcript" class="aito-remake__prepared">
@@ -777,7 +780,7 @@ onBeforeUnmount(() => {
       </article>
     </section>
 
-    <section v-if="scenes.length" class="aito-remake__panel aito-remake__column aito-remake__column--results" aria-labelledby="remake-result">
+    <section v-if="scenes.length" ref="resultsPanel" class="aito-remake__panel aito-remake__column aito-remake__column--results" aria-labelledby="remake-result">
       <header><q-icon name="mdi-movie-check-outline" size="23px" /><div><h2 id="remake-result">Cenas refeitas</h2><p>{{ results.length }} de {{ scenes.length }} prontas</p></div></header>
       <p v-if="!results.length" class="aito-remake__help">Depois da geração, compare os resultados e adicione as tomadas ao vídeo master.</p>
       <div v-if="results.length > 1" class="aito-remake__actions">
@@ -791,7 +794,7 @@ onBeforeUnmount(() => {
         <span>Exportando no navegador · {{ Math.round(exportProgress * 100) }}%</span>
         <q-btn flat no-caps label="Cancelar" @click="controller?.abort()" />
       </div>
-      <article v-for="asset in results" :key="asset.id" :ref="element => { if (element) resultElements.set(asset.id, element); else resultElements.delete(asset.id) }" class="aito-remake__scene aito-remake__result">
+      <article v-for="asset in results" :key="asset.id" class="aito-remake__scene aito-remake__result">
         <div class="aito-remake__scene-title"><h3>{{ asset.title }}</h3><span>{{ seconds(asset.duration) }} s</span></div>
         <video :src="asset.previewUrl" controls playsinline preload="none" :aria-label="asset.title" />
         <p class="aito-remake__help">{{ asset.captions ? 'Com legendas' : 'Sem legendas adicionadas' }} · {{ asset.billingPending ? 'Reserva de' : 'Uso de' }} ≈ {{ aitoTokens(asset.approximateAitoTokens) }} AitoTokens<span v-if="asset.billingPending"> · Aguardando confirmação do custo</span></p>
@@ -824,7 +827,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .aito-remake { grid-column: 1 / -1; min-width: 0; display: grid; align-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.aito-remake__panel { min-width: 0; display: grid; gap: 16px; padding: clamp(14px, 2vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 16px; color: var(--aito-ai-text); background: var(--aito-ai-surface); }
+.aito-remake__panel { min-width: 0; display: grid; gap: 16px; padding: clamp(14px, 2vw, 22px); border: 1px solid var(--aito-ai-line); border-radius: 16px; color: var(--aito-ai-text); background: var(--aito-ai-surface); scroll-margin-top: calc(var(--video-header-height, 100px) + 80px); }
 .aito-remake__setup { grid-column: 1 / -1; background: radial-gradient(ellipse at 0 0, #27465a83, transparent 58%), var(--aito-ai-surface); }
 .aito-remake__panel header { display: flex; align-items: flex-start; gap: 10px; }
 .aito-remake__panel header > .q-icon { flex: none; color: var(--aito-ai-accent); margin-top: 2px; }

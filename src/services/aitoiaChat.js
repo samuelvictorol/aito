@@ -1,7 +1,7 @@
 const MAX_FILE_BYTES = 3 * 1024 * 1024 - 64
 export const MAX_ATTACHMENTS = 4
 export const MAX_ATTACHMENT_BYTES = 4.5 * 1024 * 1024
-export const MAX_PROMPT_LENGTH = 120000
+export const MAX_PROMPT_LENGTH = 20000
 const MAX_TEXT_FILE = 96000
 const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const VIDEO_MIMES = new Set(['video/mp4', 'video/webm', 'video/quicktime'])

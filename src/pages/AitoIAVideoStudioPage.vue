@@ -11,6 +11,7 @@ import AitoIAThemeToggle from 'components/AitoIAThemeToggle.vue'
 import AitoStudioVideoRemake from 'components/AitoStudioVideoRemake.vue'
 import AitoVideoModelCarousel from 'components/AitoVideoModelCarousel.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
+import AitoVideoReferencesGallery from 'components/AitoVideoReferencesGallery.vue'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokenCost, aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -183,6 +184,8 @@ const artworkSaved = computed(() => Boolean(artworkResult.value && projectCompon
 const remakeDraft = shallowRef(null)
 const remakeRevision = ref(0)
 const remakeEditor = ref(null)
+const galleryImportId = ref('')
+let galleryRequest
 const builtInComponentNames = {
   Personagens: 'Personagem',
   Cenas: 'Cena',
@@ -257,7 +260,7 @@ const voice = ref('')
 const videoModel = ref('')
 const referenceModelId = ref('')
 const videoOption = ref('')
-const generationMode = ref('text')
+const generationMode = ref('gallery')
 const reference = shallowRef(null)
 const referenceImages = shallowRef([])
 const transitionClips = shallowRef([null, null])
@@ -268,6 +271,7 @@ const tokenCost = cents => aitoTokenCost(cents, status.value?.aitoTokensPerUsd ?
 const quoteCost = computed(() => tokenCost(videoQuote.value?.billedUsdCents))
 const reservedCost = computed(() => tokenCost(generated.value?.reservedUsdCents))
 const generationModes = [
+  { id: 'gallery', label: 'Referências', icon: 'mdi-play-box-multiple-outline' },
   { id: 'text', label: 'Criar por texto', icon: 'mdi-text-box-outline' },
   { id: 'edit', label: 'Editar vídeo-base', icon: 'mdi-filmstrip-box-multiple' },
   { id: 'reference', label: 'Remixar com referência', icon: 'mdi-movie-open-edit-outline' },
@@ -281,6 +285,11 @@ const clipPrompt = ref(null)
 const transitionMode = computed(() => generationMode.value === 'transition')
 const continuationMode = computed(() => generationMode.value === 'continuation')
 const remakeMode = computed(() => generationMode.value === 'remake')
+const galleryMode = computed(() => generationMode.value === 'gallery')
+const browseVideoModels = computed(() => [
+  ...(options.value?.videoModels || []), ...(options.value?.referenceModels || []),
+  ...(options.value?.transitionModels || []), ...(options.value?.remakeModels || []),
+])
 const remakeBusy = ref(false)
 const studioOffers = model => (model?.options || []).filter(item => model.sourceDuration || studioAiSeconds.includes(item.seconds))
 const maxClipSeconds = computed(() => options.value?.maxStudioSeconds || studioAiSeconds.at(-1))
@@ -372,8 +381,8 @@ const resolution = ref('medium')
 const exportSize = computed(() => studioRenderSize(format.value, resolution.value))
 const subtitles = computed(() => studioSubtitles(timeline.value))
 const canRecord = computed(() => exportFormats.value.length > 0)
-const mayEdit = computed(() => !remakeBusy.value && (!busy.value || ['video', 'render'].includes(busy.value)) && !projectLoading.value && (!signedIn.value || Boolean(accountId.value)))
-const guarded = computed(() => Boolean(busy.value || remakeBusy.value))
+const mayEdit = computed(() => !galleryImportId.value && !remakeBusy.value && (!busy.value || ['video', 'render'].includes(busy.value)) && !projectLoading.value && (!signedIn.value || Boolean(accountId.value)))
+const guarded = computed(() => Boolean(busy.value || remakeBusy.value || galleryImportId.value))
 const blockedExit = ref(false)
 useAitoWorkGuard(guarded, () => { blockedExit.value = true })
 const durationLabel = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
@@ -385,8 +394,10 @@ let mounted = false
 const jobStorageKey = 'aitoia-video-jobs'
 const jobLifetime = AITOIA_RETENTION_MS
 let jobTimer
+let initialProjectPending = true
 
 watch([accountId, signedIn], ([next, authenticated], [previous]) => {
+  if (next !== previous) initialProjectPending = true
   if (previous) activeOperation?.abort()
   optionsRequest?.abort()
   options.value = null
@@ -406,6 +417,7 @@ const { projects, records, activeId, loading: projectLoading, storageError, clou
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
     trackedJobs, projectComponents, componentTypes, remakeDraft, removedGeneratedIds, codeBackgroundFile],
 })
+watch(projectLoading, loading => { if (!loading && activeId.value) initialProjectPending = false })
 
 function importArchive(file) {
   return importProject(options => readStudioProject(file, 'video', options))
@@ -608,7 +620,7 @@ function useComponent(item, variation = false) {
     componentOpen.value = false
     return
   }
-  if (remakeMode.value) changeGenerationMode('text')
+  if (remakeMode.value || galleryMode.value) changeGenerationMode('text')
   if (componentVideo(item)) {
     componentOpen.value = false
     if (!variation) { addGeneratedSequence(item); return }
@@ -624,8 +636,8 @@ function useComponent(item, variation = false) {
     voiceReferenceId.value = sample.id
   }
   if (item.file && item.type !== voiceComponentType && !componentVideo(item)) chooseReferenceImages([item.file])
-  prompt.value = [prompt.value.trim(), item.prompt || item.title].filter(Boolean).join('\n').slice(0, 2000)
-  if (variation) prompt.value = `Crie uma variação: ${item.prompt || item.title}`.slice(0, 2000)
+  prompt.value = [prompt.value.trim(), item.prompt || item.title].filter(Boolean).join('\n').slice(0, 20000)
+  if (variation) prompt.value = `Crie uma variação: ${item.prompt || item.title}`.slice(0, 20000)
   componentOpen.value = false
   createForScene()
 }
@@ -653,6 +665,7 @@ async function applyDraft(fresh = false) {
     const file = asset && new File([asset.blob], asset.name, { type: asset.mime })
     if (!file || !file.type.startsWith('video/')) return
     storeClip({ id: asset.id || crypto.randomUUID(), file, expiresAt: Number(asset.expiresAt) || Date.parse(asset.expiresAt) || clipExpiry(asset) })
+    changeGenerationMode('text')
     tab.value = 'ai'
   } else {
     prompt.value = incoming.prompt || ''
@@ -1118,7 +1131,7 @@ async function writeProjectScript(mode, item) {
       signal.throwIfAborted()
       const answer = readAnswer(data)
       if (!answer.trim()) throw new Error('A IA não retornou um roteiro. Tente novamente.')
-      if (mode === 'master') { masterScript.value = answer.trim().slice(0, 6000); return }
+      if (mode === 'master') { masterScript.value = answer.trim().slice(0, 20000); return }
       const plan = parseVideoPlan(answer, new Set(components.map(component => component.id)))
       if (item) updateScriptScene(item.id, { ...plan.scenes[0], id: item.id, modelId: item.modelId })
       else sceneScripts.value = plan.scenes.map((row, index) => ({ ...row, id: sceneScripts.value[index]?.id || row.id,
@@ -1177,11 +1190,11 @@ async function prepareScriptScene(item) {
   videoOption.value = match.option.id
   voiceReferenceId.value = sample?.id || ''
   if (media.length) chooseReferenceImages(media)
-  const continuity = masterScript.value.trim().slice(0, 300)
-  const characterNotes = components.map(component => `${component.title}: ${component.prompt}`).join('\n').slice(0, 260)
-  prompt.value = [item.prompt.trim().slice(0, 1320), continuity && `Continuidade do projeto: ${continuity}`,
+  const continuity = masterScript.value.trim()
+  const characterNotes = components.map(component => `${component.title}: ${component.prompt}`).join('\n')
+  prompt.value = [item.prompt.trim(), continuity && `Continuidade do projeto: ${continuity}`,
     characterNotes && `Referências da cena:\n${characterNotes}`,
-    sample && 'Use o áudio somente como referência para a voz do personagem.'].filter(Boolean).join('\n\n').slice(0, 2000)
+    sample && 'Use o áudio somente como referência para a voz do personagem.'].filter(Boolean).join('\n\n')
   scriptTarget.value = { id: item.id, sceneId: existing?.id || empty?.id, title: item.title, duration: item.duration }
   scriptOpen.value = false
   createForScene(true)
@@ -1662,6 +1675,7 @@ async function saveClipInProject() {
       throw new Error('Não foi possível abrir o projeto escolhido.')
     }
     storeClip({ id: clip.id, file, expiresAt: clip.expiresAt, kind: clip.kind })
+    changeGenerationMode('text')
     await saveProject()
     if (owner !== accountId.value || storageError.value) return
     tab.value = 'ai'
@@ -1690,6 +1704,49 @@ function changeGenerationMode(mode) {
   referenceModelId.value = ''
   generationMode.value = mode
   modelListOpen.value = true
+}
+async function recreateGalleryReference(item) {
+  if (!signedIn.value) { showAuth(); return }
+  if (!mayEdit.value || galleryImportId.value) return
+  if (!activeId.value) await createProject()
+  if (!activeId.value) return
+  const access = wallet.access()
+  const project = activeId.value
+  const controller = new AbortController()
+  galleryRequest?.abort()
+  galleryRequest = controller
+  galleryImportId.value = String(item.id)
+  try {
+    const { data, headers } = await access.get(`/aitoia/video/references-gallery/${encodeURIComponent(item.id)}/file`,
+      { responseType: 'blob', signal: controller.signal, timeout: 180000 })
+    controller.signal.throwIfAborted()
+    if (!access.current() || project !== activeId.value || !mounted) return
+    if (!data?.size || data.size > 70 * 1024 * 1024) throw new Error('O vídeo de referência precisa ter até 70 MB.')
+    const mime = String(headers?.['content-type'] || data.type || '').split(';')[0]
+    if (!mime.startsWith('video/') && mime !== 'application/octet-stream') throw new Error('A referência não retornou um arquivo de vídeo. Envie o arquivo original em Refazer vídeos.')
+    const supplied = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^;]+)/i.exec(headers?.['content-disposition'] || '')
+    let filename = `${item.title || 'Referencia'}.mp4`
+    try { if (supplied) filename = decodeURIComponent(supplied[1] || supplied[2] || supplied[3]) } catch { /* Keep the readable reference name. */ }
+    filename = filename.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 160)
+    const file = new File([data], filename, { type: mime.startsWith('video/') ? mime : 'video/mp4' })
+    changeGenerationMode('remake')
+    tab.value = 'ai'
+    await nextTick()
+    if (remakeEditor.value?.chooseFile(file)) {
+      closeMobilePanel(masterOpen)
+      remakeEditor.value.revealSetup()
+    }
+  } catch (cause) {
+    if (!controller.signal.aborted && access.current()) {
+      let detail = cause.response?.data
+      if (detail instanceof Blob && detail.size < 20000) {
+        try { detail = JSON.parse(await detail.text()) } catch { detail = null }
+      }
+      notify({ type: 'negative', position: 'top', message: detail?.message || cause.message || 'Não foi possível abrir a referência. Envie o arquivo original em Refazer vídeos.', timeout: 8000, closeBtn: 'Fechar' })
+    }
+  } finally {
+    if (galleryRequest === controller) { galleryRequest = null; galleryImportId.value = '' }
+  }
 }
 const nextScene = computed(() => {
   const index = scenes.value.findIndex(scene => scene.id === sceneId.value)
@@ -1874,14 +1931,14 @@ async function analyzeReference() {
         reasoning: { effort: model.efforts.includes('medium') ? 'medium' : model.efforts[0] }, input: [{ role: 'user', content }] },
       { headers: { 'X-Aito-Request-Id': crypto.randomUUID() }, signal })
       signal.throwIfAborted()
-      referenceAnalysis.value = readAnswer(data).slice(0, 6000)
+      referenceAnalysis.value = readAnswer(data).slice(0, 20000)
       if (!referenceAnalysis.value) throw new Error('A análise não retornou texto. Tente novamente.')
     } finally { if (mounted && !signal.aborted) wallet.refreshStatus({ silent: true }) }
   })
 }
 function useReferenceAnalysis() {
   const direction = [prompt.value.trim(), referenceAnalysis.value.trim()].filter(Boolean).join('\n\n')
-  prompt.value = direction.slice(0, 2000)
+  prompt.value = direction.slice(0, 20000)
   nextTick(() => clipPrompt.value?.focus())
 }
 async function uploadVideoReference(post, file, contentType, put, signal, selectedWallet) {
@@ -1890,6 +1947,7 @@ async function uploadVideoReference(post, file, contentType, put, signal, select
   return put(file, data.data, signal)
 }
 async function quoteVideo() {
+  if (prompt.value.length > 20000) { error.value = 'O prompt pode ter até 20.000 caracteres. Ajuste a direção e o contexto antes de continuar.'; return }
   if (!canQuoteVideo.value || !useCredits()) return
   const access = wallet.access()
   const selectedWallet = walletId.value
@@ -2107,7 +2165,7 @@ function resetProject() {
   projectColor.value = defaultProjectColor
   projectColorOpen.value = false
   formatId.value = videoFormats[0].id
-  generationMode.value = 'text'
+  generationMode.value = 'gallery'
   referenceModelId.value = ''
   const oldMedia = new Set([scenes.value, ...history.value].flatMap(list => list.map(scene => scene.media)))
   history.value = []
@@ -2138,6 +2196,7 @@ function snapshotProject() {
 }
 
 async function restoreProject(project, signal) {
+  const entryReferences = initialProjectPending && !draft.value
   resetProject()
   title.value = project?.title || defaultProjectName
   setProjectColor(project?.projectColor)
@@ -2165,7 +2224,7 @@ async function restoreProject(project, signal) {
     sceneScripts.value = (project.sceneScripts || []).map(cleanSceneScript)
     scriptTarget.value = project.scriptTarget || null
     voiceReferenceId.value = project.voiceReferenceId || ''
-    generationMode.value = generationModes.some(mode => mode.id === project.generationMode) ? project.generationMode : 'text'
+    generationMode.value = !entryReferences && generationModes.some(mode => mode.id === project.generationMode) ? project.generationMode : 'gallery'
     if (videoCatalog.some(model => model.id === project.videoModel)) videoModel.value = project.videoModel
     referenceModelId.value = project.referenceModelId || ''
     reference.value = project.reference ? { file: project.reference, url: URL.createObjectURL(project.reference) } : null
@@ -2221,7 +2280,7 @@ function expireCurrentMedia() {
 }
 
 function createForScene(keepScriptTarget = false) {
-  if (remakeMode.value) changeGenerationMode('text')
+  if (remakeMode.value || galleryMode.value) changeGenerationMode('text')
   if (keepScriptTarget !== true) scriptTarget.value = null
   if (!prompt.value.trim()) prompt.value = [selectedScene.value?.heading, selectedScene.value?.caption].filter(Boolean).join('. ')
   closeMobilePanel(masterOpen)
@@ -2263,6 +2322,7 @@ onBeforeUnmount(() => {
   headerObserver?.disconnect()
   activeOperation?.abort()
   optionsRequest?.abort()
+  galleryRequest?.abort()
   resetProject()
 })
 </script>
@@ -2332,7 +2392,7 @@ onBeforeUnmount(() => {
             </q-btn>
             <h1>{{ projectTitle }}</h1>
           </div>
-          <p>{{ testerMode ? 'Estúdio de testes • Área administrativa' : 'Gere cenas, monte seu vídeo e exporte o resultado.' }}</p>
+          <p v-if="testerMode">Estúdio de testes • Área administrativa</p>
         </div>
         <div class="video-studio__zip">
           <span v-if="missingArchiveItems" class="video-studio__hint">{{ missingArchiveItems }} mídia(s) indisponível(is) ficarão fora do ZIP.</span>
@@ -2362,15 +2422,21 @@ onBeforeUnmount(() => {
           </q-tabs>
         </nav>
 
-        <section v-if="tab === 'ai'" class="video-studio__catalog" aria-label="Modo de geração">
-          <div class="video-studio__catalog-header">
-            <div><h2>{{ remakeMode ? 'Ferramentas de vídeo' : 'Criar com Higgsfield' }}</h2><p v-if="!remakeMode">Gere um clipe a partir de um prompt e referências opcionais.</p></div>
-            <button class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
-          </div>
+        <nav v-if="tab === 'ai'" class="video-studio__generation-toolbar" aria-label="Ferramentas de vídeo">
           <div class="video-studio__generation-modes" role="group" aria-label="Como criar o clipe">
-            <button v-for="item in generationModes.filter(mode => mode.id !== 'continuation' || generationMode === mode.id)" :key="item.id" class="video-studio__secondary" :class="{ 'video-studio__remake-button': item.id === 'remake' }" type="button" :aria-pressed="generationMode === item.id" :disabled="!mayEdit" @click="changeGenerationMode(item.id)">
+            <button v-for="item in generationModes.filter(mode => mode.id !== 'continuation' || generationMode === mode.id)" :key="item.id" class="video-studio__secondary" :class="{ 'video-studio__remake-button': item.id === 'remake' }" type="button" :aria-pressed="generationMode === item.id" :disabled="!mayEdit" @click="changeGenerationMode(item.id); $event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })">
               <q-icon :name="item.icon" size="19px" /> {{ item.label }}
             </button>
+          </div>
+        </nav>
+
+        <AitoVideoReferencesGallery v-if="tab === 'ai' && galleryMode" :models="browseVideoModels" :importing="galleryImportId" :disabled="!mayEdit && !galleryImportId"
+          @recreate="recreateGalleryReference" />
+
+        <section v-if="tab === 'ai' && !galleryMode && !remakeMode" class="video-studio__catalog" aria-label="Modo de geração">
+          <div class="video-studio__catalog-header">
+            <div><h2>Criar com Higgsfield</h2></div>
+            <button class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
           </div>
           <q-expansion-item v-if="!remakeMode" v-model="modelListOpen" class="video-studio__catalog-models" icon="mdi-movie-open-outline" label="Modelos de vídeo" :caption="selectedModelName">
             <AitoVideoModelCarousel v-if="modelCards.length" :cards="modelCards" :selected-id="selectedConfig?.id" :active="modelListOpen"
@@ -2392,7 +2458,7 @@ onBeforeUnmount(() => {
           @recover="generationMode = 'remake'; tab = 'ai'"
           @ready="closeMobilePanel(masterOpen)" @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
 
-        <section v-if="tab !== 'ai' || !remakeMode" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
+        <section v-if="tab !== 'ai' || (!remakeMode && !galleryMode)" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
           <div v-if="codeControlsOpened" v-show="tab === 'code'" class="video-studio__section">
             <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit"
               :can-improve="Boolean(wallet.currentModel.value)" :suggestion="codeSuggestion" @render="renderCodeScene"
@@ -2482,7 +2548,7 @@ onBeforeUnmount(() => {
               :disable="!mayEdit || Boolean(busy)"
               @update:model-value="selectVideoModel" />
             <label>{{ transitionMode ? 'Como a transição deve acontecer?' : 'Descrição do clipe' }}
-              <textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="2000" :placeholder="transitionMode ? 'Ex.: faça a câmera avançar entre as duas cenas com um movimento suave…' : 'Descreva o cenário, o movimento de câmera, o estilo e as falas dos personagens…'" :disabled="!mayEdit" />
+              <textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="20000" :placeholder="transitionMode ? 'Ex.: faça a câmera avançar entre as duas cenas com um movimento suave…' : 'Descreva o cenário, o movimento de câmera, o estilo e as falas dos personagens…'" :disabled="!mayEdit" />
             </label>
             <div v-if="generationMode === 'reference' && !reference && !referenceImages.length && !voiceReference" class="video-studio__actions">
               <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="usePromptOnly">
@@ -2584,7 +2650,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-if="tab === 'ai' && !remakeMode" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
+        <section v-if="tab === 'ai' && !remakeMode && !galleryMode" ref="generatedPreview" class="video-studio__panel video-studio__preview video-studio__preview--clips" aria-label="Clipes do projeto">
             <header><h2>Clipes do projeto</h2><span v-if="clipLibrary.length">{{ clipLibrary.length }} {{ clipLibrary.length === 1 ? 'clipe' : 'clipes' }}</span></header>
             <article v-for="job in trackedJobs" :key="job.requestId || job.id" class="video-studio__queued-clip">
               <small>{{ job.scriptTarget?.title || (job.timelineTransition ? 'Transição' : job.modelLabel || 'Clipe') }}</small>
@@ -2726,7 +2792,7 @@ onBeforeUnmount(() => {
           <AitoVideoModelSelect v-if="transitionDialogModels.length" :model-value="transitionDialogModel?.id" :models="transitionDialogModels"
             :disable="Boolean(busy)"
             @update:model-value="value => updateTimelineTransition({ modelId: value, quote: null, error: '' })" />
-          <label>Como conectar as cenas?<textarea :value="timelineTransition.prompt" rows="3" maxlength="2000" :disabled="Boolean(busy)"
+          <label>Como conectar as cenas?<textarea :value="timelineTransition.prompt" rows="3" maxlength="20000" :disabled="Boolean(busy)"
             placeholder="Ex.: A câmera passa pela porta e acompanha a personagem até a próxima cena."
             @input="updateTimelineTransition({ prompt: $event.target.value, quote: null, error: '' })" /></label>
           <input ref="transitionFileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
@@ -2789,10 +2855,10 @@ onBeforeUnmount(() => {
         </q-card-section>
         <q-card-section class="scroll video-studio__plan-body">
           <p v-if="scriptError" role="alert" class="video-studio__notice video-studio__notice--error">{{ scriptError }}</p>
-          <label>Briefing<textarea v-model="scriptPrompt" rows="2" maxlength="3000" placeholder="Ex.: Reels mostrando como uma ideia vira vídeo" :disabled="Boolean(busy)" /></label>
+          <label>Briefing<textarea v-model="scriptPrompt" rows="2" maxlength="20000" placeholder="Ex.: Reels mostrando como uma ideia vira vídeo" :disabled="Boolean(busy)" /></label>
           <label>Roteiro master
             <span class="video-studio__plan-editor">
-              <textarea v-model="masterScript" rows="5" maxlength="6000" placeholder="Escreva o panorama do vídeo e as referências que precisam se manter em todas as cenas." :disabled="Boolean(busy)" />
+              <textarea v-model="masterScript" rows="5" maxlength="20000" placeholder="Escreva o panorama do vídeo e as referências que precisam se manter em todas as cenas." :disabled="Boolean(busy)" />
               <q-btn flat round dense icon="mdi-creation-outline" aria-label="Gerar roteiro master com IA" :loading="busy === 'script'"
                 :disable="Boolean(busy) || !scriptPrompt.trim()" @click="writeProjectScript('master')"><q-tooltip>Gerar roteiro master com IA</q-tooltip></q-btn>
             </span>
@@ -2817,7 +2883,7 @@ onBeforeUnmount(() => {
                 <option v-for="seconds in studioAiSeconds" :key="seconds" :value="seconds">{{ seconds }} s</option>
               </select></label>
             </div>
-            <label>Roteiro da cena<textarea :value="item.prompt" rows="3" maxlength="1500" placeholder="Ação, enquadramento, expressão e fala" :disabled="Boolean(busy)"
+            <label>Roteiro da cena<textarea :value="item.prompt" rows="3" maxlength="20000" placeholder="Ação, enquadramento, expressão e fala" :disabled="Boolean(busy)"
               @input="updateScriptScene(item.id, { prompt: $event.target.value })" /></label>
             <q-select v-if="projectComponents.length" dense :dark="isDark" outlined multiple emit-value map-options use-chips label="Componentes da cena"
               :model-value="item.componentIds" :options="projectComponents" :max-values="12" option-label="title" option-value="id" :disable="Boolean(busy)"
@@ -2843,7 +2909,7 @@ onBeforeUnmount(() => {
           <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar geração" :disable="artworkBusy" />
         </q-card-section>
         <q-card-section class="video-studio__dialog-list">
-          <q-input v-model="artworkPrompt" :dark="isDark" outlined type="textarea" rows="3" maxlength="900"
+          <q-input v-model="artworkPrompt" :dark="isDark" outlined type="textarea" rows="3" maxlength="20000"
             label="Descreva a arte" placeholder="Ex. luzes suaves sobre um estúdio verde, com espaço para o título" :disable="artworkBusy" />
           <q-file v-model="artworkFiles" :dark="isDark" outlined multiple clearable use-chips
             label="Até 3 imagens ou GIFs de referência" accept="image/png,image/jpeg,image/webp,image/gif" :max-files="3"
@@ -2882,7 +2948,7 @@ onBeforeUnmount(() => {
           <template v-if="componentForm">
             <p v-if="componentError" role="alert" class="video-studio__notice video-studio__notice--error">{{ componentError }}</p>
             <label>Nome<input :value="componentForm.title" maxlength="80" @input="updateComponentForm({ title: $event.target.value })" /></label>
-            <label>Descrição ou prompt<textarea :value="componentForm.prompt" rows="3" maxlength="2000" @input="updateComponentForm({ prompt: $event.target.value })" /></label>
+            <label>Descrição ou prompt<textarea :value="componentForm.prompt" rows="3" maxlength="20000" @input="updateComponentForm({ prompt: $event.target.value })" /></label>
             <label v-if="componentType === voiceComponentType">Arquivo de áudio de até 3 segundos
               <input type="file" accept="audio/*,.mp3,.wav,.m4a" :disabled="componentLoading" @change="fileFrom($event, setComponentVoice)" />
             </label>
@@ -3013,10 +3079,11 @@ onBeforeUnmount(() => {
 .video-studio__script-btn { color: var(--aito-ai-purple); border-radius: 8px; background: var(--aito-ai-purple-soft); }
 .video-studio__section, .video-studio__preview { display: grid; gap: 14px; padding: clamp(13px, 2vw, 20px); }
 .video-studio__preview { grid-column: 1; grid-row: 2; }
-.video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 3; }
+.video-studio__grid--generate .video-studio__editor { grid-column: 1; grid-row: 4; }
 .video-studio__grid--generate > .aito-remake { grid-column: 1 / -1; grid-row: 3; order: 3; }
+.video-studio__grid--generate > .aito-references { grid-column: 1 / -1; grid-row: 3; order: 3; }
 .video-studio__grid--generate .video-studio__editor { border-color: #397c65; background: radial-gradient(ellipse at top left, #275e4c, transparent 72%), linear-gradient(145deg, #154036, #0b2322 80%); }
-.video-studio__preview--clips { grid-column: 2; grid-row: 3; border-color: #355a7b; background: radial-gradient(ellipse at top left, #214b75, transparent 72%), linear-gradient(145deg, #142f4c, #0c222c 80%); }
+.video-studio__preview--clips { grid-column: 2; grid-row: 4; border-color: #355a7b; background: radial-gradient(ellipse at top left, #214b75, transparent 72%), linear-gradient(145deg, #142f4c, #0c222c 80%); }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .video-studio h2 { font-size: 1.13rem; font-weight: 730; line-height: 1.2; }
 .video-studio h3 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
@@ -3030,7 +3097,7 @@ onBeforeUnmount(() => {
 .video-studio__aspect-select :deep(.q-field__append) { padding-left: 2px; }
 .video-studio__aspect-icon { display: inline-grid; place-items: center; width: 22px; min-height: 20px; flex: none; color: #6fe2d4; }
 .video-studio__aspect-icon > i { display: block; border: 1.5px solid currentColor; border-radius: 3px; }
-.video-studio__catalog { grid-column: 1 / -1; grid-row: 2; min-width: 0; display: grid; gap: 12px; }
+.video-studio__catalog { grid-column: 1 / -1; grid-row: 3; min-width: 0; display: grid; gap: 12px; }
 .video-studio__catalog-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .video-studio__catalog-header p { margin-top: 4px; color: var(--aito-ai-muted); font-size: .9rem; }
 .video-studio__catalog-models { overflow: hidden; border: 1px solid var(--aito-ai-line); border-radius: 11px; background: var(--aito-ai-surface); }
@@ -3100,7 +3167,9 @@ onBeforeUnmount(() => {
 .video-studio__clip-empty { display: grid; min-height: 160px; gap: 8px; padding: 14px; align-content: center; justify-items: center; border: 1px dashed var(--aito-ai-line); border-radius: 10px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); text-align: center; }
 .video-studio__queued-clip { display: grid; gap: 7px; justify-items: start; margin: 8px 0; padding: 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; }
 .video-studio__generation-modes, .video-studio__clip-list { display: flex; flex-wrap: wrap; gap: 7px; }
-.video-studio__generation-modes { margin: 0 0 10px; }
+.video-studio__generation-toolbar { grid-column: 1 / -1; grid-row: 2; position: sticky; top: calc(var(--video-header-height) + 5px); z-index: 9; min-width: 0; padding: 8px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); box-shadow: 0 5px 18px var(--aito-ai-shadow); }
+.video-studio__generation-modes { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--aito-ai-line) transparent; padding-bottom: 3px; scroll-padding-inline: 5px; }
+.video-studio__generation-modes > button { flex: none; white-space: nowrap; }
 .video-studio__generation-modes [aria-pressed=true], .video-studio__clip-list [aria-pressed=true] { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); }
 .video-studio__generation-modes .video-studio__remake-button { border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); }
 .video-studio__generation-modes .video-studio__remake-button[aria-pressed=true] { background: var(--aito-ai-purple-soft); }
@@ -3168,8 +3237,9 @@ html[data-aito-ia-theme='light'] .video-studio__delete-clip:hover:not(:disabled)
 @media (max-width: 900px) {
   .video-studio__grid, .video-studio__grid--generate { grid-template-columns: minmax(0, 1fr); }
   .video-studio__grid > * { grid-column: 1 !important; grid-row: auto !important; }
-  .video-studio__tabs { position: sticky; top: calc(var(--video-header-height) + 4px); z-index: 8; order: 1; width: 100%; box-shadow: 0 4px 14px var(--aito-ai-shadow); }
-  .video-studio__catalog { order: 2; }
+  .video-studio__tabs { order: 1; width: 100%; }
+  .video-studio__generation-toolbar { order: 2; }
+  .video-studio__catalog { order: 3; }
   .video-studio__preview { order: 3; }
   .video-studio__master-controls .video-studio__actions :is(button, a) { min-height: 41px; }
   .video-studio__scenes > button { min-height: 52px; scroll-snap-align: start; }

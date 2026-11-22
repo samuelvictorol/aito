@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cutStudioScene, parseStudioScript, splitStudioClip, studioFrame, studioRenderSize, studioSubtitles, studioTimeline, videoFormats } from '../src/services/aitoiaVideo.js'
+import { cleanSceneScript, parseVideoPlan } from '../src/services/aitoiaVideoPlan.js'
 
 test('studio timeline switches at boundaries and ends on the final frame', () => {
   const first = { id: 'first', duration: 3 }
@@ -41,4 +42,13 @@ test('master timeline preserves non-destructive cuts at fractional seconds and o
 test('studio exports timed SRT cues from the assembled sequence', () => {
   const timeline = studioTimeline([{ duration: 3, caption: ' ' }, { duration: 12, caption: 'Uma legenda' }])
   assert.equal(studioSubtitles(timeline), '1\r\n00:00:03,000 --> 00:00:15,000\r\nUma legenda\r\n')
+})
+
+test('scene and master prompts preserve twenty thousand characters across generated plans', () => {
+  const prompt = 'a'.repeat(20000)
+  assert.equal(cleanSceneScript({ prompt }).prompt, prompt)
+  assert.equal(cleanSceneScript({ prompt: prompt + 'extra' }).prompt, prompt)
+  const plan = parseVideoPlan(JSON.stringify({ master: prompt, scenes: [{ prompt, duration: 5 }] }), new Set())
+  assert.equal(plan.master, prompt)
+  assert.equal(plan.scenes[0].prompt, prompt)
 })

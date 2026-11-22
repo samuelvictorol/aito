@@ -11,6 +11,7 @@
   <AitoInstallDialog v-if="canPromoteInstall || installOpen" v-model="installOpen" :platform="platform" :native-prompt="!!installEvent" :installing="installing" @install="installAitoIA" />
   <AitoCodexOffer v-if="route.name === 'user-app' && customerSession && !screenLoading && !maintenance && !checkingAvailability" />
   <AitoDailyChallenge v-if="customerSession" :enabled="Boolean(route.name) && !screenLoading && !maintenance && !checkingAvailability" />
+  <AitoGuestRecharge :enabled="Boolean(route.name) && !screenLoading && !maintenance && !checkingAvailability" />
   <AdminProviderAlert v-if="route.meta.requiresAuth === 'admin'" />
   <AitoSupportShortcut v-if="showSupportShortcut" />
   <div v-if="canPromoteInstall && route.name !== 'landing-3d'" class="aito-install-button" :class="{ 'aito-install-button--workspace': route.name?.startsWith('aito-ia') }"><button type="button" class="aito-install-action" @click="installOpen = true"><q-icon name="mdi-download-box-outline" size="18px" /> Instalar Aito IA</button><button type="button" class="aito-install-close" aria-label="Ocultar botão Instalar Aito IA" @click="installDismissed = true"><q-icon name="mdi-close" size="16px" /></button></div>
@@ -43,6 +44,7 @@ const { maintenance, checkingAvailability, refreshAvailability } = useAitoAvaila
 const AitoInstallDialog = defineAsyncComponent(() => import('./components/AitoInstallDialog.vue'))
 const AitoCodexOffer = defineAsyncComponent(() => import('./components/AitoCodexOffer.vue'))
 const AitoDailyChallenge = defineAsyncComponent(() => import('./components/AitoDailyChallenge.vue'))
+const AitoGuestRecharge = defineAsyncComponent(() => import('./components/AitoGuestRecharge.vue'))
 const AdminProviderAlert = defineAsyncComponent(() => import('./components/AdminProviderAlert.vue'))
 const AitoSupportShortcut = defineAsyncComponent(() => import('./components/AitoSupportShortcut.vue'))
 const installEvent = shallowRef(null)

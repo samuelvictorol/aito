@@ -16,7 +16,7 @@ export function cleanSceneScript(item) {
   return {
     id: item?.id || crypto.randomUUID(),
     title: typeof item?.title === 'string' ? item.title.slice(0, 100) : '',
-    prompt: typeof item?.prompt === 'string' ? item.prompt.slice(0, 1500) : '',
+    prompt: typeof item?.prompt === 'string' ? item.prompt.slice(0, 20000) : '',
     duration: sceneScriptSeconds(item?.duration),
     modelId: typeof item?.modelId === 'string' ? item.modelId.slice(0, 80) : '',
     componentIds: Array.isArray(item?.componentIds) ? item.componentIds.filter(id => typeof id === 'string').slice(0, 12) : [],
@@ -31,7 +31,7 @@ export function parseVideoPlan(text, componentIds) {
     throw new Error('A IA não retornou cenas válidas para o roteiro.')
   }
   return {
-    master: typeof result.master === 'string' ? result.master.trim().slice(0, 6000) : '',
+    master: typeof result.master === 'string' ? result.master.trim().slice(0, 20000) : '',
     scenes: result.scenes.map(item => {
       const scene = cleanSceneScript({ ...item, id: undefined, modelId: undefined })
       return { ...scene, componentIds: scene.componentIds.filter(id => componentIds.has(id)) }

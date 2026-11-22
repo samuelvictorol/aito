@@ -5,6 +5,7 @@ import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
 import { landingVideoDefaults, landingVideoPages } from 'src/data/landingVideoSlots'
 import { youtubeEmbedUrl, youtubeVideoId } from 'src/services/landingVideoSources'
+import AdminVideoReferences from 'src/components/AdminVideoReferences.vue'
 
 const $q = useQuasar()
 const revision = ref(0)
@@ -127,6 +128,7 @@ onBeforeUnmount(() => controller.abort())
       </q-card>
     </q-dialog>
   </section>
+  <AdminVideoReferences />
 </template>
 
 <style scoped>

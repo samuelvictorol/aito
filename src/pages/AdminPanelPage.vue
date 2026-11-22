@@ -9,7 +9,7 @@
           <q-list class="admin-landing-menu">
             <q-item v-close-popup clickable @click="openDetail('landing-videos')">
               <q-item-section avatar><q-icon name="mdi-movie-open-play-outline" /></q-item-section>
-              <q-item-section>Vídeos das landing pages</q-item-section>
+              <q-item-section>Vídeos do site e referências</q-item-section>
             </q-item>
             <q-item v-close-popup clickable @click="openDetail('codex-install-prompt')">
               <q-item-section avatar><q-icon name="mdi-text-box-edit-outline" /></q-item-section>

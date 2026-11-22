@@ -36,6 +36,7 @@ const routes = [
   { path: '/aitocodex-theme', name: 'aito-codex-theme', component: () => import('pages/AitoCodexThemePage.vue') },
   { path: '/', alias: '/aitoia', name: 'aito-ia', component: () => import('pages/AitoIAPage.vue') },
   { path: '/links', name: 'bio-links', component: () => import('pages/AitoLinksPage.vue') },
+  { path: '/ajuda', name: 'aito-help', component: () => import('pages/AitoHelpPage.vue') },
   { path: '/aitoia-video-studio', name: 'aito-ia-video-studio', component: () => import('pages/AitoIAVideoStudioPage.vue') },
   { path: '/videostudio-tester', name: 'video-studio-tester', meta: { requiresAuth: 'admin' }, component: () => import('pages/AitoIAVideoStudioPage.vue') },
   { path: '/aitoia-marketing-studio', name: 'aito-ia-marketing-studio', component: () => import('pages/AitoIAMarketingStudioPage.vue') },
