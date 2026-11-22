@@ -13,6 +13,12 @@ import AitoVideoModelCarousel from 'components/AitoVideoModelCarousel.vue'
 import AitoVideoModelSelect from 'components/AitoVideoModelSelect.vue'
 import AitoVideoReferencesGallery from 'components/AitoVideoReferencesGallery.vue'
 import AitoProjectScenesPanel from 'components/AitoProjectScenesPanel.vue'
+import AitoComponentPrompt from 'components/AitoComponentPrompt.vue'
+import AitoVideoUpscale from 'components/AitoVideoUpscale.vue'
+import AitoVoiceClone from 'components/AitoVoiceClone.vue'
+import { filesForComponent, normalizeComponent, componentReferenceEntries, MAX_COMPONENT_FILES } from 'src/services/aitoiaComponentReferences'
+import { prepareCompatibleVideo, videoReferenceAccept } from 'src/services/aitoiaVideoCompatibility'
+import { visualComponentFile, componentGenerationContext } from 'src/services/aitoiaComponentMedia'
 import AitoVideoProgress from 'components/AitoVideoProgress.vue'
 import { aitoTokenCost, aitoTokens, usd, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -211,15 +217,23 @@ const componentOpen = ref(false)
 const componentForm = shallowRef(null)
 const editingComponent = ref(false)
 const componentPosters = shallowRef(new Map())
-const isRemakeReference = item => item.type === 'Personagens' || item.type === 'Cenários'
+const isRemakeReference = () => true
 const remakeReferences = computed(() => projectComponents.value
-  .filter(isRemakeReference)
   .map(item => ({ ...item, url: componentPosters.value.get(item.file) || '' })))
 const componentVoicePreview = ref('')
 const componentError = ref('')
 const componentLoading = ref(false)
 const voiceComponents = computed(() => projectComponents.value.filter(item => item.type === voiceComponentType && item.file))
 const voiceReferenceId = ref('')
+const promptComponentIds = ref([])
+const masterComponentIds = ref([])
+const activeComponentIds = computed(() => new Set([...promptComponentIds.value, ...masterComponentIds.value]))
+const promptComponents = computed(() => projectComponents.value.filter(item => activeComponentIds.value.has(item.id)))
+const componentEntries = computed(() => componentReferenceEntries(projectComponents.value, [...activeComponentIds.value]))
+const componentImages = computed(() => componentEntries.value.filter(item => item.file.type.startsWith('image/')))
+const componentVideos = computed(() => componentEntries.value.filter(item => item.file.type.startsWith('video/')))
+const componentAudios = computed(() => componentEntries.value.filter(item => item.file.type.startsWith('audio/')))
+const upscaleEditor = ref(null)
 const voiceReference = computed(() => voiceComponents.value.find(item => item.id === voiceReferenceId.value))
 const acceptsVoiceReference = computed(() => selectedConfig.value?.audioReference === true)
 const componentTypeName = ref('')
@@ -273,6 +287,7 @@ const generationModes = [
   { id: 'gallery', label: 'Referências', icon: 'mdi-play-box-multiple-outline' },
   { id: 'text', label: 'Criar por texto', icon: 'mdi-text-box-outline' },
   { id: 'remake', label: 'Refazer vídeos', icon: 'mdi-movie-roll' },
+  { id: 'upscale', label: 'Upscale Video', icon: 'mdi-arrow-expand-all' },
   { id: 'edit', label: 'Editar vídeo-base', icon: 'mdi-filmstrip-box-multiple' },
   { id: 'reference', label: 'Remixar com referência', icon: 'mdi-movie-open-edit-outline' },
   { id: 'transition', label: 'Transição entre vídeos', icon: 'mdi-transition' },
@@ -285,6 +300,7 @@ const transitionMode = computed(() => generationMode.value === 'transition')
 const continuationMode = computed(() => generationMode.value === 'continuation')
 const remakeMode = computed(() => generationMode.value === 'remake')
 const galleryMode = computed(() => generationMode.value === 'gallery')
+const upscaleMode = computed(() => generationMode.value === 'upscale')
 const browseVideoModels = computed(() => [
   ...(options.value?.videoModels || []), ...(options.value?.referenceModels || []),
   ...(options.value?.transitionModels || []), ...(options.value?.remakeModels || []),
@@ -302,10 +318,9 @@ const transitionDialogOffer = computed(() => studioOffers(transitionDialogModel.
 const maxTimelineTransitionFiles = computed(() => Math.min(5, Math.max(0, (transitionDialogModel.value?.maxImageReferences ?? 10) - 2)))
 const needsFrames = computed(() => transitionMode.value || continuationMode.value)
 const clipModels = computed(() => studioVideoModels(options.value, { mode: generationMode.value,
-  hasVideo: !needsFrames.value && Boolean(reference.value),
-  imageCount: transitionMode.value ? 2 + (sourceFrames.value.length ? referenceImages.value.length : 0) :
-    continuationMode.value ? 1 + referenceImages.value.length : referenceImages.value.length,
-  hasAudio: !needsFrames.value && Boolean(voiceReference.value),
+  hasVideo: !needsFrames.value && Boolean(reference.value || componentVideos.value.length),
+  imageCount: (transitionMode.value ? 2 : continuationMode.value ? 1 : 0) + referenceImages.value.length + componentImages.value.length + (needsFrames.value ? componentVideos.value.length : 0),
+  hasAudio: !needsFrames.value && Boolean(voiceReference.value || componentAudios.value.length),
   maxSeconds: needsFrames.value || scriptTarget.value ? studioAiSeconds.at(-1) : maxClipSeconds.value }))
 const selectedConfig = computed(() => {
   const id = generationMode.value === 'text' ? videoModel.value : referenceModelId.value
@@ -314,21 +329,21 @@ const selectedConfig = computed(() => {
 const referenceModel = computed(() => generationMode.value !== 'text' ? selectedConfig.value : null)
 const minimumImageReferences = computed(() => selectedConfig.value?.minImageReferences ?? 0)
 const supportsVideoReference = computed(() => selectedConfig.value?.supportsVideo === true)
-const hasReference = computed(() => Boolean(reference.value || referenceImages.value.length || (acceptsVoiceReference.value && voiceReference.value)))
+const hasReference = computed(() => Boolean(reference.value || referenceImages.value.length || componentEntries.value.length || (acceptsVoiceReference.value && voiceReference.value)))
 const maxImageReferences = computed(() => {
   if (transitionMode.value || continuationMode.value) {
     const required = transitionMode.value ? 2 : 1
-    return sourceFrames.value.length ? Math.max(0, (selectedConfig.value?.maxImageReferences ?? required + 8) - required) : 0
+    return Math.max(0, (selectedConfig.value?.maxImageReferences ?? required + 8) - required)
   }
   return selectedConfig.value?.maxImageReferences ?? 0
 })
 const canQuoteVideo = computed(() => Boolean(offer.value && (prompt.value.trim() || referenceModel.value?.sourceDuration) &&
-  ((transitionMode.value && !sourceFrames.value.length) || referenceImages.value.length <= maxImageReferences.value) &&
+  referenceImages.value.length + componentImages.value.length + (needsFrames.value ? componentVideos.value.length : 0) <= maxImageReferences.value &&
   (transitionMode.value ? sourceFrames.value.length === 2 || transitionClips.value.every(Boolean) :
     continuationMode.value ? sourceFrames.value.length === 1 :
       (generationMode.value === 'text' || hasReference.value) &&
-      (!referenceModel.value?.requiresVideo || reference.value) && (!reference.value || supportsVideoReference.value) &&
-      referenceImages.value.length >= minimumImageReferences.value)))
+      (!referenceModel.value?.requiresVideo || reference.value || componentVideos.value.length) && (!(reference.value || componentVideos.value.length) || supportsVideoReference.value) &&
+      referenceImages.value.length + componentImages.value.length >= minimumImageReferences.value)))
 const modelOptions = computed(() => selectedConfig.value?.options || [])
 const offer = computed(() => modelOptions.value.find(item => item.id === videoOption.value) || modelOptions.value[0])
 const selectedModelName = computed(() => selectedConfig.value?.label.replace(/ · Higgsfield$/, ''))
@@ -344,8 +359,9 @@ const modelCards = computed(() => clipModels.value.map(model => {
   const requirement = model.requiresVideo ? 'Vídeo-base' : model.minImageReferences ? 'Imagem de referência' :
     model.mode ? 'Vídeo com referência' : 'Texto para vídeo'
   return { ...family, id: model.id, name: model.label.replace(/ · Higgsfield$/, ''), maker: family?.maker || 'Higgsfield',
-    summary: videoModelSpecialty(model), preview: videoModelPreview(model), perSecond, requirement }
-}))
+    summary: videoModelSpecialty(model), preview: videoModelPreview(model), perSecond, requirement,
+    pricePerSecond: rates.length ? Math.min(...rates) : -1 }
+}).sort((left, right) => right.pricePerSecond - left.pricePerSecond))
 const optionResolution = item => item?.resolution || '720p'
 const videoAspects = computed(() => [...new Set(modelOptions.value.map(item => item.format))])
 const videoAspectOptions = computed(() => videoAspects.value.map(videoAspectPreview))
@@ -414,7 +430,7 @@ const { projects, records, activeId, loading: projectLoading, storageError, clou
   watch: [title, projectColor, formatId, scenes, sceneId, narrationText, narration, scriptPrompt, masterScript, sceneScripts, scriptTarget,
     voiceReferenceId, prompt, generationMode, videoModel, referenceModelId,
     reference, referenceImages, transitionClips, sourceFrames, insertionAfter, referenceAnalysis, clipLibrary, generated, recording,
-    trackedJobs, projectComponents, componentTypes, remakeDraft, removedGeneratedIds, codeBackgroundFile],
+    trackedJobs, projectComponents, componentTypes, remakeDraft, removedGeneratedIds, codeBackgroundFile, promptComponentIds, masterComponentIds],
 })
 watch(projectLoading, loading => { if (!loading && activeId.value) initialProjectPending = false })
 
@@ -540,19 +556,20 @@ function openComponents(type) {
 function editComponent(item) {
   editingComponent.value = Boolean(item)
   componentError.value = ''
-  componentForm.value = item ? { ...item } : { id: crypto.randomUUID(), type: componentType.value, title: '', prompt: '', file: null }
+  componentForm.value = item ? { ...item, files: [...filesForComponent(item)] } : { id: crypto.randomUUID(), type: componentType.value, title: '', prompt: '', files: [], file: null }
 }
 function updateComponentForm(values) { componentForm.value = { ...componentForm.value, ...values } }
 function saveComponent() {
-  const item = componentForm.value
+  const item = normalizeComponent(componentForm.value)
   if (!item.title.trim() || (item.type === voiceComponentType && !item.file)) return
   projectComponents.value = projectComponents.value.some(row => row.id === item.id)
     ? projectComponents.value.map(row => row.id === item.id ? item : row) : [...projectComponents.value, item]
   componentForm.value = null
 }
-watch(projectComponents, items => {
+watch([projectComponents, () => componentForm.value], ([items, form]) => {
   const existing = componentPosters.value
-  const next = new Map(items.filter(item => item.file).map(item => [item.file, existing.get(item.file) || URL.createObjectURL(item.file)]))
+  const files = [...new Set([...items, ...(form ? [form] : [])].flatMap(filesForComponent))]
+  const next = new Map(files.map(file => [file, existing.get(file) || URL.createObjectURL(file)]))
   existing.forEach((url, file) => { if (!next.has(file)) URL.revokeObjectURL(url) })
   componentPosters.value = next
 }, { flush: 'sync' })
@@ -560,23 +577,31 @@ watch(() => componentForm.value?.file, file => {
   if (componentVoicePreview.value) URL.revokeObjectURL(componentVoicePreview.value)
   componentVoicePreview.value = file?.type.startsWith('audio/') ? URL.createObjectURL(file) : ''
 }, { flush: 'sync' })
-function setComponentImage(file) {
-  if (!file) return
+function setComponentImage(source) {
+  const incoming = normalizeComponent({ title: componentForm.value?.title || '', files: source instanceof Blob ? [source] : Array.from(source || []) }).files
+  if (!incoming.length) return
   try {
-    if (file.type === 'image/gif') motionArtworkFile(file)
-    else checkImageReference(file)
-    updateComponentForm({ file, sourceClipId: undefined }); componentError.value = ''
+    const files = [...filesForComponent(componentForm.value), ...incoming]
+    if (files.length > MAX_COMPONENT_FILES) throw new Error(`Use até ${MAX_COMPONENT_FILES} anexos por componente.`)
+    for (const file of incoming) {
+      if (file.type.startsWith('video/')) normalizeVideoReference(file)
+      else if (file.type.startsWith('audio/')) { if (file.size > 10 * 1024 * 1024) throw new Error('Use áudios de até 10 MB.') }
+      else if (file.type === 'image/gif') motionArtworkFile(file)
+      else checkImageReference(file)
+    }
+    updateComponentForm({ files, file: files[0], sourceClipId: undefined }); componentError.value = ''
   }
   catch (cause) { componentError.value = cause.message }
 }
 async function setComponentVoice(file) {
   if (!file) return
+  if (filesForComponent(componentForm.value).length >= MAX_COMPONENT_FILES) { componentError.value = `Use até ${MAX_COMPONENT_FILES} anexos.`; return }
   const id = componentForm.value?.id
   componentLoading.value = true
   componentError.value = ''
   try {
     const audio = await normalizeVoiceReference(file)
-    if (componentOpen.value && componentForm.value?.id === id) updateComponentForm({ file: audio })
+    if (componentOpen.value && componentForm.value?.id === id) updateComponentForm({ files: [...filesForComponent(componentForm.value), audio].slice(0, MAX_COMPONENT_FILES), file: filesForComponent(componentForm.value)[0] || audio })
   } catch (cause) { componentError.value = cause.message }
   finally { componentLoading.value = false }
 }
@@ -617,7 +642,12 @@ function changeCustomType(delta, rename) {
   }
   componentTypes.value = next
 }
-function useComponent(item, variation = false) {
+async function useComponent(item, variation = false) {
+  if (upscaleMode.value && !variation) {
+    const file = filesForComponent(item).find(file => file.type.startsWith('video/'))
+    if (!file) { componentError.value = 'Escolha um componente com vídeo para fazer upscale.'; return }
+    componentOpen.value = false; await nextTick(); upscaleEditor.value?.chooseFile(file); return
+  }
   if (remakeMode.value && isRemakeReference(item) && !variation) {
     chooseEditorTab('ai')
     if (remakeEditor.value?.addProjectReference(item.id)) {
@@ -627,24 +657,28 @@ function useComponent(item, variation = false) {
     componentOpen.value = false
     return
   }
-  if (remakeMode.value || galleryMode.value) changeGenerationMode('text')
-  if (componentVideo(item)) {
+  if (remakeMode.value || galleryMode.value || upscaleMode.value) changeGenerationMode('text')
+  if (!variation) {
+    promptComponentIds.value = [...new Set([...promptComponentIds.value, item.id])]
+    prompt.value = [prompt.value.trim(), `@${item.title}`].filter(Boolean).join('\n')
     componentOpen.value = false
-    if (!variation) { addGeneratedSequence(item); return }
-    chooseReference(item.file)
-    if (reference.value?.file !== item.file) return
-    changeGenerationMode('edit')
+    chooseEditorTab('ai')
+    return
   }
+  promptComponentIds.value = [item.id]
+  clearReference()
+  referenceImages.value.forEach(image => URL.revokeObjectURL(image.url))
+  referenceImages.value = []
+  changeGenerationMode(componentVideo(item) ? 'edit' : 'text')
   chooseEditorTab('ai')
   const sample = item.type === voiceComponentType ? item : voiceComponents.value.find(voice => voice.id === item.voiceId)
+  voiceReferenceId.value = ''
   if (sample && textModels.value.some(model => model.id === 'seedance-2.5')) {
     changeGenerationMode('text')
     videoModel.value = 'seedance-2.5'
-    voiceReferenceId.value = sample.id
+    if (sample.id !== item.id) voiceReferenceId.value = sample.id
   }
-  if (item.file && item.type !== voiceComponentType && !componentVideo(item)) chooseReferenceImages([item.file])
-  prompt.value = [prompt.value.trim(), item.prompt || item.title].filter(Boolean).join('\n').slice(0, 20000)
-  if (variation) prompt.value = `Crie uma variação: ${item.prompt || item.title}`.slice(0, 20000)
+  prompt.value = `Crie uma variação de @${item.title}: ${item.prompt || item.title}`.slice(0, 20000)
   componentOpen.value = false
   createForScene()
 }
@@ -754,7 +788,8 @@ async function loadOptions() {
   } finally { if (optionsRequest === controller) optionsLoading.value = false }
 }
 watch(modelOptions, list => { if (!list.some(item => item.id === videoOption.value)) videoOption.value = list[0]?.id || '' })
-watch([generationMode, videoModel, referenceModel, videoOption, prompt, reference, referenceImages, voiceReference, transitionClips, sourceFrames, walletId], () => { videoQuote.value = null })
+watch([generationMode, videoModel, referenceModel, videoOption, prompt, reference, referenceImages, voiceReference, transitionClips, sourceFrames, walletId,
+  projectComponents, promptComponentIds, masterComponentIds], () => { videoQuote.value = null })
 function jobStorage(change) {
   try {
     const saved = JSON.parse(localStorage.getItem(jobStorageKey) || '{}')
@@ -1018,6 +1053,14 @@ function replaceNarration(file) {
   if (narration.value) URL.revokeObjectURL(narration.value.url)
   narration.value = next
 }
+function useClonedNarration(file) {
+  try { replaceNarration(file); void saveProject(); notice.value = 'Voz aplicada à locução do projeto.' }
+  catch (cause) { notify({ type: 'negative', position: 'top', message: cause.message }) }
+}
+async function saveUpscale({ file, title }) {
+  storeClip({ id: crypto.randomUUID(), file, title, kind: 'upscale', expiresAt: activeProject.value?.expiresAt || Date.now() + AITOIA_RETENTION_MS }, { reveal: true })
+  await saveProject()
+}
 function removeNarration() {
   pause()
   if (narration.value) URL.revokeObjectURL(narration.value.url)
@@ -1153,7 +1196,7 @@ function scriptSceneConfig(item) {
   const components = item.componentIds.map(id => projectComponents.value.find(component => component.id === id)).filter(Boolean)
   const sample = components.find(component => component.type === voiceComponentType && component.file) ||
     components.map(component => voiceComponents.value.find(voice => voice.id === component.voiceId)).find(Boolean)
-  const media = [...new Set(components.filter(component => component.file?.type.startsWith('image/')).map(component => component.file))]
+  const media = [...new Set(components.flatMap(filesForComponent).filter(file => file.type.startsWith('image/')))]
   const referenceModels = (options.value?.referenceModels || []).filter(model => model.mode === 'reference' && !model.requiresVideo)
   const choices = [...textModels.value, ...(media.length || sample ? referenceModels : [])].flatMap(model => {
     if ((sample && !model.audioReference) || media.length < (model.minImageReferences || 0) || media.length > (model.maxImageReferences || 0)) return []
@@ -1196,7 +1239,7 @@ async function prepareScriptScene(item) {
   else videoModel.value = match.model.id
   videoOption.value = match.option.id
   voiceReferenceId.value = sample?.id || ''
-  if (media.length) chooseReferenceImages(media)
+  promptComponentIds.value = [...item.componentIds]
   const continuity = masterScript.value.trim()
   const characterNotes = components.map(component => `${component.title}: ${component.prompt}`).join('\n')
   prompt.value = [item.prompt.trim(), continuity && `Continuidade do projeto: ${continuity}`,
@@ -1812,7 +1855,7 @@ function openTimelineTransition(index) {
   if (!signedIn.value) { showAuth(); return }
   if (!mayEdit.value || busy.value || !transitionReady(before, after) ||
       transitionInQueue(before.id, after.id) || scenes.value.length >= maxStudioScenes) return
-  timelineTransition.value = { before, after, index, prompt: '', files: [], quote: null, error: '' }
+  timelineTransition.value = { before, after, index, prompt: '', files: [], componentIds: [], quote: null, error: '' }
   transitionDialogOpen.value = true
   if (!options.value && !optionsLoading.value) void loadOptions()
 }
@@ -1835,7 +1878,7 @@ function pasteTimelineTransitionFiles(event) {
   event.preventDefault()
   addTimelineTransitionFiles(files)
 }
-watch(walletId, () => updateTimelineTransition({ quote: null }))
+watch([walletId, projectComponents], () => updateTimelineTransition({ quote: null }))
 async function createTimelineTransition() {
   const draft = timelineTransition.value
   const model = transitionDialogModel.value
@@ -1853,6 +1896,12 @@ async function createTimelineTransition() {
   if (!draft.quote) {
     await run('transition-quote', async signal => {
       validateCut()
+      const components = projectComponents.value.filter(item => (draft.componentIds || []).includes(item.id))
+      const entries = componentReferenceEntries(components)
+      if (entries.some(item => item.file.type.startsWith('audio/'))) throw Error('Transições aceitam referências visuais. Use a voz na aba Locução ou escolha outro modo de vídeo.')
+      if (entries.length + draft.files.length > maxTimelineTransitionFiles.value) throw Error(`Este modelo aceita até ${maxTimelineTransitionFiles.value} imagens adicionais, incluindo os anexos dos componentes.`)
+      const extraFiles = []
+      for (const entry of entries) extraFiles.push({ ...entry, file: await visualComponentFile(entry.file, { post: access.post, signal }) })
       const { format, resolution } = preset
       const [from, to] = await Promise.all([
         captureTransitionFrame(draft.before.media.file, 'end', format, resolution, signal,
@@ -1860,10 +1909,12 @@ async function createTimelineTransition() {
         captureTransitionFrame(draft.after.media.file, 'start', format, resolution, signal, draft.after.offset || 0),
       ])
       const tokens = []
-      for (const file of [from, ...draft.files, to]) {
-        tokens.push(await uploadVideoReference(access.post, file, checkImageReference(file), putImageReference, signal, selectedWallet))
+      const bindings = []
+      for (const entry of [{ file: from }, ...draft.files.map(file => ({ file })), ...extraFiles, { file: to }]) {
+        tokens.push(await uploadVideoReference(access.post, entry.file, checkImageReference(entry.file), putImageReference, signal, selectedWallet))
+        if (entry.componentId) bindings.push({ componentId: entry.componentId, reference: `@image${tokens.length}` })
       }
-      const body = { ...request, imageReferenceTokens: tokens }
+      const body = { ...request, componentContext: componentGenerationContext(components, bindings), imageReferenceTokens: tokens }
       const { data } = await access.post('/aitoia/video/studio/generations/quote', body, { signal })
       signal.throwIfAborted()
       if (walletId.value === selectedWallet) updateTimelineTransition({ quote: { ...data.data, body, requestId: crypto.randomUUID() } })
@@ -1949,7 +2000,8 @@ async function analyzeReference() {
     try {
       const model = models.value.find(item => item.id === 'gpt-6.1-sol') || models.value[0]
       if (!model) throw new Error('O modelo de análise está temporariamente indisponível.')
-      const frames = await sampleVideoFrames(reference.value.file, signal)
+      const file = await prepareCompatibleVideo(reference.value.file, { post: access.post, signal })
+      const frames = await sampleVideoFrames(file, signal)
       const content = [{ type: 'input_text', text: `Analise os quadros amostrados de um vídeo-base em português brasileiro. Identifique ações visíveis, personagens, enquadramento, iluminação e composição. Sugira um prompt curto para editar o clipe conforme o pedido do usuário. Não infira falas, identidade ou eventos entre quadros. Pedido: ${prompt.value.trim() || 'preservar o movimento da cena'}` },
         ...frames.flatMap(frame => [{ type: 'input_text', text: `Quadro em ${frame.second}s` }, { type: 'input_image', image_url: frame.url }])]
       const { data } = await access.post('/aitoia/responses', { model: model.id, walletId: selectedWallet,
@@ -1978,8 +2030,18 @@ async function quoteVideo() {
   const selectedWallet = walletId.value
   await run('quote', async signal => {
     videoQuote.value = null
-    if (referenceModel.value?.sourceDuration && reference.value) {
-      const source = await openStudioMedia(reference.value.file, 0, signal)
+    const choice = selectedConfig.value
+    const preset = offer.value
+    const components = [...promptComponents.value]
+    componentGenerationContext(components)
+    const videoFiles = [...new Set([reference.value?.file, ...componentVideos.value.map(item => item.file)].filter(Boolean))]
+    const audioFiles = [...new Set([voiceReference.value?.file, ...componentAudios.value.map(item => item.file)].filter(Boolean))]
+    if (!needsFrames.value && videoFiles.length > 1) throw Error('Este modelo aceita um vídeo-base por geração. Escolha apenas um componente com vídeo.')
+    if (audioFiles.length > 1) throw Error('Este modelo aceita uma voz de referência. Escolha apenas um anexo de áudio.')
+    if (audioFiles.length && !acceptsVoiceReference.value) throw Error('Escolha um modelo compatível com áudio de referência para usar este componente.')
+    const video = !needsFrames.value && videoFiles[0] ? await prepareCompatibleVideo(videoFiles[0], { post: access.post, signal }) : null
+    if (referenceModel.value?.sourceDuration && video) {
+      const source = await openStudioMedia(video, 0, signal)
       const duration = source.element.duration
       closeStudioMedia(source)
       const min = referenceModel.value.sourceSecondsMin ?? 4
@@ -1987,35 +2049,49 @@ async function quoteVideo() {
       if (duration < min || duration > max) throw new Error(`Use um vídeo-base de ${min} a ${max} segundos neste modo.`)
     }
     const upload = (file, contentType, put) => uploadVideoReference(access.post, file, contentType, put, signal, selectedWallet)
-    const referenceToken = !transitionMode.value && !continuationMode.value && reference.value && await upload(reference.value.file, 'video/mp4', putVideoReference)
-    const audioReferenceToken = acceptsVoiceReference.value && voiceReference.value &&
-      await upload(voiceReference.value.file, 'audio/wav', putVoiceReference)
+    const bindings = []
+    const referenceToken = video && await upload(video, 'video/mp4', putVideoReference)
+    if (video && componentVideos.value[0]) bindings.push({ componentId: componentVideos.value[0].componentId, reference: '@video1' })
+    const audio = audioFiles[0] ? await normalizeVoiceReference(audioFiles[0]) : null
+    const audioReferenceToken = audio && await upload(audio, 'audio/wav', putVoiceReference)
+    if (audio && componentAudios.value[0]) bindings.push({ componentId: componentAudios.value[0].componentId, reference: '@audio1' })
+    const extras = referenceImages.value.map(item => ({ file: item.file }))
+    for (const entry of [...componentImages.value, ...(needsFrames.value ? componentVideos.value : [])]) {
+      extras.push({ ...entry, file: await visualComponentFile(entry.file, { post: access.post, signal }) })
+    }
+    if (extras.length > maxImageReferences.value) throw Error(`Este modelo aceita até ${maxImageReferences.value} imagens adicionais. Remova componentes ou anexos antes de gerar.`)
     const imageReferenceTokens = []
+    const sendImage = async (file, entry) => {
+      imageReferenceTokens.push(await upload(file, checkImageReference(file), putImageReference))
+      if (entry?.componentId) bindings.push({ componentId: entry.componentId, reference: `@image${imageReferenceTokens.length}` })
+    }
+    const sendExtras = async () => { for (const entry of extras) await sendImage(entry.file, entry) }
     if (sourceFrames.value.length) {
       const first = sourceFrames.value[0]
       const last = sourceFrames.value[1]
-      imageReferenceTokens.push(await upload(first.file, 'image/jpeg', putImageReference))
-      for (const { file } of referenceImages.value) imageReferenceTokens.push(await upload(file, checkImageReference(file), putImageReference))
-      if (last) imageReferenceTokens.push(await upload(last.file, 'image/jpeg', putImageReference))
+      await sendImage(first.file)
+      await sendExtras()
+      if (last) await sendImage(last.file)
     } else if (transitionMode.value) {
       const [from, to] = transitionClips.value
-      const { format, resolution } = offer.value
-      const frames = await Promise.all([captureTransitionFrame(from.file, 'end', format, resolution, signal),
-        captureTransitionFrame(to.file, 'start', format, resolution, signal)])
-      for (const file of frames) imageReferenceTokens.push(await upload(file, 'image/jpeg', putImageReference))
+      const { format, resolution } = preset
+      const [first, last] = await Promise.all([prepareCompatibleVideo(from.file, { post: access.post, signal }), prepareCompatibleVideo(to.file, { post: access.post, signal })])
+      const frames = await Promise.all([captureTransitionFrame(first, 'end', format, resolution, signal), captureTransitionFrame(last, 'start', format, resolution, signal)])
+      await sendImage(frames[0]); await sendExtras(); await sendImage(frames[1])
     } else {
-      for (const { file } of referenceImages.value) {
+      for (const entry of extras) {
+        const { file } = entry
         const type = checkImageReference(file)
         const image = selectedConfig.value.firstFrame
           ? await captureTransitionFrame(file.type ? file : new File([file], file.name, { type }), 'start', offer.value.format, offer.value.resolution, signal, 0)
           : file
-        imageReferenceTokens.push(await upload(image, checkImageReference(image), putImageReference))
+        await sendImage(image, entry)
       }
     }
     const tokens = { ...(referenceToken && { referenceToken }), ...(imageReferenceTokens.length && { imageReferenceTokens }),
       ...(audioReferenceToken && { audioReferenceToken }) }
-    const body = { model: selectedConfig.value.id,
-      option: offer.value.id, prompt: prompt.value.trim(), walletId: selectedWallet, ...tokens }
+    const body = { model: choice.id, option: preset.id, prompt: prompt.value.trim(),
+      componentContext: componentGenerationContext(components, bindings), walletId: selectedWallet, ...tokens }
     const quote = await access.post('/aitoia/video/studio/generations/quote', body, { signal })
     signal.throwIfAborted()
     if (walletId.value === selectedWallet) videoQuote.value = { ...quote.data.data, body, requestId: crypto.randomUUID() }
@@ -2118,13 +2194,16 @@ async function archiveProject() {
       return name
     }
     const remake = remakeDraft.value
-    const metadata = { format: 'aitoia-video', version: 5, title: projectTitle.value, projectColor: projectColor.value, aspectRatio: format.value.label,
+    const metadata = { format: 'aitoia-video', version: 6, title: projectTitle.value, projectColor: projectColor.value, aspectRatio: format.value.label,
+      promptComponentIds: promptComponentIds.value, masterComponentIds: masterComponentIds.value,
       expiresAt: activeProject.value?.expiresAt,
       scenes: scenes.value.map(({ media, ...scene }, index) => ({
         ...scene, media: unavailableScene(scene) ? undefined : add(media?.file, `cena-${index + 1}`),
       })),
       narration: { text: narrationText.value, media: add(narration.value?.file, 'locucao') },
-      components: projectComponents.value.map(({ file, ...item }, index) => ({ ...item, media: add(file, `componente-${index + 1}`) })),
+      components: projectComponents.value.map(({ file, files, ...item }, index) => ({ ...item,
+        media: filesForComponent({ file, files }).map((file, position) => add(file, `componente-${index + 1}-${position + 1}`)),
+        mediaTypes: filesForComponent({ file, files }).map(file => file.type) })),
       componentTypes: componentTypes.value,
       remake: remake && { ...remake, discardedJobs: undefined,
         scenes: remake.scenes.map(({ file, result, pending: _pending, clientSceneId: _clientSceneId, ...item }) => ({ ...item,
@@ -2137,6 +2216,7 @@ async function archiveProject() {
       references: { video: add(reference.value?.file, 'referencia'), images: referenceImages.value.map((item, index) => add(item.file, `imagem-${index + 1}`)),
         codeBackground: add(codeBackgroundFile.value, 'fundo-por-codigo'),
         transition: transitionClips.value.map((clip, index) => add(clip?.file, `transicao-${index + 1}`)),
+        transitionTypes: transitionClips.value.map(clip => clip?.file?.type || null), videoType: reference.value?.file?.type || null,
         keyframes: sourceFrames.value.map((frame, index) => add(frame.file, `quadro-${index + 1}`)) },
       clips: clipLibrary.value.map(({ id, number, file, title, kind, expiresAt }) => ({ id, number, title, kind, expiresAt,
         media: expiresAt > Date.now() ? add(file, `clipe-${number}`) : undefined })) }
@@ -2149,6 +2229,7 @@ async function archiveProject() {
   })
 }
 function resetProject() {
+  promptComponentIds.value = []; masterComponentIds.value = []
   projectScenesOpen.value = false
   pause()
   codeBackgroundFile.value = null
@@ -2219,6 +2300,7 @@ function snapshotProject() {
     transitionClips: transitionClips.value.map(clip => clip?.file || null), sourceFrames: sourceFrames.value.map(frame => frame.file),
     insertionAfter: insertionAfter.value,
     componentTypes: componentTypes.value, components: projectComponents.value, remake: remakeDraft.value,
+    promptComponentIds: promptComponentIds.value, masterComponentIds: masterComponentIds.value,
     clips: clipLibrary.value.map(({ url, ...clip }) => ({ ...clip, ...(clip.expiresAt <= Date.now() && { file: undefined, remoteUrl: undefined, expired: true }) })),
     selectedClipId: generated.value?.id, trackedJobs: trackedJobs.value, removedGeneratedIds: removedGeneratedIds.value }
 }
@@ -2266,7 +2348,9 @@ async function restoreProject(project, signal) {
     if (project.componentTypes?.length) {
       componentTypes.value = [...new Set([...builtInComponentTypes, ...project.componentTypes])].slice(0, 20)
     }
-    projectComponents.value = project.components || []
+    projectComponents.value = (project.components || []).map(item => normalizeComponent(item))
+    promptComponentIds.value = project.promptComponentIds || []
+    masterComponentIds.value = project.masterComponentIds || []
     codeBackgroundFile.value = project.codeBackground || null
     remakeDraft.value = project.remake || null
     removedGeneratedIds.value = Array.isArray(project.removedGeneratedIds) ? project.removedGeneratedIds.filter(isVideoGenerationId).slice(-300) : []
@@ -2308,7 +2392,7 @@ function expireCurrentMedia() {
 }
 
 function createForScene(keepScriptTarget = false) {
-  if (remakeMode.value || galleryMode.value) changeGenerationMode('text')
+  if (remakeMode.value || galleryMode.value || upscaleMode.value) changeGenerationMode('text')
   if (keepScriptTarget !== true) scriptTarget.value = null
   if (!prompt.value.trim()) prompt.value = [selectedScene.value?.heading, selectedScene.value?.caption].filter(Boolean).join('. ')
   closeMobilePanel(masterOpen)
@@ -2478,7 +2562,7 @@ onBeforeUnmount(() => {
         <AitoVideoReferencesGallery v-if="tab === 'ai' && galleryMode" :models="browseVideoModels" :importing="galleryImportId" :disabled="!mayEdit && !galleryImportId"
           @recreate="recreateGalleryReference" />
 
-        <section v-if="tab === 'ai' && !galleryMode && !remakeMode" class="video-studio__catalog" aria-label="Modo de geração">
+        <section v-if="tab === 'ai' && !galleryMode && !remakeMode && !upscaleMode" class="video-studio__catalog" aria-label="Modo de geração">
           <div class="video-studio__catalog-header">
             <div><h2>Criar com Higgsfield</h2></div>
             <button class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vídeos" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button>
@@ -2503,7 +2587,9 @@ onBeforeUnmount(() => {
           @recover="generationMode = 'remake'; tab = 'ai'"
           @ready="closeMobilePanel(masterOpen)" @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
 
-        <section v-if="tab !== 'ai' || (!remakeMode && !galleryMode)" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
+        <AitoVideoUpscale v-if="tab === 'ai' && upscaleMode" ref="upscaleEditor" :clips="clipLibrary" :components="projectComponents" :access="wallet.access"
+          :signed-in="signedIn" :disabled="!mayEdit || Boolean(busy)" @login="showAuth('login')" @busy="remakeBusy = $event; if (!$event) blockedExit = false" @ready="saveUpscale" />
+        <section v-if="tab !== 'ai' || (!remakeMode && !galleryMode && !upscaleMode)" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
           <div v-if="codeControlsOpened" v-show="tab === 'code'" class="video-studio__section">
             <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit"
               :can-improve="Boolean(wallet.currentModel.value)" :suggestion="codeSuggestion" @render="renderCodeScene"
@@ -2552,6 +2638,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-else-if="tab === 'voice'" class="video-studio__section">
+            <AitoVoiceClone v-if="signedIn" :access="wallet.access" :wallet-id="walletId" :account-id="accountId" :allow-credits="useCredits" :disabled="!mayEdit || Boolean(busy)"
+              @busy="remakeBusy = $event; if (!$event) blockedExit = false" @balance="wallet.refreshStatus({ silent: true })" @ready="useClonedNarration" />
+            <button v-else type="button" class="video-studio__secondary" @click="showAuth('login')"><q-icon name="mdi-account-voice" /> Clonar Voz</button>
             <div class="video-studio__scene-heading"><h2>Locução</h2><button v-if="signedIn" class="video-studio__icon" type="button" aria-label="Atualizar catálogo de vozes" :disabled="optionsLoading || !mayEdit" @click="loadOptions"><q-icon name="mdi-refresh" size="21px" /></button></div>
             <label>Texto da locução<textarea v-model="narrationText" rows="5" :maxlength="maxNarration" placeholder="Digite o texto que será narrado…" :disabled="!mayEdit" /></label>
             <div v-if="voiceGroups.length" class="video-studio__voice-options" aria-label="Vozes OpenAI">
@@ -2592,9 +2681,8 @@ onBeforeUnmount(() => {
               :model-value="selectedConfig?.id" :models="clipModels"
               :disable="!mayEdit || Boolean(busy)"
               @update:model-value="selectVideoModel" />
-            <label>{{ transitionMode ? 'Como a transição deve acontecer?' : 'Descrição do clipe' }}
-              <textarea ref="clipPrompt" v-model="prompt" rows="5" maxlength="20000" :placeholder="transitionMode ? 'Ex.: faça a câmera avançar entre as duas cenas com um movimento suave…' : 'Descreva o cenário, o movimento de câmera, o estilo e as falas dos personagens…'" :disabled="!mayEdit" />
-            </label>
+            <AitoComponentPrompt ref="clipPrompt" v-model="prompt" v-model:component-ids="promptComponentIds" :components="projectComponents" rows="5" maxlength="20000"
+              :label="transitionMode ? 'Como a transição deve acontecer?' : 'Descrição do clipe'" :placeholder="transitionMode ? 'Descreva como conectar as cenas…' : 'Descreva o cenário, o movimento, o estilo e as falas…'" :disabled="!mayEdit" />
             <div v-if="generationMode === 'reference' && !reference && !referenceImages.length && !voiceReference" class="video-studio__actions">
               <button class="video-studio__secondary" type="button" :disabled="!mayEdit || Boolean(busy)" @click="usePromptOnly">
                 <q-icon name="mdi-text-box-outline" size="18px" /> Usar apenas a descrição
@@ -2618,8 +2706,8 @@ onBeforeUnmount(() => {
                 <div v-for="(label, index) in transitionLabels" :key="label" class="video-studio__transition-clip">
                   <label class="video-studio__drop" @dragover.prevent @drop.prevent="setTransitionClip(index, $event.dataTransfer.files[0])">
                     <q-icon name="mdi-file-video-outline" size="22px" />
-                    <span><strong>{{ label }}</strong><small>{{ transitionClips[index]?.file.name || 'MP4 de até 60 MB' }}</small></span>
-                    <input class="video-studio__transition-input" type="file" accept="video/mp4,.mp4" :aria-label="label"
+                    <span><strong>{{ label }}</strong><small>{{ transitionClips[index]?.file.name || 'Vídeo de até 60 MB' }}</small></span>
+                    <input class="video-studio__transition-input" type="file" :accept="videoReferenceAccept" :aria-label="label"
                       :disabled="!mayEdit" @change="fileFrom($event, file => { if (file) setTransitionClip(index, file) })" />
                   </label>
                   <template v-if="transitionClips[index]">
@@ -2632,8 +2720,8 @@ onBeforeUnmount(() => {
             </div>
             <div v-else-if="!continuationMode && ((selectedConfig && supportsVideoReference) || maxImageReferences || reference || referenceImages.length)" class="video-studio__reference">
               <h3>{{ generationMode === 'text' ? 'Referências opcionais' : 'Referências' }}</h3>
-              <input ref="referenceInput" type="file" accept="video/mp4,.mp4" hidden @change="fileFrom($event, chooseReference)" />
-              <button v-if="supportsVideoReference" class="video-studio__drop" type="button" :disabled="!mayEdit" @dragover.prevent @drop.prevent="chooseReference($event.dataTransfer.files[0])" @click="referenceInput?.click()"><q-icon name="mdi-file-video-outline" size="24px" /><span><strong>{{ reference?.file.name || 'Anexar vídeo-base' }}</strong><small>{{ referenceModel?.sourceDuration ? `MP4 de ${referenceModel.sourceSecondsMin ?? 4} a ${Math.min(referenceModel.sourceSecondsMax ?? maxClipSeconds, maxClipSeconds)} segundos, até 60 MB` : 'MP4 de até 60 MB' }}</small></span></button>
+              <input ref="referenceInput" type="file" :accept="videoReferenceAccept" hidden @change="fileFrom($event, chooseReference)" />
+              <button v-if="supportsVideoReference" class="video-studio__drop" type="button" :disabled="!mayEdit" @dragover.prevent @drop.prevent="chooseReference($event.dataTransfer.files[0])" @click="referenceInput?.click()"><q-icon name="mdi-file-video-outline" size="24px" /><span><strong>{{ reference?.file.name || 'Anexar vídeo-base' }}</strong><small>{{ referenceModel?.sourceDuration ? `Vídeo de ${referenceModel.sourceSecondsMin ?? 4} a ${Math.min(referenceModel.sourceSecondsMax ?? maxClipSeconds, maxClipSeconds)} segundos, até 60 MB` : 'MP4, MOV, WebM e formatos comuns · até 60 MB' }}</small></span></button>
               <video v-if="reference" class="video-studio__reference-preview" :src="reference.url" controls playsinline preload="metadata" aria-label="Vídeo-base selecionado" />
               <div v-if="reference" class="video-studio__actions">
                 <button class="video-studio__secondary" type="button" :disabled="!mayEdit" @click="analyzeReference"><q-spinner v-if="busy === 'analysis'" size="18px" /><q-icon v-else name="mdi-creation-outline" size="18px" /> {{ busy === 'analysis' ? 'Analisando quadros…' : 'Analisar quadros com IA' }}</button>
@@ -2823,9 +2911,10 @@ onBeforeUnmount(() => {
           <AitoVideoModelSelect v-if="transitionDialogModels.length" :model-value="transitionDialogModel?.id" :models="transitionDialogModels"
             :disable="Boolean(busy)"
             @update:model-value="value => updateTimelineTransition({ modelId: value, quote: null, error: '' })" />
-          <label>Como conectar as cenas?<textarea :value="timelineTransition.prompt" rows="3" maxlength="20000" :disabled="Boolean(busy)"
-            placeholder="Ex.: A câmera passa pela porta e acompanha a personagem até a próxima cena."
-            @input="updateTimelineTransition({ prompt: $event.target.value, quote: null, error: '' })" /></label>
+          <AitoComponentPrompt :model-value="timelineTransition.prompt" :component-ids="timelineTransition.componentIds || []" :components="projectComponents" rows="3" maxlength="20000" :disabled="Boolean(busy)"
+            label="Como a transição deve acontecer?" placeholder="Descreva o movimento entre as cenas…"
+            @update:model-value="value => updateTimelineTransition({ prompt: value, quote: null, error: '' })"
+            @update:component-ids="value => updateTimelineTransition({ componentIds: value, quote: null, error: '' })" />
           <input ref="transitionFileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
             @change="addTimelineTransitionFiles($event.target.files); $event.target.value = ''" />
           <button v-if="maxTimelineTransitionFiles" class="video-studio__secondary" type="button" :disabled="Boolean(busy) || timelineTransition.files.length >= maxTimelineTransitionFiles"
@@ -2887,13 +2976,11 @@ onBeforeUnmount(() => {
         <q-card-section class="scroll video-studio__plan-body">
           <p v-if="scriptError" role="alert" class="video-studio__notice video-studio__notice--error">{{ scriptError }}</p>
           <label>Briefing<textarea v-model="scriptPrompt" rows="2" maxlength="20000" placeholder="Ex.: Reels mostrando como uma ideia vira vídeo" :disabled="Boolean(busy)" /></label>
-          <label>Roteiro master
-            <span class="video-studio__plan-editor">
-              <textarea v-model="masterScript" rows="5" maxlength="20000" placeholder="Escreva o panorama do vídeo e as referências que precisam se manter em todas as cenas." :disabled="Boolean(busy)" />
+          <div class="video-studio__plan-editor">
+              <AitoComponentPrompt v-model="masterScript" v-model:component-ids="masterComponentIds" :components="projectComponents" label="Roteiro master" rows="5" maxlength="20000" placeholder="Descreva a direção geral e mencione os componentes do projeto." :disabled="Boolean(busy)" />
               <q-btn flat round dense icon="mdi-creation-outline" aria-label="Gerar roteiro master com IA" :loading="busy === 'script'"
                 :disable="Boolean(busy) || !scriptPrompt.trim()" @click="writeProjectScript('master')"><q-tooltip>Gerar roteiro master com IA</q-tooltip></q-btn>
-            </span>
-          </label>
+          </div>
           <div class="video-studio__scene-heading video-studio__plan-actions">
             <h3>Roteiros de cena</h3>
             <div class="video-studio__actions">
@@ -2914,8 +3001,8 @@ onBeforeUnmount(() => {
                 <option v-for="seconds in studioAiSeconds" :key="seconds" :value="seconds">{{ seconds }} s</option>
               </select></label>
             </div>
-            <label>Roteiro da cena<textarea :value="item.prompt" rows="3" maxlength="20000" placeholder="Ação, enquadramento, expressão e fala" :disabled="Boolean(busy)"
-              @input="updateScriptScene(item.id, { prompt: $event.target.value })" /></label>
+            <AitoComponentPrompt :model-value="item.prompt" :component-ids="item.componentIds" :components="projectComponents" label="Roteiro da cena" rows="3" maxlength="20000" placeholder="Ação, enquadramento, expressão e fala" :disabled="Boolean(busy)"
+              @update:model-value="value => updateScriptScene(item.id, { prompt: value })" @update:component-ids="value => updateScriptScene(item.id, { componentIds: value })" />
             <q-select v-if="projectComponents.length" dense :dark="isDark" outlined multiple emit-value map-options use-chips label="Componentes da cena"
               :model-value="item.componentIds" :options="projectComponents" :max-values="12" option-label="title" option-value="id" :disable="Boolean(busy)"
               @update:model-value="value => updateScriptScene(item.id, { componentIds: value })" />
@@ -2980,11 +3067,10 @@ onBeforeUnmount(() => {
             <p v-if="componentError" role="alert" class="video-studio__notice video-studio__notice--error">{{ componentError }}</p>
             <label>Nome<input :value="componentForm.title" maxlength="80" @input="updateComponentForm({ title: $event.target.value })" /></label>
             <label>Descrição ou prompt<textarea :value="componentForm.prompt" rows="3" maxlength="20000" @input="updateComponentForm({ prompt: $event.target.value })" /></label>
-            <label v-if="componentType === voiceComponentType">Arquivo de áudio de até 3 segundos
+            <label v-if="componentType === voiceComponentType">Adicionar referência de voz
               <input type="file" accept="audio/*,.mp3,.wav,.m4a" :disabled="componentLoading" @change="fileFrom($event, setComponentVoice)" />
             </label>
-            <video v-else-if="componentVideo(componentForm)" class="video-studio__reference-preview" :src="componentPosters.get(componentForm.file)" controls playsinline preload="metadata" aria-label="Clipe salvo" />
-            <label v-else>Imagem ou GIF de referência<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="fileFrom($event, setComponentImage)" /></label>
+            <label v-else>Adicionar anexos de referência<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/*,audio/*,.mov,.mkv,.m4v" multiple @change="setComponentImage($event.target.files); $event.target.value = ''" /></label>
             <label v-if="componentType === 'Personagens'">Voz do personagem
               <select :value="componentForm.voiceId || ''" @change="updateComponentForm({ voiceId: $event.target.value })">
                 <option value="">Sem voz vinculada</option>
@@ -2992,7 +3078,14 @@ onBeforeUnmount(() => {
               </select>
             </label>
             <audio v-if="componentVoicePreview" class="video-studio__audio" controls preload="metadata" :src="componentVoicePreview" aria-label="Ouvir voz de referência" />
-            <span v-if="componentForm.file" class="video-studio__hint">{{ componentForm.file.name }}</span>
+            <div v-for="(file, index) in filesForComponent(componentForm)" :key="index" class="video-studio__component-asset">
+              <img v-if="file.type.startsWith('image/')" :src="componentPosters.get(file)" :alt="file.name" />
+              <video v-else-if="file.type.startsWith('video/')" :src="componentPosters.get(file)" controls playsinline preload="metadata" />
+              <audio v-else-if="file.type.startsWith('audio/')" :src="componentPosters.get(file)" controls preload="metadata" />
+              <span>{{ componentForm.title || file.name }}<small>{{ file.name }}</small></span>
+              <q-btn flat round dense icon="mdi-close" :aria-label="`Remover anexo ${index + 1}`" @click="updateComponentForm({ files: filesForComponent(componentForm).filter((_, at) => at !== index), file: filesForComponent(componentForm).filter((_, at) => at !== index)[0] || null })" />
+            </div>
+            <small class="video-studio__hint">{{ filesForComponent(componentForm).length }}/{{ MAX_COMPONENT_FILES }} anexos · os nomes dos arquivos seguem o nome do componente.</small>
             <div class="video-studio__actions">
               <button type="button" class="video-studio__secondary" @click="componentForm = null">Cancelar</button>
               <button type="button" class="video-studio__primary" :disabled="componentLoading || !componentForm.title.trim() || (componentType === voiceComponentType && !componentForm.file)" @click="saveComponent">Salvar</button>
@@ -3013,7 +3106,7 @@ onBeforeUnmount(() => {
             <div v-for="item in matchingComponents" :key="item.id" class="video-studio__inventory-item">
               <video v-if="componentVideo(item)" :src="componentPosters.get(item.file)" class="video-studio__component-thumb" muted playsinline preload="metadata" :aria-label="item.title" />
               <img v-else-if="item.type !== voiceComponentType && componentPosters.has(item.file)" :src="componentPosters.get(item.file)" class="video-studio__component-thumb" alt="" loading="lazy" /><q-icon v-else :name="item.type === voiceComponentType ? 'mdi-waveform' : 'mdi-image-text'" size="23px" />
-              <span><strong>{{ item.title }}</strong><small>{{ item.prompt }}</small><small v-if="item.voiceId">{{ voiceComponents.find(voice => voice.id === item.voiceId)?.title }}</small></span>
+              <span><strong>{{ item.title }}</strong><small>{{ filesForComponent(item).length }} anexo(s)</small><small>{{ item.prompt }}</small><small v-if="item.voiceId">{{ voiceComponents.find(voice => voice.id === item.voiceId)?.title }}</small></span>
               <button type="button" class="video-studio__secondary" @click="useComponent(item)">{{ remakeMode && isRemakeReference(item) ? 'Usar em Refazer vídeos' : 'Usar' }}</button>
               <button type="button" class="video-studio__secondary" @click="useComponent(item, true)">Gerar variação</button>
               <button type="button" class="video-studio__icon" :aria-label="`Editar ${item.title}`" @click="editComponent(item)"><q-icon name="mdi-pencil-outline" /></button>

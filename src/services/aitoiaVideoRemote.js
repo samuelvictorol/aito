@@ -1,3 +1,4 @@
+import { commonVideoType } from './aitoiaVideoCompatibility.js'
 const MAX_CLIP_BYTES = 60 * 1024 * 1024
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
 const IMAGE_REFERENCE_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
@@ -11,12 +12,7 @@ export function safeVideoUrl(value) {
 export function checkVideoReference(file) {
   if (!file || !Number.isSafeInteger(file.size) || file.size < 1) throw new Error('O arquivo de vídeo está vazio.')
   if (file.size > MAX_CLIP_BYTES) throw new Error('O vídeo excede o limite de 60 MB.')
-  const type = String(file.type || '').toLowerCase().split(';')[0].trim()
-  const extension = /\.mp4$/i.test(file.name || '')
-  if (type !== 'video/mp4' && !(extension && ['', 'application/octet-stream', 'application/mp4', 'video/x-mp4', 'video/quicktime', 'video/x-m4v'].includes(type))) {
-    throw new Error('O vídeo-base precisa estar no formato MP4.')
-  }
-  return 'video/mp4'
+  return commonVideoType(file)
 }
 
 export function normalizeVideoReference(file) {

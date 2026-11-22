@@ -8,6 +8,7 @@ import { api as publicApi } from 'boot/axios'
 import AitoIAModeSwitch from 'components/AitoIAModeSwitch.vue'
 import AitoStudioProjectPicker from 'components/AitoStudioProjectPicker.vue'
 import AitoIAThemeToggle from 'components/AitoIAThemeToggle.vue'
+import AitoComponentPrompt from 'components/AitoComponentPrompt.vue'
 import { aitoTokenCost, aitoTokens, useAitoIA } from 'src/composables/useAitoIA'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { useAitoStudioProjects } from 'src/composables/useAitoStudioProjects'
@@ -16,6 +17,8 @@ import { useStudioDrawerAutoOpen } from 'src/composables/useStudioDrawerAutoOpen
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { accessMarketingKit, exportMarketingImage, loadMarketingReferenceUrl, marketingFormats, prepareMarketingReference, readMarketingImage } from 'src/services/aitoiaMarketingLocal'
 import { exportMarketingProject, readStudioProject } from 'src/services/aitoiaStudioArchive'
+import { filesForComponent, normalizeComponent, MAX_COMPONENT_FILES } from 'src/services/aitoiaComponentReferences'
+import { visualComponentFile } from 'src/services/aitoiaComponentMedia'
 import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
@@ -48,10 +51,12 @@ const kitLoading = ref(false)
 const componentDialog = ref(false)
 const componentLabel = ref('')
 const componentText = ref('')
-const componentFile = shallowRef(null)
+const componentFiles = shallowRef([])
+const componentEditingId = ref('')
 const componentUrl = ref('')
 const componentOrigin = ref('upload')
-const componentPreview = shallowRef(null)
+const componentPreview = shallowRef([])
+const componentLightbox = shallowRef(null)
 const componentPreviewBusy = ref(false)
 const componentImageError = ref('')
 const kitBusy = ref(false)
@@ -89,7 +94,11 @@ const maxComponents = computed(() => catalog.value?.maxComponents || 6)
 const maxPaletteColors = computed(() => catalog.value?.maxPaletteColors || 10)
 const availableKit = computed(() => [...kit.value, ...projectKit.value])
 const activeKit = computed(() => availableKit.value.filter(item => selectedKit.value.includes(item.id)))
-const referenceCount = computed(() => references.value.length + activeKit.value.filter(item => item.blob).length)
+const componentReferences = computed(() => activeKit.value.flatMap(item => filesForComponent(item)))
+const referenceCount = computed(() => references.value.length + componentReferences.value.length)
+const componentSources = computed(() => componentOrigin.value === 'url'
+  ? componentUrl.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean) : componentFiles.value || [])
+const componentSourceReady = computed(() => !componentSources.value.length || componentPreview.value.length === componentSources.value.length)
 const locked = computed(() => busy.value || uploading.value || !!quote.value)
 const output = computed(() => images.value.find(image => image.id === imageId.value) || null)
 
@@ -97,16 +106,22 @@ useAitoWorkGuard(busy, () => { blockedExit.value = true })
 watch(busy, active => { if (!active) blockedExit.value = false })
 
 function localAsset(item) { return { ...item, url: item.blob ? URL.createObjectURL(item.blob) : '' } }
-function disposeAsset(item) { if (item?.url) URL.revokeObjectURL(item.url) }
+function componentAsset(item) {
+  const normalized = normalizeComponent({ ...item, title: item.label || item.title, file: item.file || item.blob })
+  const previews = normalized.files.map(blob => ({ blob, url: URL.createObjectURL(blob) }))
+  return { ...normalized, label: normalized.title, prompt: item.text || '', type: 'Marca', blob: normalized.file,
+    previews, url: previews[0]?.url || '' }
+}
+function disposeAsset(item) { new Set([item?.url, ...(item?.previews || []).map(preview => preview.url)]).forEach(url => { if (url) URL.revokeObjectURL(url) }) }
 function resetComponentPreview() {
   previewRequest?.abort()
   previewRequest = null
   componentPreviewBusy.value = false
   componentImageError.value = ''
-  disposeAsset(componentPreview.value)
-  componentPreview.value = null
+  componentPreview.value.forEach(disposeAsset)
+  componentPreview.value = []
 }
-watch([componentFile, componentOrigin, componentUrl], resetComponentPreview, { flush: 'sync' })
+watch([componentFiles, componentOrigin, componentUrl], resetComponentPreview, { flush: 'sync' })
 watch(componentDialog, open => { if (!open) resetComponentPreview() })
 onBeforeUnmount(resetComponentPreview)
 
@@ -117,14 +132,27 @@ async function previewComponent() {
   previewRequest = controller
   componentPreviewBusy.value = true
   try {
-    const blob = componentOrigin.value === 'url'
-      ? await loadMarketingReferenceUrl(componentUrl.value.trim(), maxReferenceBytes.value, controller.signal)
-      : await prepareMarketingReference(componentFile.value, maxReferenceBytes.value)
-    if (controller.signal.aborted || owner !== accountId.value) return
-    componentPreview.value = localAsset({ blob })
+    const sources = [...componentSources.value]
+    if (!sources.length || sources.length > MAX_COMPONENT_FILES) throw Error(`Adicione de 1 a ${MAX_COMPONENT_FILES} imagens ou GIFs por componente.`)
+    const files = []
+    for (const source of sources) {
+      const blob = componentOrigin.value === 'url'
+        ? await loadMarketingReferenceUrl(source, maxReferenceBytes.value, controller.signal)
+        : await prepareComponentMedia(source)
+      if (controller.signal.aborted || owner !== accountId.value) return
+      files.push(blob)
+    }
+    componentPreview.value = files.map(blob => localAsset({ blob }))
   } catch (cause) {
     if (!controller.signal.aborted) componentImageError.value = cause.message || 'Não foi possível abrir a imagem.'
   } finally { if (previewRequest === controller) componentPreviewBusy.value = false }
+}
+async function prepareComponentMedia(file) {
+  if (file?.type !== 'image/gif') return prepareMarketingReference(file, maxReferenceBytes.value)
+  if (!file.size || file.size > 12 * 1024 * 1024) throw Error('Use um GIF de até 12 MB.')
+  const image = await createImageBitmap(file)
+  image.close()
+  return file
 }
 function clearProjectMedia() { [...images.value, ...references.value, ...projectKit.value].forEach(disposeAsset) }
 function resetKit() { kit.value.forEach(disposeAsset); kit.value = [] }
@@ -141,13 +169,13 @@ watch(accountId, async (id, previous) => {
   if (!id) return
   try {
     const saved = await accessMarketingKit(id, 'read')
-    if (epoch === kitEpoch) kit.value = (saved || []).map(localAsset)
+    if (epoch === kitEpoch) kit.value = (saved || []).map(componentAsset)
   } catch {
     if (epoch === kitEpoch) kitError.value = 'Não foi possível abrir os componentes salvos neste navegador.'
   } finally { if (epoch === kitEpoch) kitLoading.value = false }
 })
 
-const stripUrl = ({ url: _url, ...asset }) => asset
+const stripUrl = ({ url: _url, previews: _previews, ...asset }) => asset
 const project = useAitoStudioProjects({
   studio: 'marketing', accountId, localOnly: adminMode, busy: locked, defaultName: 'Projeto de marketing',
   watch: [projectTitle, formatId, prompt, references, selectedKit, projectKit, palette, images, imageId],
@@ -161,7 +189,7 @@ const project = useAitoStudioProjects({
     prompt.value = saved?.prompt || ''
     references.value = (saved?.references || []).map(localAsset)
     selectedKit.value = saved?.selectedKit || []
-    projectKit.value = (saved?.projectKit || []).map(localAsset)
+    projectKit.value = (saved?.projectKit || []).map(componentAsset)
     paletteDialog.value = false
     palette.value = Array.isArray(saved?.palette) ? saved.palette.filter(isPaletteColor).slice(0, maxPaletteColors.value) : []
     images.value = (saved?.images || []).map(localAsset)
@@ -260,15 +288,16 @@ async function addReferences(files) {
   const epoch = kitEpoch
   try {
     const room = Math.max(0, maxReferences.value - referenceCount.value)
-    if (files.length > room) error.value = 'O limite é de seis referências, incluindo as imagens da marca selecionadas.'
-    for (const file of files.slice(0, room)) {
+    if (files.length > room) throw Error(`O limite é de ${maxReferences.value} referências, incluindo todos os anexos dos componentes selecionados. Remova imagens ou escolha menos arquivos.`)
+    for (const file of files) {
       try {
-        const blob = await prepareMarketingReference(file, maxReferenceBytes.value)
+        const blob = await prepareMarketingReference(await visualComponentFile(file), maxReferenceBytes.value)
         if (epoch !== kitEpoch) return
         references.value = [...references.value, localAsset({ id: crypto.randomUUID(), label: file.name || 'Imagem', blob })]
       } catch (cause) { error.value = cause.message || 'Não foi possível abrir a referência.' }
     }
-  } finally { uploading.value = false }
+  } catch (cause) { error.value = cause.message || 'Não foi possível adicionar as referências.' }
+  finally { uploading.value = false }
 }
 
 function pickReferences(event) {
@@ -294,12 +323,22 @@ function toggleKit(item) {
     error.value = 'Desmarque um componente antes de selecionar outro.'
     return
   }
-  if (!selected && item.blob && referenceCount.value >= maxReferences.value) {
-    error.value = 'Remova uma referência antes de adicionar esta imagem da marca.'
+  if (!selected && referenceCount.value + filesForComponent(item).length > maxReferences.value) {
+    error.value = `Este componente tem ${filesForComponent(item).length} anexos. O limite da geração é de ${maxReferences.value} imagens no total; remova referências ou ajuste os anexos do componente.`
     return
   }
   error.value = ''
   selectedKit.value = selected ? selectedKit.value.filter(id => id !== item.id) : [...selectedKit.value, item.id]
+}
+function selectMentionedComponents(ids) {
+  const next = availableKit.value.filter(item => ids.includes(item.id))
+  const count = references.value.length + next.reduce((total, item) => total + filesForComponent(item).length, 0)
+  selectedKit.value = [...ids]
+  if (next.length > maxComponents.value || count > maxReferences.value) {
+    error.value = `Selecione até ${maxComponents.value} componentes e ${maxReferences.value} imagens no total. Todos os anexos de cada objeto são enviados juntos.`
+    return
+  }
+  error.value = ''
 }
 
 async function saveKit(next) {
@@ -308,7 +347,7 @@ async function saveKit(next) {
   kitBusy.value = true
   kitError.value = ''
   try {
-    await accessMarketingKit(id, 'write', next.map(({ url: _url, ...item }) => item))
+    await accessMarketingKit(id, 'write', next.map(stripUrl))
     if (accountId.value !== id) return false
     kit.value = next
     return true
@@ -318,27 +357,38 @@ async function saveKit(next) {
   } finally { kitBusy.value = false }
 }
 
-function openComponent() {
-  componentLabel.value = ''
-  componentText.value = ''
-  componentFile.value = null
+function openComponent(item = null) {
+  componentEditingId.value = item?.id || ''
+  componentLabel.value = item?.label || ''
+  componentText.value = item?.text || ''
+  componentFiles.value = item ? filesForComponent(item) : []
   componentOrigin.value = 'upload'
   componentUrl.value = ''
+  componentPreview.value = componentFiles.value.map(blob => localAsset({ blob }))
   componentDialog.value = true
 }
 
 async function addComponent() {
-  const hasSource = componentOrigin.value === 'url' ? componentUrl.value.trim() : componentFile.value
-  if (!componentLabel.value.trim() || (hasSource && !componentPreview.value) ||
-    (!componentText.value.trim() && !componentPreview.value) || kit.value.length >= maxComponents.value) return
+  if (!componentLabel.value.trim() || !componentSourceReady.value || componentPreview.value.length > MAX_COMPONENT_FILES ||
+    (!componentText.value.trim() && !componentPreview.value.length) || (!componentEditingId.value && kit.value.length >= maxComponents.value)) return
   kitBusy.value = true
   kitError.value = ''
   const id = accountId.value
   try {
-    const blob = componentPreview.value?.blob || null
     if (id !== accountId.value) return
-    const item = localAsset({ id: crypto.randomUUID(), label: componentLabel.value.trim(), text: componentText.value.trim(), blob })
-    if (await saveKit([...kit.value, item])) componentDialog.value = false
+    const item = componentAsset({ id: componentEditingId.value || crypto.randomUUID(), label: componentLabel.value.trim(),
+      text: componentText.value.trim(), files: componentPreview.value.map(asset => asset.blob) })
+    const previous = availableKit.value.find(entry => entry.id === componentEditingId.value)
+    if (selectedKit.value.includes(item.id) && referenceCount.value - filesForComponent(previous).length + item.files.length > maxReferences.value) {
+      disposeAsset(item)
+      throw Error(`Este componente está em uso. Remova referências ou desmarque-o antes de ultrapassar ${maxReferences.value} imagens na geração.`)
+    }
+    let saved
+    if (previous && projectKit.value.includes(previous)) {
+      projectKit.value = projectKit.value.map(entry => entry.id === item.id ? item : entry)
+      saved = true
+    } else saved = await saveKit(previous ? kit.value.map(entry => entry.id === item.id ? item : entry) : [...kit.value, item])
+    if (saved) { disposeAsset(previous); componentDialog.value = false }
     else disposeAsset(item)
   } catch (cause) { kitError.value = cause.message || 'Não foi possível preparar o componente.' }
   finally { kitBusy.value = false }
@@ -354,6 +404,10 @@ async function removeComponent(item) {
 async function quoteGeneration() {
   if (!signedIn.value) { showAuth(); return }
   if (locked.value || projectLoading.value || !prompt.value.trim() || !catalog.value?.available || !accountId.value) return
+  if (activeKit.value.length > maxComponents.value || referenceCount.value > maxReferences.value) {
+    error.value = `A geração aceita até ${maxComponents.value} componentes e ${maxReferences.value} imagens no total. Ajuste a seleção para enviar todos os anexos.`
+    return
+  }
   busy.value = true
   error.value = ''
   const access = wallet.access()
@@ -373,15 +427,17 @@ async function generate() {
   if (!confirmed || busy.value) return
   const access = wallet.access()
   const imageFormat = format.value
-  const selectedReferences = [...references.value, ...activeKit.value.filter(item => item.blob)]
-  const components = activeKit.value.map(item => item.text).filter(Boolean)
+  const selectedReferences = [...references.value.map(item => item.blob), ...componentReferences.value]
+  const components = activeKit.value.map(item => item.text || item.label)
   const controller = new AbortController()
   operation = controller
   quote.value = null
   busy.value = true
   error.value = ''
   try {
-    const encoded = await Promise.all(selectedReferences.map(item => readMarketingImage(item.blob)))
+    if (selectedReferences.length !== confirmed.referenceCount || selectedReferences.length > maxReferences.value) throw Error('As referências mudaram. Confira a seleção antes de gerar.')
+    const encoded = await Promise.all(selectedReferences.map(async file => readMarketingImage(
+      await prepareMarketingReference(await visualComponentFile(file), maxReferenceBytes.value))))
     const { data } = await access.post('/aitoia/marketing/generations', {
       walletId: confirmed.walletId, format: confirmed.format, maxBilledUsdCents: confirmed.maxBilledUsdCents,
       prompt: prompt.value.trim(), references: encoded, components, palette: palette.value,
@@ -470,8 +526,9 @@ onBeforeUnmount(() => {
           <ul v-if="availableKit.length" class="marketing__kit">
             <li v-for="item in availableKit" :key="item.id">
               <button type="button" :aria-pressed="selectedKit.includes(item.id)" :disabled="locked || kitBusy" @click="toggleKit(item)">
-                <img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-text-box-outline" size="24px" /><span :title="item.label">{{ item.label }}</span><q-icon v-if="selectedKit.includes(item.id)" name="mdi-check-circle" size="17px" />
+                <img v-if="item.url" :src="item.url" alt="" /><q-icon v-else name="mdi-text-box-outline" size="24px" /><span :title="item.label">{{ item.label }}</span><small v-if="filesForComponent(item).length">{{ filesForComponent(item).length }} ref.</small><q-icon v-if="selectedKit.includes(item.id)" name="mdi-check-circle" size="17px" />
               </button>
+              <button type="button" :disabled="locked || kitBusy" :aria-label="`Editar componente ${item.label}`" @click="openComponent(item)"><q-icon name="mdi-pencil-outline" size="19px" /></button>
               <button type="button" :disabled="locked || kitBusy" :aria-label="`Excluir componente ${item.label}`" @click="removeComponent(item)"><q-icon name="mdi-delete-outline" size="19px" /></button>
             </li>
           </ul>
@@ -507,21 +564,28 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </fieldset>
-            <q-input v-model="prompt" :dark="isDark" outlined autogrow type="textarea" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="20000" :disable="locked" />
+            <AitoComponentPrompt v-model="prompt" :component-ids="selectedKit" :components="availableKit" label="Descreva a imagem" placeholder="Ex. anúncio de lançamento com fundo claro, destaque para o produto e espaço para o título." :maxlength="20000" :disabled="locked" @update:component-ids="selectMentionedComponents" />
 
             <section aria-labelledby="marketing-references">
               <div class="marketing__section-title"><h2 id="marketing-references">Referências</h2><span>{{ referenceCount }}/{{ maxReferences }}</span></div>
               <label class="marketing__drop" @dragover.prevent @drop.prevent="addReferences(Array.from($event.dataTransfer.files))">
-                <input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="locked || referenceCount >= maxReferences" @change="pickReferences" />
+                <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" :disabled="locked || referenceCount >= maxReferences" @change="pickReferences" />
                 <q-icon name="mdi-image-plus-outline" size="24px" /><span>Adicione, arraste ou cole imagens</span>
               </label>
               <ul v-if="references.length" class="marketing__references">
                 <li v-for="item in references" :key="item.id"><img :src="item.url" alt="" /><span>{{ item.label }}</span><button type="button" :disabled="locked" :aria-label="`Remover ${item.label}`" @click="removeReference(item)"><q-icon name="mdi-close" /></button></li>
               </ul>
+              <div v-if="activeKit.length" class="marketing__selected-components">
+                <div v-for="item in activeKit" :key="item.id" class="marketing__selected-component">
+                  <strong>{{ item.label }}</strong><span>{{ filesForComponent(item).length }} referência{{ filesForComponent(item).length === 1 ? '' : 's' }}</span>
+                  <button v-for="(preview, index) in item.previews" :key="index" type="button" :aria-label="`Conferir ${item.label}, referência ${index + 1}`" @click="componentLightbox = { ...preview, label: filesForComponent(item)[index]?.name || item.label }"><img :src="preview.url" alt="" /></button>
+                </div>
+              </div>
+              <small v-if="activeKit.some(item => filesForComponent(item).some(file => file.type === 'image/gif'))" class="marketing__reference-note">GIFs ficam animados na biblioteca; a geração de imagem usa o primeiro quadro como referência.</small>
             </section>
 
             <q-btn v-if="!drawerOpen" flat no-caps icon="mdi-palette-outline" class="marketing__brand-link" label="Paleta e kit de marca" @click="showWorkspace" />
-            <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || projectLoading || catalogLoading || (signedIn && (!catalog?.available || !prompt.trim()))" />
+            <q-btn unelevated no-caps class="marketing__primary" type="submit" icon="mdi-auto-fix" label="Gerar imagem" :loading="busy" :disable="locked || projectLoading || catalogLoading || referenceCount > maxReferences || activeKit.length > maxComponents || (signedIn && (!catalog?.available || !prompt.trim()))" />
           </q-form>
 
           <section class="marketing__panel marketing__preview" aria-labelledby="marketing-preview" :aria-busy="busy">
@@ -563,21 +627,23 @@ onBeforeUnmount(() => {
 
     <q-dialog v-model="componentDialog" persistent>
       <q-card :dark="isDark" class="aito-ai-theme marketing__dialog">
-        <h2>Novo componente de marca</h2>
+        <h2>{{ componentEditingId ? 'Editar componente de marca' : 'Novo componente de marca' }}</h2>
         <q-form class="marketing__form" @submit.prevent="addComponent">
           <q-input v-model="componentLabel" :dark="isDark" outlined label="Nome" placeholder="Ex. logo principal" maxlength="60" :disable="kitBusy" />
           <q-input v-model="componentText" :dark="isDark" outlined type="textarea" autogrow label="Texto reutilizável" :maxlength="catalog?.maxComponentCharacters || 500" :disable="kitBusy" />
           <q-btn-toggle v-model="componentOrigin" no-caps unelevated spread :color="isDark ? 'grey-9' : 'teal-1'" :text-color="isDark ? 'white' : 'teal-10'" toggle-color="teal-8" toggle-text-color="white" :options="[{ label: 'Upload', value: 'upload' }, { label: 'Link da imagem', value: 'url' }]" />
-          <q-file v-if="componentOrigin === 'upload'" v-model="componentFile" :dark="isDark" outlined clearable label="Imagem da marca" accept="image/jpeg,image/png,image/webp" :disable="kitBusy" />
-          <q-input v-else v-model.trim="componentUrl" :dark="isDark" outlined clearable label="Endereço HTTPS da imagem" :disable="kitBusy" />
-          <q-btn v-if="componentOrigin === 'url' ? componentUrl : componentFile" flat no-caps icon="mdi-image-search-outline" label="Conferir imagem" :loading="componentPreviewBusy" :disable="kitBusy" @click="previewComponent" />
-          <img v-if="componentPreview" :src="componentPreview.url" class="marketing__component-preview" alt="Prévia do componente" />
+          <q-file v-if="componentOrigin === 'upload'" v-model="componentFiles" :dark="isDark" outlined clearable multiple append use-chips counter :max-files="MAX_COMPONENT_FILES" label="Imagens e GIFs do mesmo objeto" accept="image/jpeg,image/png,image/webp,image/gif" :disable="kitBusy" @rejected="componentImageError = `Adicione até ${MAX_COMPONENT_FILES} imagens ou GIFs por objeto.`" />
+          <q-input v-else v-model="componentUrl" :dark="isDark" outlined clearable type="textarea" autogrow label="Links HTTPS das imagens, um por linha" :disable="kitBusy" />
+          <small class="marketing__reference-note">Até {{ MAX_COMPONENT_FILES }} referências por objeto. Os arquivos recebem o nome do componente. Cada geração aceita {{ maxReferences }} imagens no total.</small>
+          <q-btn v-if="componentSources.length" flat no-caps icon="mdi-image-search-outline" label="Conferir referências" :loading="componentPreviewBusy" :disable="kitBusy" @click="previewComponent" />
+          <div v-if="componentPreview.length" class="marketing__component-previews"><button v-for="(preview, index) in componentPreview" :key="index" type="button" :aria-label="`Ampliar referência ${index + 1}`" @click="componentLightbox = { ...preview, label: `${componentLabel || 'Componente'} · ${index + 1}` }"><img :src="preview.url" alt="" /><span>{{ index + 1 }}</span></button></div>
           <p v-if="componentImageError" role="alert">{{ componentImageError }}</p>
           <p v-if="kitError" role="alert">{{ kitError }}</p>
-          <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Voltar" :disable="kitBusy" /><q-btn unelevated no-caps class="marketing__primary" type="submit" label="Salvar no navegador" :loading="kitBusy" :disable="!componentLabel.trim() || (!(componentText.trim() || componentPreview)) || Boolean((componentOrigin === 'url' ? componentUrl : componentFile) && !componentPreview)" /></div>
+          <div class="marketing__actions"><q-btn v-close-popup flat no-caps label="Voltar" :disable="kitBusy" /><q-btn unelevated no-caps class="marketing__primary" type="submit" label="Salvar no navegador" :loading="kitBusy" :disable="!componentLabel.trim() || !(componentText.trim() || componentPreview.length) || !componentSourceReady || componentPreviewBusy" /></div>
         </q-form>
       </q-card>
     </q-dialog>
+    <q-dialog :model-value="!!componentLightbox" @update:model-value="value => { if (!value) componentLightbox = null }"><q-card v-if="componentLightbox" :dark="isDark" class="aito-ai-theme marketing__lightbox"><header><strong>{{ componentLightbox.label }}</strong><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar referência" /></header><img :src="componentLightbox.url" :alt="componentLightbox.label" /></q-card></q-dialog>
     <AuthDialog v-if="authOpen" v-model="authOpen" :initial-mode="authMode" :return-path="path" :show-project-login="false" @authenticated="wallet.syncSession()" />
     <AitoIAWallet v-if="walletOpen" v-model="walletOpen" :state="wallet" />
   </q-layout>
@@ -612,7 +678,20 @@ onBeforeUnmount(() => {
 .marketing__drawer-footer .q-btn { min-height: 44px; background: var(--aito-ai-panel); }
 .marketing__add-component { min-height: 44px; color: var(--aito-ai-accent); }
 .marketing__brand-link { justify-self: start; min-height: 44px; color: var(--aito-ai-accent); }
-.marketing__component-preview { width: 100%; max-height: 160px; object-fit: contain; border-radius: 8px; background: var(--aito-ai-bg); }
+.marketing__component-previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+.marketing__component-previews > button { position: relative; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--aito-ai-line); border-radius: 9px; color: var(--aito-ai-text); background: var(--aito-ai-bg); cursor: zoom-in; }
+.marketing__component-previews img { display: block; width: 100%; height: 90px; object-fit: contain; }
+.marketing__component-previews span { position: absolute; right: 4px; bottom: 4px; padding: 1px 6px; border-radius: 4px; color: var(--aito-ai-on-accent); background: var(--aito-ai-accent-strong); font-size: .68rem; font-weight: 700; }
+.marketing__reference-note { display: block; font-size: .72rem; line-height: 1.5; color: var(--aito-ai-muted); }
+.marketing__selected-components { display: grid; gap: 7px; margin-top: 10px; }
+.marketing__selected-component { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 9px; border: 1px solid var(--aito-ai-line); border-radius: 10px; background: var(--aito-ai-accent-soft); }
+.marketing__selected-component > strong { font-size: .79rem; overflow-wrap: anywhere; }
+.marketing__selected-component > span { margin-right: auto; font-size: .69rem; color: var(--aito-ai-muted); }
+.marketing__selected-component > button { flex: 0 0 45px; height: 45px; padding: 0; overflow: hidden; border: 1px solid var(--aito-ai-line); border-radius: 6px; background: var(--aito-ai-bg); cursor: zoom-in; }
+.marketing__selected-component img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.marketing__lightbox { width: min(850px, 95vw); max-width: 95vw; padding: 14px; color: var(--aito-ai-text); background: var(--aito-ai-surface); }
+.marketing__lightbox > header { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 10px; overflow-wrap: anywhere; }
+.marketing__lightbox > img { display: block; width: 100%; height: min(70vh, 720px); object-fit: contain; background: var(--aito-ai-bg); }
 .marketing__form, .marketing__preview { display: grid; gap: 14px; }
 .marketing fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 .marketing h2, .marketing legend, .marketing__dialog h2 { margin: 0; color: var(--aito-ai-text); font-size: 1rem; font-weight: 730; line-height: 1.4; }

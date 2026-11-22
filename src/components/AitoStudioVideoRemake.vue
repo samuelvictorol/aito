@@ -3,12 +3,16 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, watch }
 import AitoVideoProgress from './AitoVideoProgress.vue'
 import AitoVideoModelSelect from './AitoVideoModelSelect.vue'
 import AitoRemakeSubtitleRegion from './AitoRemakeSubtitleRegion.vue'
+import AitoComponentPrompt from './AitoComponentPrompt.vue'
 import { aitoTokens } from 'src/composables/useAitoIA'
 import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 import { downloadAitoIAFile } from 'src/services/aitoiaArchive'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
+import { filesForComponent, componentReferenceEntries } from 'src/services/aitoiaComponentReferences'
+import { visualComponentFile } from 'src/services/aitoiaComponentMedia'
+import { prepareCompatibleVideo } from 'src/services/aitoiaVideoCompatibility'
 import { checkImageReference, putImageReference, putVideoReference, readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { burnRemakeCaptions, maxRemakeInputBytes, maxRemakeSceneSeconds, prepareRemakeVideoReference,
   remakeInputAccept, remakeSplitDurations, removeRemakeSourceSubtitles, splitRemakeVideo } from 'src/services/aitoiaVideoRemakeSplit'
@@ -39,6 +43,7 @@ const maxReferences = 6
 const selectedFile = shallowRef(null)
 const subtitleScene = shallowRef(null)
 const referencePreview = shallowRef(null)
+const previewFiles = shallowRef([])
 const splitDuration = ref(5)
 const input = ref(null)
 const inputError = ref('')
@@ -65,7 +70,24 @@ const results = computed(() => scenes.value.filter(scene => scene.result).map(sc
 const formatSeconds = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 })
 const seconds = value => formatSeconds.format(Math.max(0, Number(value) || 0))
 const selectedReferences = ids => ids.map(id => props.references.find(item => item.id === id)).filter(Boolean)
-const referencesFor = scene => selectedReferences(scene.referenceIds ?? referenceIds.value)
+const referenceIdsFor = scene => [...new Set([...referenceIds.value, ...(scene.referenceIds || [])])]
+const referencesFor = scene => selectedReferences(referenceIdsFor(scene))
+const componentImageUrl = component => filesForComponent(component)[0]?.type.startsWith('image/') ? component.url : ''
+const componentIcon = component => {
+  const type = filesForComponent(component)[0]?.type || ''
+  return type.startsWith('video/') ? 'mdi-file-video-outline' : type.startsWith('audio/') ? 'mdi-file-music-outline'
+    : type.startsWith('image/') ? 'mdi-image-outline' : 'mdi-shape-outline'
+}
+function clearReferencePreview() {
+  for (const item of previewFiles.value) if (item.local) URL.revokeObjectURL(item.url)
+  previewFiles.value = []
+}
+watch(referencePreview, component => {
+  clearReferencePreview()
+  if (!component) return
+  previewFiles.value = filesForComponent(component).map(file => ({ name: file.name, type: file.type, url: URL.createObjectURL(file), local: true }))
+  if (!previewFiles.value.length && component.url) previewFiles.value = [{ name: component.title, type: 'image/', url: component.url }]
+})
 const modelsFor = scene => props.models.filter(model => scene.duration <= (model.sourceSecondsMax ?? remakeSplitDurations[0]))
 const modelFor = scene => {
   const models = modelsFor(scene)
@@ -86,10 +108,6 @@ function addProjectReference(id) {
   if (locked.value || !props.projectScope || !props.references.some(item => item.id === id)) return false
   const selected = selectedReferences(referenceIds.value).map(item => item.id)
   if (selected.includes(id)) return true
-  if (selected.length >= maxReferences) {
-    inputError.value = `Escolha até ${maxReferences} personagens ou cenários. Remova uma referência para adicionar outra.`
-    return false
-  }
   referenceIds.value = [...selected, id]
   inputError.value = ''
   return true
@@ -247,7 +265,7 @@ watch(removedGeneration, removed => {
 }, { flush: 'sync' })
 function rejectUpload(file) {
   if (!file?.size) return 'Selecione um vídeo válido.'
-  if (file.size > maxRemakeInputBytes) return 'O vídeo pode ter até 70 MB.'
+  if (file.size > Math.min(maxRemakeInputBytes, 60 * 1024 * 1024)) return 'O vídeo pode ter até 60 MB.'
   return ''
 }
 function chooseFile(file) {
@@ -307,8 +325,9 @@ function confirmSource() {
 }
 async function splitSource(file, duration) {
   if (scenes.value.some(scene => scene.job || scene.submitted)) return
-  await execute('split', null, async signal => {
-    const clips = await splitRemakeVideo(file, { splitDuration: duration, signal, onProgress: splittingProgress })
+  await execute('split', null, async (signal, { post }) => {
+    const compatible = await prepareCompatibleVideo(file, { post, signal })
+    const clips = await splitRemakeVideo(compatible, { splitDuration: duration, signal, onProgress: splittingProgress })
     signal.throwIfAborted()
     releaseScenes(scenes.value)
     discardedJobs.value = [...discardedJobs.value, ...results.value.map(result => result.id)].slice(-300)
@@ -320,7 +339,10 @@ async function splitSource(file, duration) {
   })
 }
 async function planScene(scene) {
-  if (lockedScene(scene) || !scene.file || !scene.edit.trim() || !props.allowCredits()) return
+  if (lockedScene(scene) || !scene.file || !scene.edit.trim()) return
+  try { sceneReferences(scene) }
+  catch (cause) { scene.error = problem(cause); return }
+  if (!props.allowCredits()) return
   const offer = scene.planQuote
   if (!offer) return execute('plan-price', scene, async (signal, { get }) => {
     scene.planQuote = await quoteRemakePlan({ apiGet: get, signal })
@@ -340,13 +362,26 @@ async function planScene(scene) {
     if (prepared.incomplete) scene.error = prepared.message || 'A análise consumiu créditos, mas não retornou um roteiro. Você pode escrever a direção ou tentar novamente.'
   })
 }
-function promptFor(scene, references, files) {
+function promptFor(references, entries) {
   const context = references.map(item => {
-    const image = files.indexOf(item.file)
-    const label = item.type === 'Cenários' ? 'Cenário' : 'Personagem'
-    return `${image >= 0 ? `@Image${image + 1} — ` : ''}${label} ${item.title.slice(0, 60)}: ${(item.prompt || '').slice(0, 78)}`
+    const images = entries.flatMap((entry, index) => entry.componentId === item.id ? [`@Image${index + 1}`] : [])
+    return `@${item.title} (${item.type || 'Componente'})${images.length ? ` — ${images.join(', ')}` : ''}${item.prompt ? `: ${item.prompt}` : ''}`
   }).join('\n')
-  return ['Preserve o ritmo, as ações e o enquadramento do trecho original, exceto pelas mudanças solicitadas.', context].filter(Boolean).join('\n\n')
+  const prompt = ['Preserve o ritmo, as ações e o enquadramento do trecho original, exceto pelas mudanças solicitadas.', context].filter(Boolean).join('\n\n')
+  if (prompt.length > 20000) throw new Error('As descrições dos componentes selecionados ultrapassam 20.000 caracteres. Reduza as descrições ou selecione menos componentes.')
+  return prompt
+}
+function sceneReferences(scene) {
+  const references = referencesFor(scene)
+  const entries = componentReferenceEntries(references)
+  if (entries.length > maxReferences) throw new Error(`Os componentes selecionados possuem ${entries.length} anexos. Esta geração aceita até ${maxReferences} referências visuais por cena. Remova componentes ou anexos antes de cotar.`)
+  for (const entry of entries) {
+    if (!/^(image|video)\//.test(entry.file.type)) throw new Error(`O anexo ${entry.file.name} do componente ${entry.title} não é uma referência visual. Use áudio em Locução ou selecione um componente de imagem, vídeo ou somente texto.`)
+  }
+  for (const value of [master.value, scene.edit, scene.plan, scene.dialogue]) {
+    if (String(value || '').length > 20000) throw new Error('Cada prompt ou campo de falas pode ter até 20.000 caracteres.')
+  }
+  return { references, entries, prompt: promptFor(references, entries) }
 }
 async function upload(post, file, type, put, signal, walletId) {
   const { data } = await post('/aitoia/video/references', { contentType: type, sizeBytes: file.size, walletId }, { signal })
@@ -358,15 +393,16 @@ async function quoteScene(scene) {
     const walletId = props.walletId
     const model = modelFor(scene).id
     const outputResolution = resolutionFor(scene)
-    const references = referencesFor(scene)
+    const { references, entries, prompt } = sceneReferences(scene)
     const intent = remakeSceneIntent(scene, references)
-    const files = [...new Set(references.map(item => item.file).filter(Boolean))].slice(0, maxReferences)
+    const files = []
+    for (const entry of entries) files.push(await visualComponentFile(entry.file, { post, signal }))
     const cleanSource = scene.subtitleRegion ? await removeRemakeSourceSubtitles(scene.file, scene.subtitleRegion, { signal }) : scene.file
     const referenceFile = await prepareRemakeVideoReference(cleanSource, { signal })
     const referenceToken = await upload(post, referenceFile, 'video/mp4', putVideoReference, signal, walletId)
     const imageReferenceTokens = []
     for (const file of files) imageReferenceTokens.push(await upload(post, file, checkImageReference(file), putImageReference, signal, walletId))
-    const body = { walletId, referenceToken, imageReferenceTokens, prompt: promptFor(scene, references, files),
+    const body = { walletId, referenceToken, imageReferenceTokens, prompt,
       master: master.value.trim(), scenePrompt: scene.edit.trim(), scenePlan: scene.plan.trim(),
       dialogue: scene.dialogue.trim(), sourceDuration: scene.duration,
       subtitles: intent.captions, removeOriginalSubtitles: intent.removeOriginalSubtitles, model, resolution: outputResolution }
@@ -605,6 +641,7 @@ onBeforeUnmount(() => {
   clearTimeout(queueTimer)
   queueRequest?.abort()
   controller?.abort()
+  clearReferencePreview()
   releaseScenes(scenes.value)
   emit('busy', false)
 })
@@ -623,7 +660,7 @@ onBeforeUnmount(() => {
         <button type="button" class="aito-remake__drop" :disabled="locked || !projectScope || scenes.some(scene => scene.job || scene.submitted)"
           @click="input?.click()" @dragover.prevent @drop.prevent="chooseFile($event.dataTransfer.files?.[0])">
           <q-icon name="mdi-file-video-outline" size="25px" />
-          <span><strong>{{ selectedFile?.name || 'Selecionar vídeo' }}</strong><small>MP4, MOV, WebM, MKV ou 3GP, até 70 MB</small></span>
+          <span><strong>{{ selectedFile?.name || 'Selecionar vídeo' }}</strong><small>MP4, MOV, WebM, MKV ou 3GP, até 60 MB</small></span>
         </button>
         <label class="aito-remake__quality">Duração dos cortes
           <select v-model="splitDuration" :disabled="locked || !projectScope || scenes.some(scene => scene.job || scene.submitted)">
@@ -638,7 +675,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-if="action?.kind === 'split'" class="aito-remake__progress" role="status">
         <q-linear-progress rounded :value="progress" :color="isDark ? 'grey-4' : 'teal-8'" aria-label="Divisão do vídeo" />
-        <span>Dividindo no navegador · {{ Math.round(progress * 100) }}%</span>
+        <span>{{ progress ? `Dividindo no navegador · ${Math.round(progress * 100)}%` : 'Preparando o vídeo para dividir…' }}</span>
         <q-btn flat no-caps label="Cancelar" @click="controller?.abort()" />
       </div>
       <p v-if="inputError" class="aito-remake__error" role="alert">{{ inputError }}</p>
@@ -650,20 +687,20 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="aito-remake__direction">
-        <label for="remake-master">Prompt master</label>
-        <textarea id="remake-master" v-model="master" rows="3" maxlength="20000" :disabled="locked"
+        <AitoComponentPrompt v-model="master" v-model:component-ids="referenceIds" :components="references"
+          input-id="remake-master" label="Prompt master" rows="3" maxlength="20000" :disabled="locked"
           placeholder="Ex.: Traduza as falas para português do Brasil, use a personagem Ana e mantenha os cortes." />
         <div class="aito-remake__defaults">
           <q-select :model-value="referenceIds" :options="references" option-value="id" option-label="title" outlined :dark="isDark" dense
-            multiple emit-value map-options use-chips :max-values="maxReferences" :disable="locked" label="Personagens e cenários do projeto"
+            multiple emit-value map-options use-chips :disable="locked" label="Componentes do projeto"
             @update:model-value="value => referenceIds = value || []">
             <template #option="scope">
               <q-item v-bind="scope.itemProps">
-                <q-item-section avatar><q-avatar square size="33px"><img v-if="scope.opt.url" :src="scope.opt.url" alt="" /><q-icon v-else :name="scope.opt.type === 'Cenários' ? 'mdi-image-outline' : 'mdi-account-outline'" /></q-avatar></q-item-section>
+                <q-item-section avatar><q-avatar square size="33px"><img v-if="componentImageUrl(scope.opt)" :src="componentImageUrl(scope.opt)" alt="" /><q-icon v-else :name="componentIcon(scope.opt)" /></q-avatar></q-item-section>
                 <q-item-section><q-item-label>{{ scope.opt.title }}</q-item-label><q-item-label caption>{{ scope.opt.type }}</q-item-label></q-item-section>
               </q-item>
             </template>
-            <template #no-option><q-item><q-item-section>Adicione personagens ou cenários em Projetos e componentes.</q-item-section></q-item></template>
+            <template #no-option><q-item><q-item-section>Adicione um objeto em Projetos e componentes.</q-item-section></q-item></template>
           </q-select>
           <label class="aito-remake__quality">Resolução preferida
             <select v-model="resolution" :disabled="locked">
@@ -675,9 +712,8 @@ onBeforeUnmount(() => {
         </div>
         <ul v-if="referenceIds.length" class="aito-remake__references" aria-label="Referências do vídeo">
           <li v-for="item in selectedReferences(referenceIds)" :key="item.id">
-            <button v-if="item.url" type="button" class="aito-remake__reference" :aria-label="`Ampliar imagem de ${item.title}`"
-              @click="referencePreview = item"><img :src="item.url" alt="" />{{ item.title }}</button>
-            <span v-else class="aito-remake__reference"><q-icon name="mdi-image-outline" size="22px" />{{ item.title }}</span>
+            <button type="button" class="aito-remake__reference" :aria-label="`Ver componente ${item.title}`"
+              @click="referencePreview = item"><img v-if="componentImageUrl(item)" :src="componentImageUrl(item)" alt="" /><q-icon v-else :name="componentIcon(item)" size="22px" />{{ item.title }}<small v-if="filesForComponent(item).length > 1">{{ filesForComponent(item).length }} anexos</small></button>
           </li>
         </ul>
       </div>
@@ -702,8 +738,11 @@ onBeforeUnmount(() => {
             :disable="lockedScene(scene) || !scene.file || !scene.edit.trim()"
             :loading="isWorking(scene, 'prepare') || isWorking(scene, 'plan-price')" @click="planScene(scene)" />
         </div>
-        <textarea :id="`remake-scene-${scene.index}`" :value="scene.edit" rows="2" maxlength="20000" :disabled="lockedScene(scene)"
-          placeholder="Ex.: Troque o cenário e traduza a conversa para português." @input="patchScene(scene, { edit: $event.target.value })" />
+        <AitoComponentPrompt :input-id="`remake-scene-${scene.index}`" :model-value="scene.edit" :component-ids="referenceIdsFor(scene)"
+          :components="references" rows="2" maxlength="20000" :disabled="lockedScene(scene)"
+          placeholder="Ex.: Troque o cenário e traduza a conversa para português."
+          @update:model-value="value => patchScene(scene, { edit: value })"
+          @update:component-ids="value => patchScene(scene, { referenceIds: value })" />
         <label :for="`remake-dialogue-${scene.index}`">Falas exatas <small>opcional</small></label>
         <textarea :id="`remake-dialogue-${scene.index}`" :value="scene.dialogue" rows="2" maxlength="20000" :disabled="lockedScene(scene)"
           placeholder="Ex.: Ana (sorrindo): ‘Hoje é a nossa vez.’" @input="patchScene(scene, { dialogue: $event.target.value })" />
@@ -717,23 +756,22 @@ onBeforeUnmount(() => {
           </label>
         </div>
         <p v-else class="aito-remake__help">{{ models.length ? 'Nenhum modelo disponível aceita esta duração.' : 'Aguardando os modelos disponíveis para refazer a cena.' }}</p>
-        <q-expansion-item v-if="references.length" dense class="aito-remake__scene-references" icon="mdi-account-box-multiple-outline"
+        <q-expansion-item v-if="references.length" dense class="aito-remake__scene-references" icon="mdi-shape-outline"
           :label="scene.referenceIds === null ? 'Referências do prompt master' : 'Referências específicas desta cena'">
-          <q-select :model-value="scene.referenceIds ?? referenceIds" :options="references" option-value="id" option-label="title" outlined :dark="isDark" dense
-            multiple emit-value map-options use-chips :max-values="maxReferences" :disable="lockedScene(scene)" label="Personagens e cenários"
+          <q-select :model-value="scene.referenceIds || []" :options="references" option-value="id" option-label="title" outlined :dark="isDark" dense
+            multiple emit-value map-options use-chips :disable="lockedScene(scene)" label="Componentes do projeto"
             @update:model-value="value => patchScene(scene, { referenceIds: value || [] })">
             <template #option="scope">
               <q-item v-bind="scope.itemProps">
-                <q-item-section avatar><q-avatar square size="33px"><img v-if="scope.opt.url" :src="scope.opt.url" alt="" /><q-icon v-else name="mdi-image-outline" /></q-avatar></q-item-section>
+                <q-item-section avatar><q-avatar square size="33px"><img v-if="componentImageUrl(scope.opt)" :src="componentImageUrl(scope.opt)" alt="" /><q-icon v-else :name="componentIcon(scope.opt)" /></q-avatar></q-item-section>
                 <q-item-section><q-item-label>{{ scope.opt.title }}</q-item-label><q-item-label caption>{{ scope.opt.type }}</q-item-label></q-item-section>
               </q-item>
             </template>
           </q-select>
           <ul v-if="referencesFor(scene).length" class="aito-remake__references" aria-label="Referências da cena">
             <li v-for="item in referencesFor(scene)" :key="item.id">
-              <button v-if="item.url" type="button" class="aito-remake__reference" :aria-label="`Ampliar imagem de ${item.title}`"
-                @click="referencePreview = item"><img :src="item.url" alt="" />{{ item.title }}</button>
-              <span v-else class="aito-remake__reference"><q-icon name="mdi-image-outline" size="22px" />{{ item.title }}</span>
+              <button type="button" class="aito-remake__reference" :aria-label="`Ver componente ${item.title}`"
+                @click="referencePreview = item"><img v-if="componentImageUrl(item)" :src="componentImageUrl(item)" alt="" /><q-icon v-else :name="componentIcon(item)" size="22px" />{{ item.title }}<small v-if="filesForComponent(item).length > 1">{{ filesForComponent(item).length }} anexos</small></button>
             </li>
           </ul>
           <q-btn v-if="scene.referenceIds !== null" flat dense no-caps label="Usar referências do prompt master"
@@ -819,10 +857,16 @@ onBeforeUnmount(() => {
       <q-card v-if="referencePreview" class="aito-ai-theme aito-remake__reference-preview">
         <q-card-section class="row items-center justify-between no-wrap q-gutter-sm">
           <h3 id="remake-reference-preview-title" class="text-subtitle1 q-my-none">{{ referencePreview.title }}</h3>
-          <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar prévia da imagem" />
+          <q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar prévia do componente" />
         </q-card-section>
         <q-card-section class="q-pt-none">
-          <img :src="referencePreview.url" :alt="referencePreview.title" />
+          <p v-if="referencePreview.prompt" class="aito-remake__help q-mb-sm">{{ referencePreview.prompt }}</p>
+          <div v-for="asset in previewFiles" :key="asset.url" class="aito-remake__preview-file">
+            <img v-if="asset.type.startsWith('image/')" :src="asset.url" :alt="referencePreview.title" />
+            <video v-else-if="asset.type.startsWith('video/')" :src="asset.url" controls playsinline preload="metadata" />
+            <audio v-else-if="asset.type.startsWith('audio/')" :src="asset.url" controls preload="metadata" />
+            <a v-else :href="asset.url" :download="asset.name">{{ asset.name }}</a>
+          </div>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -864,8 +908,10 @@ onBeforeUnmount(() => {
 button.aito-remake__reference { cursor: zoom-in; text-align: left; }
 button.aito-remake__reference:hover { border-color: var(--aito-ai-accent); }
 .aito-remake__reference img { flex: 0 0 30px; width: 30px; height: 30px; border-radius: 4px; object-fit: cover; }
+.aito-remake__reference small { color: var(--aito-ai-muted); font-size: .72rem; }
 .aito-remake__reference-preview { width: min(620px, 100%); color: var(--aito-ai-text); background: var(--aito-ai-surface); }
-.aito-remake__reference-preview img { display: block; width: 100%; max-height: 70dvh; border-radius: 8px; background: var(--aito-ai-bg); object-fit: contain; }
+.aito-remake__reference-preview :is(img, video, audio) { display: block; width: 100%; max-height: 65dvh; border-radius: 8px; background: var(--aito-ai-bg); object-fit: contain; }
+.aito-remake__preview-file + .aito-remake__preview-file { margin-top: 12px; }
 .aito-remake__column--results { background: linear-gradient(145deg, var(--aito-ai-raised), var(--aito-ai-surface) 400px); }
 .aito-remake__scene { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
 .aito-remake__scene-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }

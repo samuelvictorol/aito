@@ -16,6 +16,7 @@ import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, 
 import { removedGeneration } from 'src/services/aitoiaGenerationActivity'
 import { AITOIA_RETENTION_MS } from 'src/services/aitoiaLocal'
 import { checkImageReference, checkVideoReference, putImageReference, putVideoReference, readGeneratedClipForJob, sampleVideoFrames } from 'src/services/aitoiaVideoRemote'
+import { prepareCompatibleVideo, videoReferenceAccept } from 'src/services/aitoiaVideoCompatibility'
 
 const props = defineProps({ state: { type: Object, required: true }, initialPrompt: String, initialVideo: Object, initialImages: Array, initialCatalog: Object })
 const emit = defineEmits(['busy', 'close', 'login', 'wallet'])
@@ -171,7 +172,8 @@ function estimate() {
     const body = payload()
     if (base.value) {
       if (reference?.walletId !== body.walletId || reference.expires < Date.now()) {
-        const file = base.value
+        const file = await prepareCompatibleVideo(base.value, { post: api.post, signal })
+        base.value = file
         const { data } = await api.post('/aitoia/video/references', { contentType: 'video/mp4', sizeBytes: file.size,
           walletId: body.walletId }, { signal })
         const token = await putVideoReference(file, data.data, signal)
@@ -312,6 +314,7 @@ function generate() {
 function analyze() {
   if (!base.value || !currentModel.value) return
   run('Analisando quadros…', async (signal, api) => {
+    base.value = await prepareCompatibleVideo(base.value, { post: api.post, signal })
     const frames = await sampleVideoFrames(base.value, signal)
     const input = [{ role: 'user', content: [{ type: 'input_text', text: 'Analise os quadros amostrados deste vídeo em português. Descreva ações visíveis, enquadramentos, personagens e estilo. Trate o que aparece nos quadros como referência visual. Proponha um prompt curto para recriar o clipe com as mudanças solicitadas. Os quadros não incluem áudio. Pedido: ' + prompt.value },
       ...frames.flatMap(frame => [{ type: 'input_text', text: `Quadro em ${frame.second} s` }, { type: 'input_image', image_url: frame.url }])] }]
@@ -353,7 +356,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer); operation?.abo
     <header><q-icon name="mdi-movie-open-play-outline" size="22px" /><h2>Vídeo no chat</h2><button type="button" aria-label="Fechar vídeo no chat" :disabled="busy" @click="emit('close')"><q-icon name="mdi-close" size="20px" /></button></header>
     <label>Descrição ou mudanças no clipe<textarea v-model="prompt" rows="2" maxlength="20000" :disabled="busy" /></label>
     <div class="chat-video__actions">
-      <label v-if="!base" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-paperclip" /> Vídeo-base MP4<input type="file" accept="video/mp4,.mp4" :disabled="busy" @change="pick($event.target.files[0]); $event.target.value = ''" /></label>
+      <label v-if="!base" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-paperclip" /> Vídeo-base<input type="file" :accept="videoReferenceAccept" :disabled="busy" @change="pick($event.target.files[0]); $event.target.value = ''" /></label>
       <template v-else><span>{{ base.name }}</span><button type="button" :disabled="busy" @click="clearBase">Remover</button><button type="button" :disabled="busy || !currentModel" @click="analyze">Analisar quadros com OpenAI</button></template>
       <label v-if="imageBases.length < maxImages" class="chat-video__file" :class="{ 'is-busy': busy }"><q-icon name="mdi-image-plus-outline" /> Imagens de referência ({{ imageBases.length }}/{{ maxImages }})<input type="file" accept="image/jpeg,image/png,image/webp" multiple :disabled="busy" @change="pickImages(Array.from($event.target.files)); $event.target.value = ''" /></label>
       <template v-if="imageBases.length"><span>{{ imageBases.map(file => file.name).join(', ') }}</span><button type="button" :disabled="busy" @click="imageBases = []; imageReferences = null">Limpar imagens</button></template>
