@@ -39,7 +39,7 @@ export async function buildPublicPages(dist, redirects) {
   const source = await readFile(new URL('index.html', dist), 'utf8')
   const paths = Object.keys(publicPages)
   const sitemap = paths.map(path => `  <url><loc>${escapeHtml(publicPageSeo(path).link.canonical.href)}</loc></url>`).join('\n')
-  const pageRoutes = { ...Object.fromEntries(paths.slice(1).map(path => [path, path])), ...publicPageAliases }
+  const pageRoutes = { ...Object.fromEntries(paths.filter(path => path !== '/').map(path => [path, path])), ...publicPageAliases }
   const rules = Object.entries(pageRoutes).map(([route, path]) => `${route} ${outputPath(path)} 200`)
   const existingRules = redirects.trimEnd().replace(/(?:^|\r?\n)\/\* \/index\.html 200$/, '')
   await mkdir(new URL('seo-pages/', dist), { recursive: true })

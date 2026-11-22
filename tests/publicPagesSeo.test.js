@@ -48,6 +48,10 @@ test('static build publishes crawlable content, unique metadata, redirects and c
     const sitemap = await readFile(new URL('sitemap.xml', dist), 'utf8')
     assert.deepEqual(Array.from(sitemap.matchAll(/<loc>([^<]+)<\/loc>/g), match => match[1]), Object.keys(publicPages).map(path => publicPageSeo(path).link.canonical.href))
     const redirects = await readFile(new URL('_redirects', dist), 'utf8')
+    for (const path of Object.keys(publicPages).filter(path => path !== '/')) {
+      assert.ok(redirects.split('\n').includes(`${path} /seo-pages${path}.html 200`), `${path} has its own public document regardless of catalog position`)
+    }
+    assert.ok(!redirects.split('\n').includes('/ /index.html 200'))
     assert.equal(redirects.trim().split('\n').at(-1), '/* /seo-pages/app.html 200')
     assert.doesNotMatch(redirects, /^\/\* \/index\.html/m)
     for (const line of redirects.trim().split('\n').slice(1)) {
