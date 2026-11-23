@@ -189,7 +189,7 @@ async function openClip(job) {
   previewRequest = controller
   previewing.value = job.id
   try {
-    const file = await readGeneratedClipForJob({ id: job.id }, controller.signal, owner.get)
+    const file = await readGeneratedClipForJob({ id: job.id }, controller.signal, owner.get, owner.post)
     if (!controller.signal.aborted && owner.current()) {
       preview.value = { id: job.id, file, url: URL.createObjectURL(file) }
     }

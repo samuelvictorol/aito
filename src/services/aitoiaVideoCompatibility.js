@@ -2,6 +2,7 @@ export const videoReferenceAccept = 'video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.3gp
 const maximum = 60 * 1024 * 1024
 const types = { mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo', '3gp': 'video/3gpp' }
 const prepared = new WeakMap()
+const preserved = new WeakMap()
 
 export function commonVideoType(file) {
   if (!(file instanceof Blob) || !Number.isSafeInteger(file.size) || file.size < 1) throw new Error('Selecione um arquivo de vídeo válido.')
@@ -24,19 +25,20 @@ async function compatible(file) {
   finally { input.dispose() }
 }
 
-export async function prepareCompatibleVideo(file, { post, signal } = {}) {
+export async function prepareCompatibleVideo(file, { post, signal, force = false, preserveResolution = false } = {}) {
   commonVideoType(file)
   signal?.throwIfAborted()
-  if (prepared.has(file)) return prepared.get(file)
-  if (await compatible(file)) {
+  const cache = preserveResolution ? preserved : prepared
+  if (!force && cache.has(file)) return cache.get(file)
+  if (!force && await compatible(file)) {
     signal?.throwIfAborted()
     const output = file.type === 'video/mp4' ? file : new File([file], file.name, { type: 'video/mp4', lastModified: file.lastModified })
-    prepared.set(file, output); return output
+    cache.set(file, output); return output
   }
   if (!post) throw new Error('Entre na sua conta para preparar este formato de vídeo.')
   let response
   try {
-    response = await post('/aitoia/video/normalize', file, { params: { filename: file.name },
+    response = await post('/aitoia/video/normalize', file, { params: { filename: file.name, ...(preserveResolution && { preserveResolution: true }) },
       headers: { 'Content-Type': commonVideoType(file) }, responseType: 'blob', timeout: 190000, signal })
   } catch (error) {
     if (error.response?.data instanceof Blob && error.response.data.size < 20000) {
@@ -49,6 +51,6 @@ export async function prepareCompatibleVideo(file, { post, signal } = {}) {
   if (!(data instanceof Blob) || !data.size || data.size > maximum || data.type.split(';')[0] !== 'video/mp4') throw new Error('A conversão não retornou um vídeo MP4 válido.')
   const name = (file.name || 'video').replace(/\.[^.]+$/, '') + '.mp4'
   const output = new File([data], name, { type: 'video/mp4', lastModified: file.lastModified })
-  prepared.set(file, output); prepared.set(output, output)
+  cache.set(file, output); cache.set(output, output)
   return output
 }

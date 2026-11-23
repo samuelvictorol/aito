@@ -413,14 +413,14 @@ async function quoteScene(scene) {
     }
   })
 }
-async function saveFinishedScene(scene, job, signal, get, current) {
+async function saveFinishedScene(scene, job, signal, get, current, post) {
   if (scene.result?.id === job.id) {
     await props.saveResult(scene.result)
     if (current()) clearJob(scene)
     return
   }
   const quote = scene.quote || {}
-  const original = await readGeneratedClipForJob({ id: job.id, remoteUrl: job.url }, signal, get)
+  const original = await readGeneratedClipForJob({ id: job.id, remoteUrl: job.url }, signal, get, post)
   const cues = quote.caption ? [{ start: 0, end: scene.duration, text: quote.caption }] : []
   let file = original
   let captions = false
@@ -539,7 +539,7 @@ async function refreshQueue(only = null) {
         if (videoGenerationActive(job.status)) continue
         const release = pendingRelease(scene, scene.job)
         if (release.pending) continue
-        if (job.status === 'completed') await saveFinishedScene(scene, scene.job, signal, access.get, access.current)
+        if (job.status === 'completed') await saveFinishedScene(scene, scene.job, signal, access.get, access.current, access.post)
         else {
           clearJob(scene)
           scene.error = release.released ? releasedVideoMessage(job) : job.message || 'O provedor encerrou a geração desta cena.'

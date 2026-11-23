@@ -249,6 +249,8 @@ const modelListOpen = ref(true)
 const studioHeader = ref(null)
 const workspace = ref(null)
 const headerHeight = ref(104)
+const editorTabs = ref(null)
+const editorTabsHeight = ref(56)
 let headerObserver
 const draft = shallowRef(null)
 const dragItem = ref(null)
@@ -301,10 +303,6 @@ const continuationMode = computed(() => generationMode.value === 'continuation')
 const remakeMode = computed(() => generationMode.value === 'remake')
 const galleryMode = computed(() => generationMode.value === 'gallery')
 const upscaleMode = computed(() => generationMode.value === 'upscale')
-const browseVideoModels = computed(() => [
-  ...(options.value?.videoModels || []), ...(options.value?.referenceModels || []),
-  ...(options.value?.transitionModels || []), ...(options.value?.remakeModels || []),
-])
 const remakeBusy = ref(false)
 const studioOffers = model => (model?.options || []).filter(item => model.sourceDuration || studioAiSeconds.includes(item.seconds))
 const maxClipSeconds = computed(() => options.value?.maxStudioSeconds || studioAiSeconds.at(-1))
@@ -1057,9 +1055,13 @@ function useClonedNarration(file) {
   try { replaceNarration(file); void saveProject(); notice.value = 'Voz aplicada à locução do projeto.' }
   catch (cause) { notify({ type: 'negative', position: 'top', message: cause.message }) }
 }
-async function saveUpscale({ file, title }) {
-  storeClip({ id: crypto.randomUUID(), file, title, kind: 'upscale', expiresAt: activeProject.value?.expiresAt || Date.now() + AITOIA_RETENTION_MS }, { reveal: true })
-  await saveProject()
+async function submitUpscale(quote, signal) {
+  if (busy.value || !activeId.value) throw new Error('Abra um projeto antes de gerar a nova cena.')
+  const access = wallet.access()
+  try {
+    await submitStudioJob(quote, { kind: 'upscale', title: quote.title }, access, signal)
+    notice.value = 'Restauração com IA enviada para a fila de geração.'
+  } finally { if (access.current()) void wallet.refreshStatus({ silent: true }) }
 }
 function removeNarration() {
   pause()
@@ -1288,7 +1290,8 @@ async function makeVoicePreview() {
   })
 }
 function generatedFile(clip, signal) {
-  return readGeneratedClipForJob(clip, signal, wallet.access().get)
+  const access = wallet.access()
+  return readGeneratedClipForJob(clip, signal, access.get, access.post)
 }
 
 function localClip(clip) {
@@ -1513,7 +1516,7 @@ async function downloadRemakes(assets, signal) {
   } finally { progress.value = 0 }
 }
 
-async function readJob(job, signal, { get, current: stillOwner } = wallet.access()) {
+async function readJob(job, signal, { get, post, current: stillOwner } = wallet.access()) {
   const projectId = activeId.value
   let current = job
   try {
@@ -1567,9 +1570,9 @@ async function readJob(job, signal, { get, current: stillOwner } = wallet.access
   setJob(current)
   const previous = clipLibrary.value.find(item => item.id === current.id)
   const asset = { id: current.id, remoteUrl: current.url, expiresAt: videoGenerationExpiry(current.expiresAt, Date.now() + AITOIA_RETENTION_MS),
-    afterSceneId: job.afterSceneId, kind: job.kind || 'scene',
+    afterSceneId: job.afterSceneId, kind: job.kind || 'scene', title: job.title,
     ...(current.billingPending && { reservedUsdCents: current.reservedUsdCents }) }
-  try { asset.file = previous?.file || await readGeneratedClipForJob(asset, signal, get) }
+  try { asset.file = await readGeneratedClipForJob({ ...asset, file: previous?.file }, signal, get, post) }
   catch (cause) {
     signal.throwIfAborted()
     if (cause.response?.status === 410 && stillOwner() && projectId === activeId.value) {
@@ -1649,6 +1652,23 @@ function projectClipAction(action, clip) {
   const operations = { use: addGenerated, add: () => addGeneratedSequence(clip), save: shareClip,
     variation: clipVariation, download: downloadGenerated, remove: () => removeGenerated(clip) }
   operations[action]?.()
+}
+function recoverProjectClip(clip) {
+  if (!mayEdit.value || busy.value || !clipLibrary.value.some(item => item.id === clip?.id)) return
+  const projectId = activeId.value
+  const access = wallet.access()
+  run('media', async signal => {
+    if (clip.expiresAt <= Date.now()) throw new Error('Este clipe atingiu o prazo de retenção.')
+    const file = await readGeneratedClipForJob(clip, signal, access.get, access.post, { repair: true })
+    signal.throwIfAborted()
+    if (!access.current() || projectId !== activeId.value || !clipLibrary.value.includes(clip)) return
+    const repaired = localClip({ ...clip, file })
+    disposeClip(clip)
+    clipLibrary.value = clipLibrary.value.map(item => item.id === clip.id ? repaired : item)
+    selectGenerated(repaired)
+    await saveProject()
+    notice.value = 'Vídeo recuperado e preparado para reprodução e download.'
+  })
 }
 function checkJob(selected) {
   if (!trackedJobs.value.length || !accountId.value) return
@@ -2419,8 +2439,15 @@ onMounted(async () => {
   exportFormat.value = exportFormats.value[0]?.extension || ''
   expireTimer = setInterval(expireCurrentMedia, 10000)
   if (studioHeader.value && typeof ResizeObserver !== 'undefined') {
-    headerObserver = new ResizeObserver(([entry]) => { headerHeight.value = Math.ceil(entry.target.getBoundingClientRect().height) })
+    headerObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const height = Math.ceil(entry.target.getBoundingClientRect().height)
+        if (entry.target === studioHeader.value) headerHeight.value = height
+        if (entry.target === editorTabs.value) editorTabsHeight.value = height
+      }
+    })
     headerObserver.observe(studioHeader.value)
+    if (editorTabs.value) headerObserver.observe(editorTabs.value)
   }
   await nextTick()
   paint(0)
@@ -2440,7 +2467,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <q-layout view="hHh Lpr lFf" class="aito-ai-theme video-studio" :style="{ '--video-header-height': headerHeight + 'px' }">
+  <q-layout view="hHh Lpr lFf" class="aito-ai-theme video-studio" :style="{ '--video-header-height': headerHeight + 'px', '--video-tabs-height': editorTabsHeight + 'px' }">
     <q-header class="video-studio__header">
       <header ref="studioHeader" class="video-studio__bar">
         <div class="video-studio__header-start">
@@ -2527,7 +2554,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div ref="workspace" class="video-studio__grid" :class="{ 'video-studio__grid--generate': tab === 'ai', 'video-studio__grid--code': tab === 'code', 'video-studio__grid--voice': tab === 'voice', 'video-studio__grid--master': tab === 'scenes' }">
-        <nav class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
+        <nav ref="editorTabs" class="video-studio__tabs" :class="`video-studio__tabs--${tab}`" aria-label="Ferramentas do editor">
           <q-tabs :model-value="tab" :dark="isDark" dense no-caps align="justify" indicator-color="transparent" @update:model-value="chooseEditorTab">
             <q-tab v-for="item in tabs" :key="item.id" :name="item.id" :icon="item.icon" :label="item.label"
               :class="{ 'video-studio__code-tab': item.id === 'code' }" :disable="!mayEdit" />
@@ -2559,8 +2586,8 @@ onBeforeUnmount(() => {
           </div>
         </nav>
 
-        <AitoVideoReferencesGallery v-if="tab === 'ai' && galleryMode" :models="browseVideoModels" :importing="galleryImportId" :disabled="!mayEdit && !galleryImportId"
-          @recreate="recreateGalleryReference" />
+        <AitoVideoReferencesGallery v-if="tab === 'ai' && galleryMode" :importing="galleryImportId" :disabled="!mayEdit && !galleryImportId"
+          @recreate="recreateGalleryReference" @explore="changeGenerationMode('text'); modelListOpen = true" />
 
         <section v-if="tab === 'ai' && !galleryMode && !remakeMode && !upscaleMode" class="video-studio__catalog" aria-label="Modo de geração">
           <div class="video-studio__catalog-header">
@@ -2587,8 +2614,10 @@ onBeforeUnmount(() => {
           @recover="generationMode = 'remake'; tab = 'ai'"
           @ready="closeMobilePanel(masterOpen)" @balance="wallet.refreshStatus({ silent: true })" @wallet="showWallet" @login="showAuth('login')" @append="appendRemakes" @component="saveClipComponent" />
 
-        <AitoVideoUpscale v-if="tab === 'ai' && upscaleMode" ref="upscaleEditor" :clips="clipLibrary" :components="projectComponents" :access="wallet.access"
-          :signed-in="signedIn" :disabled="!mayEdit || Boolean(busy)" @login="showAuth('login')" @busy="remakeBusy = $event; if (!$event) blockedExit = false" @ready="saveUpscale" />
+        <AitoVideoUpscale v-if="tab === 'ai' && upscaleMode" :key="`${accountId || 'guest'}:${activeId || ''}`" ref="upscaleEditor" :clips="clipLibrary" :components="projectComponents" :access="wallet.access"
+          :models="options?.upscaleModels || []" :wallet-id="walletId" :aito-tokens-per-usd="options?.aitoTokensPerUsd"
+          :submit="submitUpscale" :allow-credits="useCredits" :signed-in="signedIn" :disabled="!mayEdit || Boolean(busy)"
+          @login="showAuth('login')" @busy="remakeBusy = $event; if (!$event) blockedExit = false" />
         <section v-if="tab !== 'ai' || (!remakeMode && !galleryMode && !upscaleMode)" class="video-studio__panel video-studio__editor" aria-label="Editor do projeto">
           <div v-if="codeControlsOpened" v-show="tab === 'code'" class="video-studio__section">
             <AitoStudioCodeRender v-model:format-id="formatId" :busy="busy" :disabled="!mayEdit"
@@ -2879,7 +2908,7 @@ onBeforeUnmount(() => {
       </div>
     </q-footer>
     <AitoProjectScenesPanel v-model="projectScenesOpen" :clips="clipLibrary" :disabled="!mayEdit || Boolean(busy)" :signed-in="signedIn"
-      @select="selectGenerated" @rename="renameProjectClip"
+      @select="selectGenerated" @rename="renameProjectClip" @recover="recoverProjectClip"
       @use="projectClipAction('use', $event)" @add="projectClipAction('add', $event)" @save="projectClipAction('save', $event)"
       @variation="projectClipAction('variation', $event)" @download="projectClipAction('download', $event)" @remove="projectClipAction('remove', $event)">
       <template #pending>
@@ -3181,7 +3210,7 @@ onBeforeUnmount(() => {
 .video-studio__drawer-footer { display: grid; gap: 8px; padding-top: 4px; margin-top: auto; }
 .video-studio__drawer-footer .q-btn { width: 100%; border: 1px solid var(--aito-ai-line); color: var(--aito-ai-accent); }
 .video-studio__editor { grid-column: 2; grid-row: 2; overflow: hidden; }
-.video-studio__tabs { grid-column: 1 / -1; grid-row: 1; width: min(760px, 100%); padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
+.video-studio__tabs { grid-column: 1 / -1; grid-row: 1; position: sticky; top: calc(var(--video-header-height) + 5px); z-index: 11; width: min(760px, 100%); padding: 5px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); }
 .video-studio__tabs :deep(.q-tab) { min-height: 40px; min-width: 0; padding: 0 5px; color: var(--aito-ai-muted); border-radius: 8px; }
 .video-studio__tabs :deep(.q-tab__content) { flex-direction: row; gap: 6px; min-width: 0; }
 .video-studio__tabs :deep(.q-tab__icon) { width: 18px; height: 18px; font-size: 18px; }
@@ -3206,6 +3235,7 @@ onBeforeUnmount(() => {
 .video-studio__grid--generate .video-studio__editor { grid-column: 1 / -1; grid-row: 4; }
 .video-studio__grid--generate > .aito-remake { grid-column: 1 / -1; grid-row: 3; order: 3; }
 .video-studio__grid--generate > .aito-references { grid-column: 1 / -1; grid-row: 3; order: 3; }
+.video-studio__grid--generate > .video-upscale { grid-column: 1 / -1; grid-row: 3; order: 3; }
 .video-studio__grid--generate .video-studio__editor { border-color: var(--aito-ai-line); background: var(--aito-ai-surface); }
 .video-studio__scene-heading, .video-studio__preview header, .video-studio__audio-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
 .video-studio h2 { font-size: 1.13rem; font-weight: 730; line-height: 1.2; }
@@ -3303,7 +3333,7 @@ onBeforeUnmount(() => {
 .video-studio__clip-empty { display: grid; min-height: 160px; gap: 8px; padding: 14px; align-content: center; justify-items: center; border: 1px dashed var(--aito-ai-line); border-radius: 10px; color: var(--aito-ai-muted); background: var(--aito-ai-panel); text-align: center; }
 .video-studio__queued-clip { display: grid; gap: 7px; justify-items: start; margin: 8px 0; padding: 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; }
 .video-studio__generation-modes, .video-studio__clip-list { display: flex; flex-wrap: wrap; gap: 7px; }
-.video-studio__generation-toolbar { grid-column: 1 / -1; grid-row: 2; position: sticky; top: calc(var(--video-header-height) + 5px); z-index: 9; min-width: 0; padding: 8px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); box-shadow: 0 5px 18px var(--aito-ai-shadow); }
+.video-studio__generation-toolbar { grid-column: 1 / -1; grid-row: 2; position: sticky; top: calc(var(--video-header-height) + var(--video-tabs-height, 56px) + 10px); z-index: 10; min-width: 0; padding: 8px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); box-shadow: 0 5px 18px var(--aito-ai-shadow); }
 .video-studio__generation-modes { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--aito-ai-line) transparent; padding-bottom: 3px; scroll-padding-inline: 5px; }
 .video-studio__generation-modes > button { flex: none; white-space: nowrap; }
 .video-studio__generation-modes [aria-pressed=true], .video-studio__clip-list [aria-pressed=true] { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); }
@@ -3368,7 +3398,7 @@ html[data-aito-ia-theme='light'] .video-studio__delete-clip:hover:not(:disabled)
 }
 @media (max-width: 900px) {
   .video-studio__grid, .video-studio__grid--generate { grid-template-columns: minmax(0, 1fr); }
-  .video-studio__grid > * { grid-column: 1 !important; grid-row: auto !important; }
+  .video-studio__grid > * { grid-column: 1 !important; grid-row: auto !important; order: 3; }
   .video-studio__tabs { order: 1; width: 100%; }
   .video-studio__generation-toolbar { order: 2; }
   .video-studio__catalog { order: 3; }

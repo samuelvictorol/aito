@@ -235,7 +235,7 @@ function check(selected) {
   }, false, !selected).finally(() => schedulePoll())
 }
 function terminalError(message) { return Object.assign(new Error(message), { terminal: true }) }
-async function poll(pending, signal, { get, current }) {
+async function poll(pending, signal, { get, post, current }) {
   let result
   try {
     if (!pending.id) {
@@ -274,7 +274,7 @@ async function poll(pending, signal, { get, current }) {
     removeJob(merged)
     throw terminalError(release.released ? releasedVideoMessage(result) : result.message || 'O provedor encerrou esta geração.')
   }
-  const file = await readGeneratedClipForJob({ ...result, remoteUrl: result.url }, signal, get)
+  const file = await readGeneratedClipForJob({ ...result, remoteUrl: result.url }, signal, get, post)
   signal.throwIfAborted()
   if (!current() || wasDismissed(result)) return
   removeJob(merged)
@@ -329,7 +329,7 @@ function analyze() {
 
 function download() {
   run('Preparando arquivo…', async (signal, api) => {
-    const file = await readGeneratedClipForJob(clip.value, signal, api.get)
+    const file = await readGeneratedClipForJob(clip.value, signal, api.get, api.post)
     signal.throwIfAborted()
     if (api.current()) downloadAitoIAFile(file, file.name)
   }, false)
@@ -339,7 +339,7 @@ async function saveToProject() {
   let saved = false
   await run('Preparando clipe…', async (signal, api) => {
     const result = clip.value
-    const file = await readGeneratedClipForJob(result, signal, api.get)
+    const file = await readGeneratedClipForJob(result, signal, api.get, api.post)
     signal.throwIfAborted()
     if (!api.current()) return
     const generated = { id: result.id, name: file.name, mime: file.type, blob: file, expiresAt: result.expiresAt }

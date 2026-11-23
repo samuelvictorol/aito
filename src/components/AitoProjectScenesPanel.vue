@@ -7,13 +7,15 @@ const props = defineProps({
   disabled: Boolean,
   signedIn: Boolean,
 })
-const emit = defineEmits(['update:modelValue', 'select', 'use', 'add', 'save', 'variation', 'download', 'remove', 'rename'])
+const emit = defineEmits(['update:modelValue', 'select', 'use', 'add', 'save', 'variation', 'download', 'recover', 'remove', 'rename'])
 const launcher = ref(null)
 const panel = ref(null)
 const openRows = shallowRef(new Set())
 const editingId = ref('')
 const editName = ref('')
 const posters = shallowRef(new Map())
+const playbackErrors = shallowRef(new Map())
+const posterLimit = ref(10)
 const launcherPosition = ref(null)
 const panelPosition = ref(null)
 const dragging = ref('')
@@ -37,6 +39,15 @@ const expired = clip => Boolean(clip.expired || (clip.expiresAt && Number(clip.e
 const playable = clip => Boolean(!expired(clip) && clip.url)
 const isOpen = clip => openRows.value.has(String(clip.id))
 const poster = clip => posters.value.get(String(clip.id))?.url
+const failedPlayback = clip => playbackErrors.value.get(String(clip.id)) === clip.url
+function playbackFailed(clip) { playbackErrors.value = new Map(playbackErrors.value).set(String(clip.id), clip.url) }
+function loadMorePosters(event) {
+  const body = event.target
+  if (body.scrollHeight - body.scrollTop - body.clientHeight < 160 && posterLimit.value < props.clips.length) {
+    posterLimit.value += 10
+    void syncPosters()
+  }
+}
 function expiryLabel(clip) {
   const time = Number(clip.expiresAt)
   return Number.isFinite(time) && time > 0 ? `Disponível até ${date.format(time)}` : ''
@@ -139,7 +150,9 @@ watch(() => props.modelValue, async value => {
     lastFocus = document.activeElement
     await nextTick()
     panel.value?.focus({ preventScroll: true })
+    void syncPosters()
   } else {
+    posterAbort?.abort()
     panel.value?.querySelectorAll('video').forEach(video => video.pause())
     if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true })
   }
@@ -183,11 +196,12 @@ function readPoster(clip, signal) {
   })
 }
 async function syncPosters() {
+  if (!props.modelValue) return
   const epoch = ++posterEpoch
   posterAbort?.abort()
   const controller = new AbortController()
   posterAbort = controller
-  const rows = props.clips.filter(clip => !expired(clip) && (clip.file instanceof Blob || clip.url))
+  const rows = props.clips.filter(clip => !expired(clip) && (clip.file instanceof Blob || clip.url)).slice(0, posterLimit.value)
   const cache = new Map(posters.value)
   for (const [id, cached] of cache) {
     const clip = rows.find(item => String(item.id) === id)
@@ -207,6 +221,7 @@ async function syncPosters() {
 watch(() => props.clips.map(clip => ({ id: clip.id, file: clip.file, url: clip.url, expired: clip.expired, expiresAt: clip.expiresAt })), () => {
   const ids = new Set(props.clips.map(clip => String(clip.id)))
   openRows.value = new Set([...openRows.value].filter(id => ids.has(id)))
+  playbackErrors.value = new Map([...playbackErrors.value].filter(([id, url]) => props.clips.some(clip => String(clip.id) === id && clip.url === url)))
   void syncPosters()
 }, { immediate: true })
 
@@ -244,7 +259,7 @@ onBeforeUnmount(() => {
         <div><span class="project-scenes__eyebrow">BIBLIOTECA DO PROJETO</span><h2 id="project-scenes-heading">Cenas do projeto <small>{{ clips.length }}</small></h2></div>
         <button type="button" class="project-scenes__close" aria-label="Fechar cenas do projeto" @click="close"><q-icon name="mdi-close" size="23px" /></button>
       </header>
-      <div class="project-scenes__body">
+      <div class="project-scenes__body" @scroll.passive="loadMorePosters">
         <div v-if="$slots.pending" class="project-scenes__pending"><slot name="pending" /></div>
         <div v-if="!clips.length" class="project-scenes__empty"><q-icon name="mdi-filmstrip-box-multiple" size="34px" /><p>As cenas geradas ficam aqui.</p></div>
         <article v-for="clip in clips" :key="clip.id" class="project-scenes__row" :class="{ 'is-open': isOpen(clip), 'is-expired': expired(clip) }">
@@ -260,10 +275,11 @@ onBeforeUnmount(() => {
             <button type="button" class="project-scenes__expand" :aria-expanded="isOpen(clip)" :aria-label="`${isOpen(clip) ? 'Recolher' : 'Expandir'} recursos de ${clipName(clip)}`" @click="toggleRow(clip)"><q-icon :name="isOpen(clip) ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="25px" /></button>
           </header>
           <div v-if="isOpen(clip)" class="project-scenes__content">
-            <video v-if="playable(clip)" :src="clip.url" :poster="poster(clip)" controls playsinline preload="metadata" referrerpolicy="no-referrer" :aria-label="`Prévia de ${clipName(clip)}`" />
-            <p v-else class="project-scenes__unavailable">{{ expired(clip) ? 'Esta cena expirou. Gere uma nova cena para continuar.' : 'O vídeo ainda não está disponível para reprodução.' }}</p>
+            <video v-if="playable(clip) && !failedPlayback(clip)" :src="clip.url" :poster="poster(clip)" controls playsinline preload="metadata" referrerpolicy="no-referrer" :aria-label="`Prévia de ${clipName(clip)}`" @error="playbackFailed(clip)" />
+            <p v-else class="project-scenes__unavailable">{{ expired(clip) ? 'Esta cena expirou. Gere uma nova cena para continuar.' : failedPlayback(clip) ? 'Este dispositivo não conseguiu abrir a prévia. Recupere uma cópia compatível do vídeo.' : 'O vídeo ainda não está disponível para reprodução.' }}</p>
             <slot name="details" :clip="clip" />
             <div class="project-scenes__actions">
+              <button v-if="!expired(clip) && (!playable(clip) || failedPlayback(clip))" type="button" :disabled="disabled" @click="action('recover', clip)"><q-icon name="mdi-refresh" size="18px" />Recuperar vídeo</button>
               <button v-if="!expired(clip)" type="button" :disabled="disabled" @click="action('use', clip)"><q-icon name="mdi-swap-horizontal" size="18px" />Usar na cena atual</button>
               <button v-if="!expired(clip)" type="button" class="project-scenes__primary" :disabled="disabled" @click="action('add', clip)"><q-icon name="mdi-playlist-plus" size="18px" />Adicionar ao vídeo master</button>
               <button v-if="signedIn && !expired(clip)" type="button" :disabled="disabled" @click="action('save', clip)"><q-icon name="mdi-folder-plus-outline" size="18px" />Salvar em projeto</button>

@@ -20,6 +20,8 @@ test('a MOV is actually processed before provider upload, cached only after succ
   assert.equal(calls.length,1);assert.equal(calls[0].url,'/aitoia/video/normalize');assert.equal(calls[0].file,source)
   assert.equal(calls[0].config.headers['Content-Type'],'video/quicktime');assert.equal(calls[0].config.signal,signal)
   assert.equal(await prepareCompatibleVideo(source,{post,signal}),output);assert.equal(calls.length,1)
+  const recovered=await prepareCompatibleVideo(source,{post,signal,force:true})
+  assert.equal(calls.length,2);assert.notEqual(recovered,output)
 })
 
 test('failed, canceled or invalid conversion cannot produce a fake MP4 or leave a successful cache', async () => {
@@ -30,4 +32,22 @@ test('failed, canceled or invalid conversion cannot produce a fake MP4 or leave 
   await assert.rejects(prepareCompatibleVideo(source,{post:async()=>{calls++;return{}},signal:controller.signal}),{name:'AbortError'})
   assert.equal(calls,0)
   await assert.rejects(prepareCompatibleVideo(source),/Entre na sua conta/)
+})
+
+test('generated-video resolution preservation has a separate cache from ordinary reference conversion', async () => {
+  const source = new File(['4k-hevc-source'], 'generated.mov', { type: 'video/quicktime' })
+  const calls = []
+  const post = async (url, file, config) => {
+    calls.push(config.params)
+    return { data: new Blob([config.params.preserveResolution ? '4k-h264' : '1080p-h264'], { type: 'video/mp4' }) }
+  }
+  const reference = await prepareCompatibleVideo(source, { post })
+  const generated = await prepareCompatibleVideo(source, { post, preserveResolution: true })
+  assert.equal(await reference.text(), '1080p-h264')
+  assert.equal(await generated.text(), '4k-h264')
+  assert.notEqual(reference, generated)
+  assert.deepEqual(calls, [{ filename: 'generated.mov' }, { filename: 'generated.mov', preserveResolution: true }])
+  assert.equal(await prepareCompatibleVideo(source, { post }), reference)
+  assert.equal(await prepareCompatibleVideo(source, { post, preserveResolution: true }), generated)
+  assert.equal(calls.length, 2)
 })

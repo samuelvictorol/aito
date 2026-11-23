@@ -1,4 +1,5 @@
-import { commonVideoType } from './aitoiaVideoCompatibility.js'
+import { commonVideoType, prepareCompatibleVideo } from './aitoiaVideoCompatibility.js'
+import { isVideoGenerationId } from './aitoiaVideoProjectLinks.js'
 const MAX_CLIP_BYTES = 60 * 1024 * 1024
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
 const IMAGE_REFERENCE_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
@@ -54,8 +55,10 @@ export async function putVoiceReference(file, ticket, signal) {
 
 export async function readGeneratedClip(url, signal) {
   const response = await fetch(safeVideoUrl(url), { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal })
-  const type = (response.headers.get('Content-Type') || '').split(';')[0].trim()
-  if (!response.ok || !response.body || !type.startsWith('video/')) throw new Error('Abra o clipe no provedor para baixar o arquivo.')
+  const type = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase()
+  const size = Number(response.headers.get('Content-Length')) || 0
+  if (!response.ok || !response.body || !['video/mp4', 'video/webm', 'video/quicktime', 'application/octet-stream'].includes(type)) throw new Error('Não foi possível ler o arquivo original deste clipe.')
+  if (size > MAX_CLIP_BYTES) { await response.body.cancel().catch(() => {}); throw new Error('O clipe excede 60 MB.') }
   const reader = response.body.getReader()
   const parts = []
   let total = 0
@@ -69,25 +72,55 @@ export async function readGeneratedClip(url, signal) {
     }
   } finally { await reader.cancel().catch(() => {}) }
   if (!total) throw new Error('O provedor retornou um arquivo vazio.')
+  if (size && !response.headers.get('Content-Encoding') && total !== size) throw new Error('O download do vídeo ficou incompleto. Tente recuperar o original novamente.')
   const extension = type === 'video/webm' ? 'webm' : type === 'video/quicktime' ? 'mov' : 'mp4'
-  return new File(parts, `clipe-aitoia.${extension}`, { type })
+  return new File(parts, `clipe-aitoia.${extension}`, { type: type === 'application/octet-stream' ? 'video/mp4' : type })
 }
 
-export async function readGeneratedClipForJob(clip, signal, authorizedFetch) {
-  if (clip.file) return clip.file
-  try { return await readGeneratedClip(clip.remoteUrl || clip.url, signal) }
+function validClip(file) {
+  return file instanceof Blob && file.size > 0 && file.size <= MAX_CLIP_BYTES &&
+    /^video\/(?:mp4|webm|quicktime|x-m4v)(?:;|$)/i.test(file.type)
+}
+
+export async function readGeneratedClipForJob(clip, signal, authorizedFetch, authorizedPost, { repair = false } = {}) {
+  const prepare = file => authorizedPost ? prepareCompatibleVideo(file, { post: authorizedPost, signal, force: repair, preserveResolution: true }) : file
+  const generationId = clip.sourceClipId || clip.id
+  const localFile = validClip(clip.file) ? clip.file : null
+  // Reuse healthy bytes, but allow a failed preview to bypass a stale local
+  // Blob and short-lived provider URL without issuing another generation.
+  const readAuthenticated = async () => {
+    const { data } = await authorizedFetch(`/aitoia/video/generations/${encodeURIComponent(generationId)}/file`, {
+      responseType: 'blob', signal,
+    })
+    if (!validClip(data)) throw new Error('O provedor não disponibilizou um arquivo de vídeo válido.')
+    const type = data.type.split(';')[0].toLowerCase()
+    const extension = type === 'video/webm' ? 'webm' : type === 'video/quicktime' ? 'mov' : 'mp4'
+    return new File([data], `clipe-aitoia.${extension}`, { type })
+  }
+  const mayRecover = generationId && authorizedFetch && (clip.remoteUrl || clip.sourceClipId || isVideoGenerationId(generationId) || !localFile)
+  if (localFile && !repair) {
+    try { return await prepare(localFile) }
+    catch (error) {
+      signal?.throwIfAborted()
+      const status = error.response?.status
+      // A corrupt persisted Blob can retain a plausible MIME and size. Fetch
+      // the owned original once when its bytes are rejected, but preserve
+      // access denials, server outages and processing throttling as failures.
+      if (!mayRecover || (status && ![400, 413, 415, 422].includes(status)) ||
+        ['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', 'ERR_CANCELED'].includes(error.code)) throw error
+      return prepare(await readAuthenticated())
+    }
+  }
+  if (repair && mayRecover) return prepare(await readAuthenticated())
+  if (repair && localFile) return prepare(localFile)
+  let file
+  try { file = await readGeneratedClip(clip.remoteUrl || clip.url, signal) }
   catch (error) {
-    signal.throwIfAborted()
-    if (!clip.id || !authorizedFetch) throw error
+    signal?.throwIfAborted()
+    if (!mayRecover) throw error
+    file = await readAuthenticated()
   }
-  const { data } = await authorizedFetch(`/aitoia/video/generations/${encodeURIComponent(clip.id)}/file`, {
-    responseType: 'blob', signal,
-  })
-  if (!(data instanceof Blob) || !data.type.startsWith('video/') || !data.size || data.size > MAX_CLIP_BYTES) {
-    throw new Error('O provedor não disponibilizou um arquivo de vídeo válido.')
-  }
-  const extension = data.type === 'video/webm' ? 'webm' : data.type === 'video/quicktime' ? 'mov' : 'mp4'
-  return new File([data], `clipe-aitoia.${extension}`, { type: data.type })
+  return prepare(file)
 }
 
 function mediaEvent(media, name, signal, start) {

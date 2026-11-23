@@ -1,18 +1,13 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { api } from 'boot/axios'
-import { videoCatalog, videoModelPreview, videoModelSpecialty } from 'src/data/aitoiaVideoCatalog'
-import { useAitoIATheme } from 'src/composables/useAitoIATheme'
 
-const props = defineProps({ models: { type: Array, default: () => [] }, importing: { type: String, default: '' }, disabled: Boolean })
-const emit = defineEmits(['recreate'])
-const { isDark } = useAitoIATheme()
+const props = defineProps({ importing: { type: String, default: '' }, disabled: Boolean })
+const emit = defineEmits(['recreate', 'explore'])
 const items = shallowRef([])
 const loading = ref(false)
 const error = ref('')
 const preview = shallowRef(null)
-const modelsOpen = ref(false)
-const modelQuery = ref('')
 const pageSize = 10
 const visibleCount = ref(pageSize)
 const visibleItems = computed(() => items.value.slice(0, visibleCount.value))
@@ -36,30 +31,6 @@ function youtubeEmbed(item) {
   } catch { return '' }
 }
 const previewUrl = computed(() => preview.value?.kind === 'youtube' ? youtubeEmbed(preview.value) : safeUrl(preview.value?.url))
-const catalog = computed(() => {
-  const available = props.models.length ? props.models : videoCatalog.filter(item => item.type !== 'image')
-  const seen = new Set()
-  return available.filter(item => {
-    const key = `${item.id}:${item.mode || ''}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  }).map(item => {
-    const family = videoCatalog.find(family => family.id === item.familyId || family.id === item.id)
-    const duration = item.sourceSecondsMax ? `Vídeo-base até ${item.sourceSecondsMax} s` : ''
-    return { ...item, name: item.name || item.label?.replace(/ · Higgsfield$/, '') || item.id,
-      maker: item.maker || family?.maker || 'Higgsfield',
-      summary: videoModelSpecialty(item) || item.summary || family?.summary || 'Criação de cenas a partir das suas instruções e referências.',
-      preview: videoModelPreview(item),
-      tags: [item.mode === 'transition' ? 'Transições' : item.mode === 'continuation' ? 'Continuidade' :
-        item.requiresVideo || item.mode?.includes('genjutsu') ? 'Transformar vídeos' : item.mode === 'reference' ? 'Referências visuais' : 'Criação de cenas',
-      item.audioReference || item.nativeAudio ? 'Áudio e imagem' : '', duration].filter(Boolean) }
-  })
-})
-const filteredModels = computed(() => {
-  const query = String(modelQuery.value || '').trim().toLocaleLowerCase('pt-BR')
-  return catalog.value.filter(item => !query || `${item.name} ${item.maker} ${item.summary} ${item.tags.join(' ')}`.toLocaleLowerCase('pt-BR').includes(query))
-})
 async function load() {
   request?.abort()
   observer?.disconnect()
@@ -104,11 +75,11 @@ onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect(
 <template>
   <section class="aito-references" aria-label="Referências de vídeo">
     <header class="aito-references__header">
-      <q-btn outline no-caps icon="mdi-movie-open-star-outline" label="Conheça os modelos" @click="modelsOpen = true" />
+      <q-btn outline no-caps icon="mdi-movie-open-star-outline" label="Conheça os modelos" @click="emit('explore')" />
     </header>
     <div v-if="loading" class="aito-references__state" role="status"><q-spinner size="30px" /><span>Abrindo referências…</span></div>
     <div v-else-if="error" class="aito-references__state" role="alert"><span>{{ error }}</span><q-btn no-caps outline label="Tentar novamente" @click="load" /></div>
-    <div v-else-if="!items.length" class="aito-references__state"><q-icon name="mdi-movie-open-outline" size="36px" /><p>Novas inspirações chegam por aqui em breve.</p><q-btn no-caps flat label="Explorar modelos de vídeo" @click="modelsOpen = true" /></div>
+    <div v-else-if="!items.length" class="aito-references__state"><q-icon name="mdi-movie-open-outline" size="36px" /><p>Novas inspirações chegam por aqui em breve.</p><q-btn no-caps flat label="Explorar modelos de vídeo" @click="emit('explore')" /></div>
     <div v-else class="aito-references__grid">
       <article v-for="(item, index) in visibleItems" :key="item.id" class="aito-references__tile" :class="`aito-references__tile--${index % 3}`">
         <button type="button" class="aito-references__open" :aria-label="`Assistir ${item.title}`" @click="preview = item">
@@ -134,19 +105,6 @@ onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect(
           <p v-else>Esta referência não está disponível para reprodução.</p>
         </div>
         <footer><span>Uma nova versão começa com a sua direção.</span><q-btn no-caps unelevated class="aito-references__recreate" icon="mdi-movie-open-edit-outline" label="Recriar este vídeo" :disable="disabled || Boolean(importing)" @click="recreate(preview)" /></footer>
-      </q-card>
-    </q-dialog>
-    <q-dialog v-model="modelsOpen">
-      <q-card class="aito-references__models aito-ai-theme">
-        <header><div><span class="aito-references__eyebrow">Escolha com mais clareza</span><h2>Um modelo para cada ideia</h2><p>Conheça as especialidades. A escolha do modelo acontece na ferramenta de criação.</p></div><q-btn v-close-popup flat round icon="mdi-close" aria-label="Fechar modelos" /></header>
-        <q-input v-model="modelQuery" outlined dense :dark="isDark" placeholder="Buscar modelo, especialidade ou tipo de vídeo" aria-label="Buscar modelos de vídeo" clearable><template #prepend><q-icon name="mdi-magnify" /></template></q-input>
-        <div class="aito-references__model-grid">
-          <article v-for="model in filteredModels" :key="`${model.id}:${model.mode || ''}`" class="aito-references__model">
-            <img v-if="model.preview" :src="model.preview.cover" alt="" loading="lazy" @error="$event.target.style.display = 'none'" />
-            <div><small>{{ model.maker }}</small><h3>{{ model.name }}</h3><p>{{ model.summary }}</p><ul><li v-for="tag in model.tags" :key="tag">{{ tag }}</li></ul></div>
-          </article>
-          <p v-if="!filteredModels.length" role="status">Nenhum modelo corresponde à busca.</p>
-        </div>
       </q-card>
     </q-dialog>
   </section>

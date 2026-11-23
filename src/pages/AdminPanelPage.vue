@@ -37,6 +37,7 @@
         <q-item clickable to="/admin/comunicacao"><q-item-section avatar><q-icon name="mdi-forum-outline"/></q-item-section><q-item-section>Comunicação</q-item-section></q-item>
         <q-item clickable :active="tab === 'projects'" @click="openDetail('projects')"><q-item-section avatar><q-icon name="mdi-folder-star-outline"/></q-item-section><q-item-section>Projetos</q-item-section></q-item>
         <q-item clickable :active="tab === 'overview'" @click="openDetail('overview')"><q-item-section avatar><q-icon name="mdi-finance"/></q-item-section><q-item-section>Dashboard</q-item-section></q-item>
+        <q-item clickable :active="tab === 'insta-downloader'" @click="openDetail('insta-downloader')"><q-item-section avatar><q-icon name="mdi-instagram"/></q-item-section><q-item-section>InstaDownloader</q-item-section></q-item>
         <q-expansion-item v-model="detailExpanded" icon="mdi-view-grid-outline" label="Detalhar" class="business-detail" @before-show="tab = 'detail'">
           <q-item v-for="item in sortedDetailOptions" :key="item.name" clickable :active="tab === item.name" @click="openDetail(item.name)">
             <q-item-section avatar><q-icon :name="item.icon" size="20px"/></q-item-section>
@@ -50,6 +51,7 @@
       <q-page class="admin-app__page">
         <div class="admin-app__shell">
           <q-tab-panels v-model="tab" class="admin-app__panels">
+            <q-tab-panel name="insta-downloader"><AdminInstaDownloader /></q-tab-panel>
             <q-tab-panel name="desktop-expirations"><DesktopExpirations/></q-tab-panel>
             <q-tab-panel name="email-templates"><AdminEmailTemplates /></q-tab-panel>
             <q-tab-panel name="landing-videos"><AdminLandingVideos /></q-tab-panel>
@@ -147,6 +149,7 @@ import DesktopExpirations from 'components/DesktopExpirations.vue'
 import BotBuilderLicensesManager from 'components/BotBuilderLicensesManager.vue'
 import SiteAssistantHistoryManager from 'components/SiteAssistantHistoryManager.vue'
 
+const AdminInstaDownloader = defineAsyncComponent(() => import('components/AdminInstaDownloader.vue'))
 const AdminEmailTemplates = defineAsyncComponent(() => import('components/AdminEmailTemplates.vue'))
 const AdminAitoTokensPanel = defineAsyncComponent(() => import('components/AdminAitoTokensPanel.vue'))
 const AdminLandingVideos = defineAsyncComponent(() => import('components/AdminLandingVideos.vue'))
@@ -167,11 +170,11 @@ const siteLinks = [
   { route: 'user-app', label: 'Área do cliente', icon: 'mdi-account-circle-outline' },
 ]
 
-const initialTab = value => ['access-security', 'aito-tokens', 'projects'].includes(value) ? value : 'aito-tokens'
+const initialTab = value => ['access-security', 'aito-tokens', 'projects', 'insta-downloader'].includes(value) ? value : 'aito-tokens'
 
 export default {
   name: 'AdminPanelPage',
-  components: { AdminLandingVideos, AdminCodexInstallPrompt, AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
+  components: { AdminInstaDownloader, AdminLandingVideos, AdminCodexInstallPrompt, AdminAitoTokensPanel, AdminEmailTemplates, DesktopExpirations,AdminPushBell, CosmicScene, BusinessDashboard, LicensePaidAmount, LicenseTermDialog, AuthenticationIntegrationCard, AdminPasswordChangeCard, LicenseTokenList, FinanceDashboard, AdminCostManager, SupportTicketsPanel, ContractManager, CredentialManager, ProjectManager, InvoiceManager, CourseManager, CoursePurchaseManager, CertificateManager, CourseCommentManager, AffiliateManager, CouponManager, AffiliatePurchaseManager, AdminNotificationManager, BotBuilderLicensesManager, SiteAssistantHistoryManager, GeneratedCredentialsDialog },
   watch: {
     '$route.query.tab' (tab) { this.openDetail(initialTab(tab)) },
   },
@@ -189,7 +192,7 @@ export default {
   computed: {
     sortedDetailOptions () { return [...this.detailOptions,{name:'botbuilder-licenses',label:'Kit · planos e licenças',description:'Produto, downloads e licenças.',icon:'mdi-shield-key-outline'},{name:'access-security',label:'Segurança de acesso',description:'Integração de e-mail e multifator.',icon:'mdi-email-lock-outline'},{name:'site-assistant',label:'Assistente do site',description:'Conversas e atendimento no site.',icon:'mdi-message-text-outline'},{name:'lgpd',label:'LGPD',description:'Privacidade e termos de serviço.',icon:'mdi-shield-lock-outline'}].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR')) },
     sectionTitle () {
-      const main = { 'aito-tokens': 'AitoTokens', overview: 'Dashboard', projects: 'Projetos', detail: 'Detalhar', 'landing-videos': 'Site · Vídeos', 'codex-install-prompt': 'Site · Prompt do Codex' }
+      const main = { 'insta-downloader': 'InstaDownloader', 'aito-tokens': 'AitoTokens', overview: 'Dashboard', projects: 'Projetos', detail: 'Detalhar', 'landing-videos': 'Site · Vídeos', 'codex-install-prompt': 'Site · Prompt do Codex' }
       return main[this.tab] || this.sortedDetailOptions.find(item => item.name === this.tab)?.label || 'Administração'
     },
     firstName () { return String(this.admin.name || 'Admin Aito').trim().split(/\s+/)[0] },
