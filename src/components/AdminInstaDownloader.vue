@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
+import { instagramLink } from 'src/services/instagramReel'
+import AdminReelQueue from 'components/AdminReelQueue.vue'
 
 const $q = useQuasar(), link = ref(''), busy = ref(false), result = shallowRef(null), video = ref(''), cover = ref(''), file = shallowRef(null)
 const linkInput = ref(null)
@@ -10,13 +12,6 @@ const base = '/admin/insta-downloader'
 let controller
 const canShare = computed(() => Boolean(file.value && navigator.canShare?.({ files: [file.value] })))
 function clear() { if (video.value) URL.revokeObjectURL(video.value); if (cover.value) URL.revokeObjectURL(cover.value); video.value = ''; cover.value = ''; file.value = null; result.value = null }
-
-function instagramLink(text) {
-  const match = text.trim().match(/(?:^|[\s(<"'“«])((?:https:\/\/)?(?:www\.)?instagram\.com\/[^\s<>"'“”«»]+)/iu)
-  if (!match) return ''
-  const url = match[1].replace(/[)\]}.,;!]+$/u, '')
-  return /^https:\/\//i.test(url) ? url : 'https://' + url
-}
 
 function onNativePaste(event) {
   const url = instagramLink(event.clipboardData?.getData('text/plain') || '')
@@ -105,6 +100,7 @@ onBeforeUnmount(() => { controller?.abort(); clear() })
     </div>
     <div v-else-if="!busy" class="insta-downloader__empty"><q-icon name="mdi-play-box-outline" size="52px" /><p>Cole um link e clique em Converter para conferir a capa e salvar o vídeo.</p></div>
     <p class="insta-downloader__hint">Vídeos públicos do Instagram · até 10 minutos e 60 MB. Publicações com vários vídeos usam o primeiro vídeo disponível. Conteúdo que exige login ou está indisponível não pode ser convertido.</p>
+    <AdminReelQueue />
   </section>
 </template>
 

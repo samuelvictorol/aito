@@ -23,6 +23,7 @@ import 'src/css/aitoia-theme.css'
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
 const AitoIAChatVideo = defineAsyncComponent(() => import('components/AitoIAChatVideo.vue'))
+const AitoReelDownloader = defineAsyncComponent(() => import('components/AitoReelDownloader.vue'))
 const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
@@ -67,6 +68,7 @@ const promptIdeas = [
   { icon: 'mdi-code-braces', title: 'Revisar código', text: 'Revise este código e sugira melhorias de legibilidade, desempenho e testes. Explique suas decisões.' },
   { icon: 'mdi-file-document-outline', title: 'Analisar um documento', text: 'Analise o documento que vou anexar. Resuma os pontos principais e liste as decisões ou ações que merecem atenção.' },
   { icon: 'mdi-file-video-outline', title: 'Analisar um vídeo', text: 'Analise o vídeo que vou anexar. Resuma as principais cenas com seus horários e relacione as falas ao que acontece na tela.' },
+  { icon: 'mdi-instagram', title: 'Baixar um Reel', text: 'Quero baixar este Reel do Instagram ' },
   { icon: 'mdi-image-plus-outline', title: 'Criar uma imagem', text: 'Gere uma imagem quadrada de ' },
   { icon: 'mdi-file-pdf-box', title: 'Criar um PDF', text: 'Crie um PDF para baixar sobre ' },
 ]
@@ -256,6 +258,14 @@ onBeforeUnmount(() => videoSwitch?.abort())
             <div v-if="message.attachments?.length" class="aito-studio__attachments"><AitoIAAttachment v-for="file in message.attachments" :key="file.id" :attachment="file" :preview="message.role === 'assistant'" /></div>
             <p v-if="message.role === 'user' && message.text" class="aito-studio__user-text">{{ message.text }}</p>
             <AitoIAResponse v-else-if="message.text" :text="message.text" />
+            <AitoReelDownloader v-if="message.reel && !message.reel.dismissed" source="chat"
+              :url="message.reel.url" :job-id="message.reel.jobId" :saved-preview="message.reel.preview"
+              :auto-preview="state.freshReelId.value === message.id" :access="state.access" :signed-in="signedIn"
+              :wallet-id="state.walletId.value" :account-id="accountId"
+              @preview="preview => state.updateReel(active.id, message.id, { preview })"
+              @job="jobId => state.updateReel(active.id, message.id, { jobId, preview: null })"
+              @dismiss="state.updateReel(active.id, message.id, { dismissed: true, preview: null })"
+              @login="showAuth('login')" @wallet="showWallet" @balance="state.refreshStatus({ silent: true })" />
             <button v-if="message.imagePlan" type="button" class="aito-studio__tool" :disabled="busy" @click="state.quoteImage(message)"><q-icon name="mdi-image-plus-outline" size="19px" /> Gerar imagem</button>
             <button v-if="message.role === 'assistant' && message.text" type="button" class="aito-studio__icon aito-studio__copy" :aria-label="copiedId === message.id ? 'Resposta copiada' : 'Copiar resposta'" @click="copyMessage(message)"><q-icon :name="copiedId === message.id ? 'mdi-check' : 'mdi-content-copy'" size="17px" /></button>
           </article>

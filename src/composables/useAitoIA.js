@@ -78,6 +78,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
   let walletResolved = false
 
   const signedIn = computed(() => Boolean(session.value))
+  const freshReelId = ref('')
   const adminMode = computed(() => session.value?.kind === 'admin')
   const active = computed(() => chats.value.find(chat => chat.id === activeId.value) || null)
   const chatLimitReached = computed(() => chats.value.length >= AITOIA_CHAT_LIMIT)
@@ -148,6 +149,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
   }
 
   function resetSession() {
+    freshReelId.value = ''
     sessionEpoch++
     statusEpoch++
     historyEpoch++
@@ -308,6 +310,7 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
   }
 
   function selectChat(chatId) {
+    freshReelId.value = ''
     activeId.value = chatId
     imageQuote.value = null
     draft.value = ''
@@ -320,6 +323,17 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
   function renameChat(chat, title) {
     const current = chats.value.find(item => item.id === chat.id)
     if (current && title.trim()) saveChat({ ...current, title: title.trim().slice(0, 65) })
+  }
+
+  function updateReel(chatId, messageId, changes) {
+    const chat = chats.value.find(item => item.id === chatId)
+    if (!signedIn.value || !chat?.messages.some(item => item.id === messageId && item.reel)) return
+    if (freshReelId.value === messageId) freshReelId.value = ''
+    return saveChat({ ...chat, messages: chat.messages.map(item => item.id !== messageId ? item : {
+      ...item, reel: { ...item.reel, ...changes },
+      ...(changes.jobId && { text: 'Acompanhe sua conversão e baixe o vídeo aqui.' }),
+      ...(changes.dismissed && { text: 'Prévia do Reel encerrada.' }),
+    }) })
   }
 
   async function removeChat(chatId) {
@@ -437,7 +451,11 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
       let answer = readAnswer(response)
       let attachment
       let imagePlan
-      if (artifact?.kind === 'image') {
+      let reel
+      if (artifact?.kind === 'instagram_reel') {
+        reel = { url: artifact.url }
+        answer = 'Confira o Reel antes de confirmar a conversão.'
+      } else if (artifact?.kind === 'image') {
         imagePlan = { format: artifact.format, prompt: artifact.prompt, referenceIds: artifact.useReferences ? artifactReferences(messages).map(file => file.id) : [] }
         answer = 'A imagem está pronta para gerar. Confira o valor antes de continuar.'
       } else if (artifact?.kind === 'file') {
@@ -454,8 +472,10 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
       const now = Date.now()
       if (current) {
         const reply = { id: crypto.randomUUID(), role: 'assistant', text: answer, model: sentLabel || sentModel, createdAt: now,
+          ...(reel && { reel }),
           ...(imagePlan && { imagePlan }), ...(attachment && { attachments: [attachment], artifactContext: artifact.content.slice(0, 8000) }),
           billedUsdCents: Number.isFinite(data?.aito?.billedUsdCents) || audioCost ? (data?.aito?.billedUsdCents || 0) + audioCost : undefined }
+        if (reel && activeId.value === chat.id) freshReelId.value = reply.id
         await saveChat({ ...current, updatedAt: now, messages: [...current.messages, reply] })
         if (imagePlan) imageMessage = reply
       }
@@ -659,5 +679,5 @@ export function useAitoIA({ chatHistory = true, allowAdmin = false, preferredMod
     draft, attachments, chats, activeId, active, chatLimitReached, chatLimitMessage, request, pending, history, historyLoading, historyTotal,
     historyOffset, historyLimit, walletLoading, checkoutBusy, paymentBusy, paymentNotice, chatList, storageError,
     loadingConversation, hasInput, imageQuote, quoteImage: processImage, confirmImage, syncSession, refreshStatus, refreshModels, selectChat, renameChat, removeChat,
-    exportChats, addFiles, send, stop, selectWallet, loadHistory, checkout, checkPayment }
+    freshReelId, updateReel, exportChats, addFiles, send, stop, selectWallet, loadHistory, checkout, checkPayment }
 }

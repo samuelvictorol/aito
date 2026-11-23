@@ -53,11 +53,11 @@ const sourceLabels = {
   admin_aitoia: 'AitoIA · Admin',
   unknown: 'Origem não identificada',
 }
-const providerLabels = { openai: 'OpenAI', higgsfield: 'Higgsfield' }
-const providerIcons = { openai: 'mdi-message-text-outline', higgsfield: 'mdi-movie-open-play-outline' }
+const providerLabels = { openai: 'OpenAI', higgsfield: 'Higgsfield', aito: 'Motor Aito' }
+const providerIcons = { openai: 'mdi-message-text-outline', higgsfield: 'mdi-movie-open-play-outline', aito: 'mdi-download-circle-outline' }
 const providerBalanceKeys = { openai: 'openaiBalanceUsdCents', higgsfield: 'higgsfieldBalanceUsdCents' }
 const logStates = { applied: 'Concluída', reserved: 'Em processamento', released: 'Reserva liberada', reconciliation: 'Conciliação pendente' }
-const featureLabels = { aitoia_video_remake: 'Refazer vídeos · Geração', aitoia_video_remake_plan: 'Refazer vídeos · Preparação' }
+const featureLabels = { aitoia_video_remake: 'Refazer vídeos · Geração', aitoia_video_remake_plan: 'Refazer vídeos · Preparação', insta_downloader: 'Baixar Reels' }
 const stateColors = { applied: 'teal-3', reserved: 'blue-3', released: 'grey-4', reconciliation: 'amber-4' }
 const optionList = labels => Object.entries(labels).map(([value, label]) => ({ label, value }))
 const sourceOptions = optionList(sourceLabels)
@@ -86,9 +86,10 @@ const clients = ref([])
 const pagination = ref({ page: 1, rowsPerPage: 10, rowsNumber: 0 })
 const simulatedCost = ref('')
 const simulatedTariff = ref('openai')
+const meteredTariffs = providerOptions.filter(option => option.value !== 'aito')
 const simulationOptions = computed(() => Number.isFinite(funding.value?.codexMultiplier)
-  ? [...providerOptions, { value: 'codex', label: 'Codex' }]
-  : providerOptions)
+  ? [...meteredTariffs, { value: 'codex', label: 'Codex' }]
+  : meteredTariffs)
 const reconciliation = ref(null)
 const reconciliationCost = ref('')
 const reconciliationBusy = ref(false)

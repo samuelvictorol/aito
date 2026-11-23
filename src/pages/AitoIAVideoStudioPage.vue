@@ -48,6 +48,7 @@ import 'src/css/aitoia-theme.css'
 
 const AuthDialog = defineAsyncComponent(() => import('components/AuthDialog.vue'))
 const AitoIAWallet = defineAsyncComponent(() => import('components/AitoIAWallet.vue'))
+const AitoReelDownloader = defineAsyncComponent(() => import('components/AitoReelDownloader.vue'))
 const AitoStudioCodeRender = defineAsyncComponent(() => import('components/AitoStudioCodeRender.vue'))
 const wallet = useAitoIA({ chatHistory: false, allowAdmin: true })
 const { isDark } = useAitoIATheme()
@@ -66,6 +67,7 @@ watch(adminMode, current => {
 const authOpen = ref(false)
 const authMode = ref('register')
 const walletOpen = ref(false)
+const reelsOpen = ref(false)
 const tabs = [
   { id: 'ai', label: 'Vídeos com IA', icon: 'mdi-movie-open-play-outline' },
   { id: 'scenes', label: 'Vídeo Master', icon: 'mdi-filmstrip' },
@@ -437,6 +439,7 @@ function importArchive(file) {
 }
 
 function showAuth(mode = 'register') { authMode.value = mode; authOpen.value = true }
+function showReels() { closeMobilePanel(projectsOpen); reelsOpen.value = true }
 const compactViewport = () => window.matchMedia('(max-width: 900px)').matches
 function closeMobilePanel(panel) {
   if (compactViewport()) {
@@ -2490,6 +2493,7 @@ onBeforeUnmount(() => {
           <q-btn flat round dense icon="mdi-close" aria-label="Fechar painel de projetos" @click="projectsOpen = false" />
         </header>
         <AitoIAThemeToggle />
+        <q-btn outline no-caps class="video-studio__accent-btn" icon="mdi-instagram" label="Baixar Reels" @click="showReels" />
         <div class="video-studio__drawer-section">
           <AitoStudioProjectPicker v-if="signedIn" drawer colored :projects="projects" :active-id="activeId" :loading="projectLoading"
             :storage-error="storageError" :cloud-state="cloudState" :disabled="!accountId || !mayEdit || Boolean(busy)"
@@ -3159,6 +3163,15 @@ onBeforeUnmount(() => {
           <q-btn v-close-popup flat no-caps label="Cancelar" :disable="savingClip" />
           <q-btn unelevated no-caps :color="isDark ? 'grey-3' : 'teal-8'" :text-color="isDark ? 'grey-10' : 'white'" label="Salvar" :loading="savingClip" @click="saveClipInProject" />
         </q-card-actions>
+      </q-card>
+    </q-dialog>
+    <q-dialog v-model="reelsOpen">
+      <q-card class="aito-ai-theme video-studio__dialog">
+        <q-card-section class="video-studio__scene-heading"><h2>Baixar Reels</h2><q-btn v-close-popup flat round dense icon="mdi-close" aria-label="Fechar conversões" /></q-card-section>
+        <q-card-section class="q-pt-none">
+          <AitoReelDownloader :signed-in="signedIn" :account-id="accountId" :wallet-id="walletId" :access="wallet.access"
+            @login="showAuth('login')" @wallet="showWallet" @balance="wallet.refreshStatus({ silent: true })" />
+        </q-card-section>
       </q-card>
     </q-dialog>
     <AuthDialog v-if="authOpen" v-model="authOpen" :initial-mode="authMode" return-path="/aitoia-video-studio" :show-project-login="false" @authenticated="wallet.syncSession()" />
