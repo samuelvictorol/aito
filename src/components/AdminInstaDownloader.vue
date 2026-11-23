@@ -5,16 +5,50 @@ import { api } from 'boot/axios'
 import { financeHeaders } from 'src/services/purchase-history'
 
 const $q = useQuasar(), link = ref(''), busy = ref(false), result = shallowRef(null), video = ref(''), cover = ref(''), file = shallowRef(null)
+const linkInput = ref(null)
 const base = '/admin/insta-downloader'
 let controller
 const canShare = computed(() => Boolean(file.value && navigator.canShare?.({ files: [file.value] })))
 function clear() { if (video.value) URL.revokeObjectURL(video.value); if (cover.value) URL.revokeObjectURL(cover.value); video.value = ''; cover.value = ''; file.value = null; result.value = null }
+
+function instagramLink(text) {
+  const match = text.trim().match(/(?:^|[\s(<"'“«])((?:https:\/\/)?(?:www\.)?instagram\.com\/[^\s<>"'“”«»]+)/iu)
+  if (!match) return ''
+  const url = match[1].replace(/[)\]}.,;!]+$/u, '')
+  return /^https:\/\//i.test(url) ? url : 'https://' + url
+}
+
+function onNativePaste(event) {
+  const url = instagramLink(event.clipboardData?.getData('text/plain') || '')
+  if (url) {
+    event.preventDefault()
+    link.value = url
+  }
+}
+
+async function pasteLink() {
+  try {
+    const url = instagramLink(await navigator.clipboard.readText())
+    if (url) link.value = url
+    else $q.notify({ type: 'warning', position: 'top', message: 'Copie o link de um vídeo ou Reel do Instagram.' })
+  } catch {
+    $q.notify({ type: 'warning', position: 'top', message: 'Use a opção Colar do seu navegador no campo do link.' })
+  }
+  linkInput.value?.focus()
+}
+
 async function convert() {
   if (busy.value || !link.value.trim()) return
+  const url = instagramLink(link.value)
+  if (!url) {
+    $q.notify({ type: 'warning', position: 'top', message: 'Cole um link de vídeo ou Reel do Instagram.' })
+    linkInput.value?.focus()
+    return
+  }
   controller = new AbortController(); busy.value = true; clear()
   try {
     const options = { ...financeHeaders(true), signal: controller.signal, timeout: 195000 }
-    const { data } = await api.post(base + '/convert', { url: link.value.trim() }, options)
+    const { data } = await api.post(base + '/convert', { url }, options)
     const item = data.data
     const [clip, image] = await Promise.all([
       api.get(`${base}/${item.id}/video`, { ...options, responseType: 'blob', timeout: 60000 }),
@@ -47,7 +81,17 @@ onBeforeUnmount(() => { controller?.abort(); clear() })
   <section class="insta-downloader" aria-labelledby="insta-downloader-title">
     <header><span class="insta-downloader__icon"><q-icon name="mdi-instagram" size="34px" /></span><div><p>FERRAMENTAS DO ADMIN</p><h2 id="insta-downloader-title">InstaDownloader</h2><span>Do link à sua biblioteca de vídeos.</span></div></header>
     <q-form class="insta-downloader__form" @submit.prevent="convert">
-      <q-input v-model="link" outlined dark type="url" label="Link do vídeo ou Reel" placeholder="https://www.instagram.com/reel/…" :disable="busy" maxlength="2048" autocomplete="off"><template #prepend><q-icon name="mdi-link-variant" /></template></q-input>
+      <q-input
+        ref="linkInput" v-model="link" outlined dark inputmode="url"
+        label="Link do vídeo ou Reel" placeholder="https://www.instagram.com/reel/…"
+        autocapitalize="none" autocomplete="off" maxlength="2048" :spellcheck="false"
+        :disable="busy" @change="link = $event" @paste="onNativePaste"
+      >
+        <template #prepend><q-icon name="mdi-link-variant" /></template>
+        <template #append>
+          <q-btn flat round dense type="button" icon="mdi-content-paste" aria-label="Colar link" title="Colar link" :disable="busy" @click.stop="pasteLink" />
+        </template>
+      </q-input>
       <q-btn unelevated no-caps icon="mdi-download-circle-outline" label="Converter" type="submit" class="insta-downloader__convert" :loading="busy" :disable="!link.trim() || busy" />
     </q-form>
     <div v-if="busy" class="insta-downloader__loading" role="status"><q-spinner size="26px" /><span>Preparando um MP4 compatível com celular…</span><q-btn flat dense no-caps label="Cancelar" @click="controller?.abort()" /></div>
