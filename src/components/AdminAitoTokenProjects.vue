@@ -2,9 +2,9 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from 'boot/axios'
-import { financeHeaders, purchaseDate, purchaseMoney } from 'src/services/purchase-history'
+import { financeHeaders, purchaseDate } from 'src/services/purchase-history'
 import { adminConfirmationHeaders } from 'src/services/adminConfirmation'
-import AitoTokenHistory from './AitoTokenHistory.vue'
+import AdminProjectWallet from './AdminProjectWallet.vue'
 import AdminPasswordDialog from './AdminPasswordDialog.vue'
 
 const emit = defineEmits(['open-projects'])
@@ -21,13 +21,14 @@ const reclaimAll = ref(false)
 const busy = ref(false)
 const passwordOpen = ref(false)
 const revealed = ref(null)
-const historyProject = ref(null)
+const selectedProject = ref(null)
+const numbers = new Intl.NumberFormat('pt-BR')
 let request
 
 const columns = [
   { name: 'project', label: 'Projeto', field: 'title', align: 'left' },
   { name: 'status', label: 'AitoKey', field: 'active', align: 'left' },
-  { name: 'balance', label: 'Saldo', field: row => purchaseMoney(row.balanceUsdCents, 'USD') },
+  { name: 'balance', label: 'Saldo disponível', field: row => Number.isFinite(row.balanceAitoTokens) ? numbers.format(row.balanceAitoTokens) + ' AitoTokens' : '—' },
   { name: 'updatedAt', label: 'Alterada em', field: row => purchaseDate(row.updatedAt), align: 'left' },
   { name: 'actions', label: 'Ações', field: 'projectId' },
 ]
@@ -74,24 +75,25 @@ function selectAction(operation, project) {
 
 async function confirm() {
   if (!action.value || busy.value) return
+  const tokens = /^\d+$/.test(String(credit.value).trim()) ? Number(credit.value) : NaN
   if (action.value.operation === 'reclaim') {
-    const value = String(credit.value).trim()
-    const cents = /^\d+(?:[.,]\d{1,6})?$/.test(value) ? Math.round(Number(value.replace(',', '.')) * 1000000) / 10000 : 0
-    if (!reclaimAll.value && (!(cents > 0) || cents > action.value.project.balanceUsdCents)) {
+    if (!reclaimAll.value && (!Number.isSafeInteger(tokens) || tokens <= 0 || tokens > action.value.project.approximateTokens)) {
       $q.notify({ type: 'negative', message: 'Informe um valor dentro do saldo disponível.' })
       return
     }
-    const amount = reclaimAll.value ? { all: true } : { usdCents: cents }
+    const amount = reclaimAll.value ? { all: true } : { aitoTokens: tokens }
     const signature = JSON.stringify(amount)
     if (action.value.reclaimSignature !== signature) action.value = {
       ...action.value, reclaimSignature: signature, reclaimBody: { ...amount, requestId: crypto.randomUUID() },
     }
   }
   if (action.value.operation === 'grant' || action.value.operation === 'issue') {
-    const usdCents = Math.round(Number(credit.value) * 100)
-    if (!Number.isSafeInteger(usdCents) || usdCents < (action.value.operation === 'grant' ? 1 : 0) || usdCents > 100000) return
-    if (action.value.usdCents !== usdCents) {
-      action.value = { ...action.value, usdCents, ...(action.value.operation === 'grant' && { requestId: crypto.randomUUID() }) }
+    if (!Number.isSafeInteger(tokens) || tokens < (action.value.operation === 'grant' ? 1 : 0)) {
+      $q.notify({ type: 'negative', message: 'Informe uma quantidade inteira de AitoTokens.' })
+      return
+    }
+    if (action.value.aitoTokens !== tokens) {
+      action.value = { ...action.value, aitoTokens: tokens, ...(action.value.operation === 'grant' && { requestId: crypto.randomUUID() }) }
     }
   }
   passwordOpen.value = true
@@ -99,16 +101,16 @@ async function confirm() {
 
 async function apply(confirmation) {
   if (!confirmation?.confirmationToken || !action.value || busy.value) return
-  const { operation, project, usdCents, requestId, reclaimBody } = action.value
+  const { operation, project, aitoTokens, requestId, reclaimBody } = action.value
   const headers = adminConfirmationHeaders(confirmation)
   busy.value = true
   try {
     if (operation === 'grant') {
-      await api.post(root + '/grants', { projectId: project.projectId, usdCents, requestId }, headers)
+      await api.post(root + '/grants', { projectId: project.projectId, aitoTokens, requestId }, headers)
     } else if (operation === 'reclaim') {
       await api.post(root + '/reclaims', { projectId: project.projectId, ...reclaimBody }, headers)
     } else {
-      const body = operation === 'issue' ? { initialUsdCents: usdCents } : {}
+      const body = operation === 'issue' ? { initialAitoTokens: aitoTokens } : {}
       const { data } = await api.post(root + '/project-keys/' + encodeURIComponent(project.projectId) + '/' + operation, body, headers)
       if (data.data?.key) revealed.value = { key: data.data.key, title: project.title }
     }
@@ -155,6 +157,7 @@ onBeforeUnmount(() => {
     >
       <template #top-right>
         <q-input v-model.trim="search" dark dense outlined clearable debounce="300" label="Buscar projeto" @update:model-value="load(1)" />
+        <q-btn flat dense round icon="mdi-refresh" aria-label="Atualizar saldos dos projetos" :loading="loading" @click="load()" />
       </template>
       <template #body-cell-status="props">
         <q-td :props="props">
@@ -171,7 +174,7 @@ onBeforeUnmount(() => {
             <q-btn v-if="props.row.active" flat dense round icon="mdi-key-remove" color="orange-4" aria-label="Revogar chave" @click="selectAction('revoke', props.row)"><q-tooltip>Revogar chave</q-tooltip></q-btn>
             <q-btn v-if="props.row.active && projectActive(props.row)" flat dense round icon="mdi-wallet-plus-outline" color="teal-3" aria-label="Adicionar créditos" @click="selectAction('grant', props.row)"><q-tooltip>Adicionar créditos</q-tooltip></q-btn>
             <q-btn v-if="props.row.balanceUsdCents > 0" flat dense round icon="mdi-cash-refund" color="amber-4" aria-label="Devolver saldo" @click="selectAction('reclaim', props.row)"><q-tooltip>Devolver saldo</q-tooltip></q-btn>
-            <q-btn v-if="props.row.issued" flat dense round icon="mdi-history" color="teal-3" aria-label="Histórico de recargas" @click="historyProject = props.row"><q-tooltip>Histórico de recargas</q-tooltip></q-btn>
+            <q-btn v-if="props.row.issued" flat dense no-caps icon="mdi-wallet-outline" color="teal-3" label="Carteira e recarga" @click="selectedProject = props.row" />
           </div>
         </q-td>
       </template>
@@ -185,11 +188,11 @@ onBeforeUnmount(() => {
             <p>{{ explanations[action?.operation] }}</p>
             <template v-if="action?.operation === 'reclaim'">
               <q-toggle v-model="reclaimAll" dark color="amber-6" label="Devolver todo o saldo disponível" :disable="busy || passwordOpen" />
-              <q-input v-if="!reclaimAll" v-model="credit" dark outlined label="Saldo a devolver" prefix="US$" inputmode="decimal" :disable="busy || passwordOpen" />
+              <q-input v-if="!reclaimAll" v-model="credit" dark outlined label="AitoTokens a devolver" inputmode="numeric" type="number" min="1" step="1" required :disable="busy || passwordOpen" />
             </template>
             <q-input v-if="['grant', 'issue'].includes(action?.operation)" v-model="credit" dark outlined
-              :label="action.operation === 'issue' ? 'Crédito inicial' : 'Créditos em dólares'" prefix="US$"
-              type="number" :min="action.operation === 'issue' ? '0' : '0.01'" max="1000" step="0.01" required :disable="busy || passwordOpen"
+              :label="action.operation === 'issue' ? 'AitoTokens iniciais' : 'AitoTokens a adicionar'"
+              type="number" :min="action.operation === 'issue' ? 0 : 1" step="1" required :disable="busy || passwordOpen"
             />
           </q-card-section>
           <q-card-actions align="right">
@@ -199,13 +202,13 @@ onBeforeUnmount(() => {
         </q-form>
       </q-card>
     </q-dialog>
-    <q-dialog :model-value="Boolean(historyProject)" @update:model-value="historyProject = null">
+    <q-dialog :model-value="Boolean(selectedProject)" @update:model-value="selectedProject = null">
       <q-card dark class="token-projects__dialog token-projects__dialog--wide">
         <q-card-section class="row items-center justify-between">
-          <div><h3>Histórico de recargas</h3><p>{{ historyProject?.title }}</p></div>
-          <q-btn flat round dense icon="mdi-close" aria-label="Fechar histórico" v-close-popup />
+          <div><h3>Carteira do projeto</h3><p>{{ selectedProject?.title }}</p></div>
+          <q-btn flat round dense icon="mdi-close" aria-label="Fechar carteira" v-close-popup />
         </q-card-section>
-        <q-card-section><AitoTokenHistory v-if="historyProject" :admin-project-id="historyProject.projectId" /></q-card-section>
+        <q-card-section><AdminProjectWallet v-if="selectedProject" :project="selectedProject" /></q-card-section>
       </q-card>
     </q-dialog>
     <AdminPasswordDialog v-model="passwordOpen" @verified="apply" />
