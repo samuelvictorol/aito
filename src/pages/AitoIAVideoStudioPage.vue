@@ -192,8 +192,6 @@ const artworkSaved = computed(() => Boolean(artworkResult.value && projectCompon
 const remakeDraft = shallowRef(null)
 const remakeRevision = ref(0)
 const remakeEditor = ref(null)
-const galleryImportId = ref('')
-let galleryRequest
 const builtInComponentNames = {
   Personagens: 'Personagem',
   Cenas: 'Cena',
@@ -396,8 +394,8 @@ const resolution = ref('medium')
 const exportSize = computed(() => studioRenderSize(format.value, resolution.value))
 const subtitles = computed(() => studioSubtitles(timeline.value))
 const canRecord = computed(() => exportFormats.value.length > 0)
-const mayEdit = computed(() => !galleryImportId.value && !remakeBusy.value && (!busy.value || ['video', 'render'].includes(busy.value)) && !projectLoading.value && (!signedIn.value || Boolean(accountId.value)))
-const guarded = computed(() => Boolean(busy.value || remakeBusy.value || galleryImportId.value))
+const mayEdit = computed(() => !remakeBusy.value && (!busy.value || ['video', 'render'].includes(busy.value)) && !projectLoading.value && (!signedIn.value || Boolean(accountId.value)))
+const guarded = computed(() => Boolean(busy.value || remakeBusy.value))
 const blockedExit = ref(false)
 useAitoWorkGuard(guarded, () => { blockedExit.value = true })
 const durationLabel = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
@@ -1796,49 +1794,6 @@ function changeGenerationMode(mode) {
   generationMode.value = mode
   modelListOpen.value = true
 }
-async function recreateGalleryReference(item) {
-  if (!signedIn.value) { showAuth(); return }
-  if (!mayEdit.value || galleryImportId.value) return
-  if (!activeId.value) await createProject()
-  if (!activeId.value) return
-  const access = wallet.access()
-  const project = activeId.value
-  const controller = new AbortController()
-  galleryRequest?.abort()
-  galleryRequest = controller
-  galleryImportId.value = String(item.id)
-  try {
-    const { data, headers } = await access.get(`/aitoia/video/references-gallery/${encodeURIComponent(item.id)}/file`,
-      { responseType: 'blob', signal: controller.signal, timeout: 180000 })
-    controller.signal.throwIfAborted()
-    if (!access.current() || project !== activeId.value || !mounted) return
-    if (!data?.size || data.size > 70 * 1024 * 1024) throw new Error('O vídeo de referência precisa ter até 70 MB.')
-    const mime = String(headers?.['content-type'] || data.type || '').split(';')[0]
-    if (!mime.startsWith('video/') && mime !== 'application/octet-stream') throw new Error('A referência não retornou um arquivo de vídeo. Envie o arquivo original em Refazer vídeos.')
-    const supplied = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^;]+)/i.exec(headers?.['content-disposition'] || '')
-    let filename = `${item.title || 'Referencia'}.mp4`
-    try { if (supplied) filename = decodeURIComponent(supplied[1] || supplied[2] || supplied[3]) } catch { /* Keep the readable reference name. */ }
-    filename = filename.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 160)
-    const file = new File([data], filename, { type: mime.startsWith('video/') ? mime : 'video/mp4' })
-    changeGenerationMode('remake')
-    tab.value = 'ai'
-    await nextTick()
-    if (remakeEditor.value?.chooseFile(file)) {
-      closeMobilePanel(masterOpen)
-      remakeEditor.value.revealSetup()
-    }
-  } catch (cause) {
-    if (!controller.signal.aborted && access.current()) {
-      let detail = cause.response?.data
-      if (detail instanceof Blob && detail.size < 20000) {
-        try { detail = JSON.parse(await detail.text()) } catch { detail = null }
-      }
-      notify({ type: 'negative', position: 'top', message: detail?.message || cause.message || 'Não foi possível abrir a referência. Envie o arquivo original em Refazer vídeos.', timeout: 8000, closeBtn: 'Fechar' })
-    }
-  } finally {
-    if (galleryRequest === controller) { galleryRequest = null; galleryImportId.value = '' }
-  }
-}
 const nextScene = computed(() => {
   const index = scenes.value.findIndex(scene => scene.id === sceneId.value)
   return index >= 0 ? scenes.value[index + 1] : null
@@ -2464,7 +2419,6 @@ onBeforeUnmount(() => {
   headerObserver?.disconnect()
   activeOperation?.abort()
   optionsRequest?.abort()
-  galleryRequest?.abort()
   resetProject()
 })
 </script>
@@ -2590,8 +2544,8 @@ onBeforeUnmount(() => {
           </div>
         </nav>
 
-        <AitoVideoReferencesGallery v-if="tab === 'ai' && galleryMode" :importing="galleryImportId" :disabled="!mayEdit && !galleryImportId"
-          @recreate="recreateGalleryReference" @explore="changeGenerationMode('text'); modelListOpen = true" />
+        <AitoVideoReferencesGallery v-if="tab === 'ai' && galleryMode"
+          @explore="changeGenerationMode('text'); modelListOpen = true" />
 
         <section v-if="tab === 'ai' && !galleryMode && !remakeMode && !upscaleMode" class="video-studio__catalog" aria-label="Modo de geração">
           <div class="video-studio__catalog-header">
@@ -3347,7 +3301,7 @@ onBeforeUnmount(() => {
 .video-studio__queued-clip { display: grid; gap: 7px; justify-items: start; margin: 8px 0; padding: 10px; border: 1px solid var(--aito-ai-line); border-radius: 8px; }
 .video-studio__generation-modes, .video-studio__clip-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .video-studio__generation-toolbar { grid-column: 1 / -1; grid-row: 2; position: sticky; top: calc(var(--video-header-height) + var(--video-tabs-height, 56px) + 10px); z-index: 10; min-width: 0; padding: 8px; border: 1px solid var(--aito-ai-line); border-radius: 12px; background: var(--aito-ai-panel); box-shadow: 0 5px 18px var(--aito-ai-shadow); }
-.video-studio__generation-modes { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--aito-ai-line) transparent; padding-bottom: 3px; scroll-padding-inline: 5px; }
+.video-studio__generation-modes { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--aito-scrollbar-thumb, var(--aito-ai-line)) transparent; padding-bottom: 3px; scroll-padding-inline: 5px; }
 .video-studio__generation-modes > button { flex: none; white-space: nowrap; }
 .video-studio__generation-modes [aria-pressed=true], .video-studio__clip-list [aria-pressed=true] { border-color: var(--aito-ai-accent-strong); background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); }
 .video-studio__generation-modes .video-studio__remake-button { border-color: var(--aito-ai-purple-line); color: var(--aito-ai-purple); }

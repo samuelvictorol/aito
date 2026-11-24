@@ -2,8 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { api } from 'boot/axios'
 
-const props = defineProps({ importing: { type: String, default: '' }, disabled: Boolean })
-const emit = defineEmits(['recreate', 'explore'])
+const emit = defineEmits(['explore'])
 const items = shallowRef([])
 const loading = ref(false)
 const error = ref('')
@@ -63,11 +62,6 @@ async function revealNextPage() {
   observeNextPage()
 }
 watch([loadSentinel, hasMore], observeNextPage, { flush: 'post' })
-function recreate(item) {
-  if (props.disabled || props.importing) return
-  preview.value = null
-  emit('recreate', item)
-}
 onMounted(load)
 onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect() })
 </script>
@@ -88,8 +82,6 @@ onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect(
           <span class="aito-references__play"><q-icon name="mdi-play" size="28px" /></span>
           <span class="aito-references__title">{{ item.title }}</span>
         </button>
-        <q-btn no-caps unelevated class="aito-references__recreate" icon="mdi-movie-open-edit-outline" label="Recriar"
-          :loading="importing === String(item.id)" :disable="disabled || Boolean(importing)" @click="recreate(item)" />
       </article>
     </div>
     <div v-if="hasMore && !loading && !error" ref="loadSentinel" class="aito-references__load-more">
@@ -104,7 +96,6 @@ onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect(
           <video v-else-if="previewUrl" :src="previewUrl" controls autoplay playsinline :aria-label="preview.title" />
           <p v-else>Esta referência não está disponível para reprodução.</p>
         </div>
-        <footer><span>Uma nova versão começa com a sua direção.</span><q-btn no-caps unelevated class="aito-references__recreate" icon="mdi-movie-open-edit-outline" label="Recriar este vídeo" :disable="disabled || Boolean(importing)" @click="recreate(preview)" /></footer>
       </q-card>
     </q-dialog>
   </section>
@@ -129,19 +120,15 @@ onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect(
 .aito-references__open::after { z-index: 2; }
 .aito-references__film { position: absolute; inset: 0; display: grid; place-items: center; color: var(--aito-ai-muted); opacity: .4; }
 .aito-references__play { z-index: 3; position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #ffffff45; border-radius: 50%; background: #1515158c; backdrop-filter: blur(8px); }
-.aito-references__title { z-index: 3; position: absolute; bottom: 66px; left: 16px; right: 16px; font-weight: 700; line-height: 1.35; }
-.aito-references__tile > .aito-references__recreate { position: absolute; z-index: 4; bottom: 12px; left: 12px; right: 12px; }
-.aito-references__recreate { color: var(--aito-ai-on-accent); background: var(--aito-ai-gradient); border-radius: 10px; font-weight: 700; min-height: 40px; }
+.aito-references__title { z-index: 3; position: absolute; bottom: 16px; left: 16px; right: 16px; font-weight: 700; line-height: 1.35; }
 .aito-references__load-more { display: flex; justify-content: center; padding: 8px 0; color: var(--aito-ai-accent); }
 .aito-references__count { display: block; padding-top: 8px; color: var(--aito-ai-muted); text-align: center; font-size: .75rem; }
 .aito-references__state { display: flex; min-height: 220px; padding: 30px; align-items: center; justify-content: center; flex-direction: column; gap: 14px; border: 1px dashed var(--aito-ai-line); border-radius: 18px; color: var(--aito-ai-muted); text-align: center; }
 .aito-references__fullscreen { display: flex; flex-direction: column; background: var(--aito-ai-bg); color: var(--aito-ai-text); }
-.aito-references__fullscreen header, .aito-references__fullscreen footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px clamp(14px, 3vw, 32px); }
+.aito-references__fullscreen header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px clamp(14px, 3vw, 32px); }
 .aito-references__fullscreen h2 { margin: 0; font-size: 1rem; }
-.aito-references__player { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
-.aito-references__player video, .aito-references__player iframe { width: 100%; height: 100%; max-height: calc(100dvh - 155px); border: none; object-fit: contain; }
-.aito-references__player iframe { min-height: 65dvh; }
-.aito-references__fullscreen footer span { color: var(--aito-ai-muted); }
+.aito-references__player { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+.aito-references__player video, .aito-references__player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; object-fit: contain; }
 .aito-references__models { width: min(1100px, 94vw); max-width: 1100px; max-height: 90dvh; display: flex; flex-direction: column; gap: 16px; padding: 22px; background: var(--aito-ai-surface); color: var(--aito-ai-text); border: 1px solid var(--aito-ai-line); border-radius: 18px; }
 .aito-references__models > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .aito-references__models h2 { font-size: 1.4rem; margin: 5px 0 8px; }
@@ -156,8 +143,8 @@ onBeforeUnmount(() => { disposed = true; request?.abort(); observer?.disconnect(
 .aito-references__model ul { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 12px 0 0; }
 .aito-references__model li { border-radius: 6px; background: var(--aito-ai-accent-soft); color: var(--aito-ai-accent); padding: 4px 6px; font-size: .72rem; }
 @media (max-width: 1200px) { .aito-references__grid { columns: 3; } }
-@media (max-width: 700px) { .aito-references__grid { columns: 2; column-gap: 10px; } .aito-references__tile { margin-bottom: 10px; border-radius: 13px; } .aito-references__header { flex-direction: column; align-items: start; gap: 15px; } .aito-references__model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .aito-references__title { font-size: .87rem; left: 12px; right: 12px; } .aito-references__fullscreen footer { flex-direction: column; } .aito-references__fullscreen footer > .q-btn { width: 100%; } }
-@media (max-width: 450px) { .aito-references__models { padding: 15px; } .aito-references__model-grid { grid-template-columns: 1fr; } .aito-references__models h2 { font-size: 1.15rem; } .aito-references__play { width: 34px; height: 34px; top: 10px; right: 10px; } .aito-references__recreate { font-size: .8rem; } }
+@media (max-width: 700px) { .aito-references__grid { columns: 2; column-gap: 10px; } .aito-references__tile { margin-bottom: 10px; border-radius: 13px; } .aito-references__header { flex-direction: column; align-items: start; gap: 15px; } .aito-references__model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .aito-references__title { font-size: .87rem; left: 12px; right: 12px; } }
+@media (max-width: 450px) { .aito-references__models { padding: 15px; } .aito-references__model-grid { grid-template-columns: 1fr; } .aito-references__models h2 { font-size: 1.15rem; } .aito-references__play { width: 34px; height: 34px; top: 10px; right: 10px; } }
 @keyframes reference-reveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .aito-references__open img { transition: none; } .aito-references__tile { animation: none; } }
 </style>

@@ -74,6 +74,12 @@
 :root[data-aito-ia-theme='light'] .q-menu:not(.q-menu--dark) { color: var(--aito-ai-text); background: var(--aito-ai-panel); }
 :root[data-aito-ia-theme='light'] .aito-ai-theme ::selection { background: #b4ead6; color: #12372c; }
 
+:root[data-aito-ia-theme='dark'] {
+  --aito-scrollbar-thumb: var(--aito-ai-accent-strong);
+  --aito-scrollbar-track: var(--aito-ai-surface);
+  scrollbar-color: var(--aito-scrollbar-thumb) var(--aito-scrollbar-track);
+}
+
 :root[data-aito-ia-theme='dark'] .aito-ai-theme :is(.text-primary, .text-teal-3, .text-teal-4, .text-teal-7, .text-teal-8, .text-purple-3, .text-purple-4, .text-amber-4) { color: var(--aito-ai-accent) !important; }
 :root[data-aito-ia-theme='dark'] .aito-ai-theme :is(.bg-primary, .bg-teal-3, .bg-teal-4, .bg-teal-7, .bg-teal-8) { color: var(--aito-ai-on-accent) !important; background: var(--aito-ai-accent) !important; }
 :root[data-aito-ia-theme='dark'] .aito-ai-theme ::selection { background: #d4d4dc; color: #17171b; }

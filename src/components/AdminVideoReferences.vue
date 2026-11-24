@@ -97,7 +97,7 @@ onBeforeUnmount(() => controller.abort())
 
 <template>
   <section id="video-references" class="admin-references" aria-labelledby="admin-references-title">
-    <header><div><span>ESTÚDIO DE VÍDEO</span><h2 id="admin-references-title">Galeria de referências</h2><p>Organize os vídeos que inspiram os clientes. Cada referência pode ser aberta e recriada no Estúdio.</p></div>
+    <header><div><span>ESTÚDIO DE VÍDEO</span><h2 id="admin-references-title">Galeria de referências</h2><p>Escolha quais vídeos os clientes podem assistir na galeria e em que ordem aparecem.</p></div>
       <q-btn flat round icon="mdi-refresh" aria-label="Recarregar referências" :loading="busy" @click="reload" />
     </header>
     <q-card flat bordered dark class="admin-references__add">

@@ -112,15 +112,13 @@ function addProjectReference(id) {
   inputError.value = ''
   return true
 }
-const setupPanel = ref(null)
 const sourcePanel = ref(null)
 const resultsPanel = ref(null)
 function revealSection(element) {
   if (!element?.isConnected || !element.getClientRects().length || document.visibilityState === 'hidden') return
   element.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
-function revealSetup() { revealSection(setupPanel.value) }
-defineExpose({ addProjectReference, chooseFile, revealSetup })
+defineExpose({ addProjectReference })
 
 function pendingScene(scene) {
   if (!scene.job?.id && !scene.submittedAt) return null
@@ -649,7 +647,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="aito-remake" aria-label="Refazer vídeos">
-    <section ref="setupPanel" class="aito-remake__panel aito-remake__setup">
+    <section class="aito-remake__panel aito-remake__setup">
       <header>
         <q-icon name="mdi-movie-roll" size="24px" />
         <div><h2>Refazer vídeos</h2><p>Divida um vídeo em cenas e refaça cada uma com novos personagens, cenários ou falas.</p></div>
