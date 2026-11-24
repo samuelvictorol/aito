@@ -1542,7 +1542,7 @@ async function readJob(job, signal, { get, post, current: stillOwner } = wallet.
     if (stillOwner() && projectId === activeId.value && videoReleasePending(job)) {
       const release = releaseMonitor.observe(job)
       setJob({ ...job, releasePollingStopped: !release.retry })
-      error.value = releasePendingMessage(release.retry)
+      error.value = releasePendingMessage(release.retry, job)
       return
     }
     throw cause
@@ -1561,7 +1561,7 @@ async function readJob(job, signal, { get, post, current: stillOwner } = wallet.
     if (release.pending) {
       setJob({ ...current, releasePollingStopped: !release.retry })
       keepJob(current)
-      error.value = releasePendingMessage(release.retry)
+      error.value = releasePendingMessage(release.retry, current)
       return
     }
     removeJob(current)
@@ -2873,7 +2873,7 @@ onBeforeUnmount(() => {
         <article v-for="job in trackedJobs" :key="job.requestId || job.id" class="video-studio__queued-clip">
           <small>{{ job.scriptTarget?.title || (job.timelineTransition ? 'Transição' : job.modelLabel || 'Cena') }}</small>
           <AitoVideoProgress v-if="videoGenerationActive(job.status)" :stage="job.status" :percent="job.progress" />
-          <small v-else-if="videoReleasePending(job)" role="status">Estorno em processamento.</small>
+          <small v-else-if="videoReleasePending(job)" role="status">{{ releasePendingMessage(!job.releasePollingStopped, job) }}</small>
           <button type="button" class="video-studio__secondary" :disabled="Boolean(busy) || remakeBusy || projectLoading" @click="checkJob(job)">
             <q-icon name="mdi-refresh" size="16px" /> {{ videoReleasePending(job) ? 'Verificar estorno' : 'Verificar geração' }}
           </button>

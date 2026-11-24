@@ -16,12 +16,19 @@ export function videoRefundNotice(job) {
   }
   return job.billedUsdCents === 0 ? 'Reserva liberada.' : ''
 }
-export const releasePendingMessage = retry => retry
-  ? 'A geração falhou. Estorno automático em processamento…'
-  : 'O estorno ainda está em processamento. Use o botão de verificação para conferir a situação.'
+export function videoFailureReason(job) {
+  const reason = typeof job?.message === 'string' ? job.message.replace(/\s*A reserva (?:será|foi) liberada\.?\s*$/, '').trim() : ''
+  if (job?.status === 'nsfw' && (!reason || reason === 'A geração não foi concluída.')) {
+    return 'A Higgsfield bloqueou a geração por moderação de conteúdo.'
+  }
+  return reason || 'A geração não foi concluída.'
+}
+export function releasePendingMessage(retry, job) {
+  const next = retry ? 'Estorno automático em processamento.' : 'O estorno ainda está em processamento. Use o botão de verificação para conferir a situação.'
+  return `${videoFailureReason(job)} ${next}`
+}
 export function releasedVideoMessage(job) {
-  const reason = typeof job.message === 'string' ? job.message.replace(/\s*A reserva (?:será|foi) liberada\.?\s*$/, '').trim() : ''
-  return `${reason || 'A geração não foi concluída.'} ${job.refundedAt ? videoRefundNotice(job) : 'A reserva foi liberada.'}`
+  return `${videoFailureReason(job)} ${job.refundedAt ? videoRefundNotice(job) : 'A reserva foi liberada.'}`
 }
 
 // Failed delivery and settled billing are different events. Bound automatic

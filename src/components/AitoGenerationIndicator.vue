@@ -6,7 +6,7 @@ import { canRemoveGeneration, forgetLocalGeneration, generationIdentity, localGe
 import { confirmStudioRemoval } from 'src/services/aitoiaStudioConfirm'
 import { readGeneratedClipForJob } from 'src/services/aitoiaVideoRemote'
 import { sameVideoGeneration, videoGenerationActive } from 'src/services/aitoiaVideoJobs'
-import { failedVideo, videoRefundNotice, videoReleasePending } from 'src/services/aitoiaVideoRelease'
+import { failedVideo, videoFailureReason, videoRefundNotice, videoReleasePending } from 'src/services/aitoiaVideoRelease'
 
 const props = defineProps({ state: { type: Object, required: true } })
 const { accountId, access } = props.state
@@ -240,6 +240,7 @@ async function openClip(job) {
             <small role="status">Gerando {{ item.kind === 'image' ? 'imagem' : 'locução' }}</small>
           </template>
           <span v-else-if="item.status === 'completed'" class="aito-generation-dialog__done"><q-icon name="mdi-check-circle-outline" /> Concluída</span>
+          <small v-else-if="item.kind === 'video' && failedVideo(item)" role="status">{{ videoFailureReason(item) }}</small>
           <small v-else role="status">{{ item.message || (failedVideo(item) ? 'A geração falhou.' : 'Geração encerrada.') }}</small>
           <span v-if="item.kind === 'video' && videoRefundNotice(item)" class="aito-generation-dialog__refund" role="status">
             <q-icon :name="videoReleasePending(item) ? 'mdi-clock-outline' : 'mdi-cash-refund'" /> {{ videoRefundNotice(item) }}

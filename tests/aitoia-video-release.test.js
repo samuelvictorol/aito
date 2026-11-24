@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoRefundNotice, videoReleasePending } from '../src/services/aitoiaVideoRelease.js'
+import { createVideoReleaseMonitor, mergeVideoGeneration, releasedVideoMessage, releasePendingMessage, videoFailureReason, videoRefundNotice, videoReleasePending } from '../src/services/aitoiaVideoRelease.js'
 import { remakeSceneIntent } from '../src/services/aitoiaVideoRemakePlan.js'
 
 test('a failed generation remains financially pending until a zero-charge released snapshot arrives', () => {
@@ -42,6 +42,25 @@ test('generation notices distinguish pending, verified, legacy and unconfirmed r
   assert.equal(videoRefundNotice({ status: 'failed', billedUsdCents: 0 }), 'Reserva liberada.')
   assert.equal(videoRefundNotice({ status: 'failed', billedUsdCents: 20 }), '')
   assert.equal(videoRefundNotice({ status: 'completed', billedUsdCents: 0 }), '')
+})
+
+test('moderation remains visible during a refund check and in generation history after settlement', () => {
+  const reason = 'A Higgsfield bloqueou a geração por moderação de conteúdo.'
+  const pending = { id: 'seedance-upscale', status: 'nsfw', message: reason + ' A reserva será liberada.', refundPending: true }
+  assert.equal(videoFailureReason(pending), reason)
+  for (const retry of [true, false]) {
+    const notice = releasePendingMessage(retry, pending)
+    assert.ok(notice.startsWith(reason))
+    assert.match(notice, /em processamento/)
+    assert.doesNotMatch(notice, /foi liberada|estornados à sua carteira/)
+  }
+  const settled = { id: pending.id, status: 'nsfw', message: reason + ' A reserva foi liberada.',
+    billedUsdCents: 0, refundedAt: '2026-11-24T12:00:00Z', refundedAitoTokens: 1500 }
+  assert.equal(videoFailureReason(settled), reason)
+  assert.equal(releasedVideoMessage(settled), reason + ' ' + videoRefundNotice(settled))
+  assert.match(videoRefundNotice(settled), /1\.500 AitoTokens estornados/)
+  assert.equal(videoFailureReason({ status: 'nsfw' }), reason)
+  assert.equal(videoFailureReason({ status: 'failed', message: 'O provedor recusou o arquivo.' }), 'O provedor recusou o arquivo.')
 })
 
 test('elapsed time bounds release checks and a nonzero charge is never labeled refunded', () => {
